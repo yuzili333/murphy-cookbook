@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+playwright-report/
+test-results/
+apps/frontend/dist/
+apps/server/dist/
+apps/frontend/*.tsbuildinfo
+apps/server/*.tsbuildinfo

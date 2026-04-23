@@ -1,0 +1,11 @@
+[build]
+command = "pnpm --filter @murphy-cookbook/frontend build"
+publish = "apps/frontend/dist"
+
+[build.environment]
+NODE_VERSION = "20.19.0"
+
+[[redirects]]
+from = "/*"
+to = "/index.html"
+status = 200
