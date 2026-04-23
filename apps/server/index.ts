@@ -1,7 +1,7 @@
-import { config } from 'dotenv';
 import { createApp } from './app.js';
+import { loadServerEnv } from './env.js';
 
-config({ path: new URL('../../.env', import.meta.url) });
+loadServerEnv();
 
 const port = Number(process.env.PORT ?? 3001);
 

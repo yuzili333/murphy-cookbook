@@ -9,3 +9,10 @@ apps/frontend/dist/
 apps/server/dist/
 apps/frontend/*.tsbuildinfo
 apps/server/*.tsbuildinfo
+
+# env
+.env
+.env.*
+!.env.example
+apps/*/.env
+apps/*/.env.*

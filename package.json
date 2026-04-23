@@ -10,6 +10,7 @@
     "dev:frontend": "pnpm --filter @murphy-cookbook/frontend dev",
     "dev:server": "pnpm --filter @murphy-cookbook/server dev",
     "build": "pnpm --filter @murphy-cookbook/frontend build && pnpm --filter @murphy-cookbook/server build",
+    "build:netlify": "pnpm --filter @murphy-cookbook/frontend build && pnpm --filter @murphy-cookbook/server build",
     "build:frontend": "pnpm --filter @murphy-cookbook/frontend build",
     "build:server": "pnpm --filter @murphy-cookbook/server build",
     "test:api": "pnpm --filter @murphy-cookbook/server test:api",

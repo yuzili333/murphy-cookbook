@@ -5,12 +5,17 @@ import {
   childProfiles,
   recipeCatalog,
 } from './data.js';
-import { isOpenAIConfigured, transcribeAudioWithOpenAI } from './openai.js';
 import {
   extractIngredientsFromFilename,
+  parseIngredientJson,
   parseTextToIngredients,
   recommendRecipes,
 } from './service.js';
+import {
+  isSiliconFlowConfigured,
+  understandIngredientsFromImage,
+  understandIngredientsFromText,
+} from './siliconflow.js';
 
 export function createApp(): Express {
   const app = express();
@@ -24,6 +29,15 @@ export function createApp(): Express {
 
   app.use(cors());
   app.use(express.json());
+  app.use((req, _res, next) => {
+    if (req.url.startsWith('/.netlify/functions/api/')) {
+      req.url = req.url.replace('/.netlify/functions/api', '/api');
+    } else if (req.url.startsWith('/v1/')) {
+      req.url = `/api${req.url}`;
+    }
+
+    next();
+  });
 
   app.get('/api/v1/health', (_req, res) => {
     res.json({ data: { ok: true } });
@@ -69,7 +83,7 @@ export function createApp(): Express {
     res.json({ data: profile });
   });
 
-  app.post('/api/v1/ingredients/parse-text', (req, res) => {
+  app.post('/api/v1/ingredients/parse-text', async (req, res) => {
     const text = String(req.body?.text ?? '').trim();
 
     if (!text) {
@@ -79,12 +93,23 @@ export function createApp(): Express {
       return;
     }
 
-    const ingredients = parseTextToIngredients(text);
+    try {
+      const ingredients = isSiliconFlowConfigured()
+        ? parseIngredientJson(await understandIngredientsFromText(text), 'manual')
+        : parseTextToIngredients(text);
 
-    res.json({ data: { ingredients } });
+      res.json({ data: { ingredients } });
+    } catch (error) {
+      res.status(502).json({
+        error: {
+          code: 'TEXT_UNDERSTANDING_FAILED',
+          message: error instanceof Error ? error.message : '文本理解失败。',
+        },
+      });
+    }
   });
 
-  app.post('/api/v1/ingredients/recognize-image', upload.single('image'), (req, res) => {
+  app.post('/api/v1/ingredients/recognize-image', upload.single('image'), async (req, res) => {
     if (!req.file) {
       res.status(400).json({
         error: { code: 'INVALID_ARGUMENT', message: '请上传图片文件。' },
@@ -99,58 +124,20 @@ export function createApp(): Express {
       return;
     }
 
-    res.json({
-      data: {
-        ingredients: extractIngredientsFromFilename(req.file.originalname),
-        upload: {
-          filename: req.file.originalname,
-          mimetype: req.file.mimetype,
-          size: req.file.size,
-        },
-      },
-    });
-  });
-
-  app.post('/api/v1/ingredients/parse-voice', upload.single('audio'), async (req, res) => {
-    if (!req.file) {
-      res.status(400).json({
-        error: { code: 'INVALID_ARGUMENT', message: '请上传音频文件。' },
-      });
-      return;
-    }
-
-    if (!req.file.mimetype.startsWith('audio/') && req.file.mimetype !== 'video/webm') {
-      res.status(400).json({
-        error: { code: 'INVALID_ARGUMENT', message: '仅支持音频文件上传。' },
-      });
-      return;
-    }
-
-    if (!isOpenAIConfigured()) {
-      res.status(503).json({
-        error: {
-          code: 'TRANSCRIPTION_NOT_CONFIGURED',
-          message: '语音转写需要配置 OPENAI_API_KEY 后才能使用。',
-        },
-      });
-      return;
-    }
-
     try {
-      const transcript = await transcribeAudioWithOpenAI({
-        buffer: req.file.buffer,
-        filename: req.file.originalname,
-        mimetype: req.file.mimetype,
-      });
-
-      const ingredients = parseTextToIngredients(transcript).map((item) => ({
-        ...item,
-        source: 'voice' as const,
-      }));
+      const ingredients = isSiliconFlowConfigured()
+        ? parseIngredientJson(
+            await understandIngredientsFromImage({
+              buffer: req.file.buffer,
+              mimetype: req.file.mimetype,
+              filename: req.file.originalname,
+            }),
+            'image',
+          )
+        : extractIngredientsFromFilename(req.file.originalname);
 
       res.json({
         data: {
-          transcript,
           ingredients,
           upload: {
             filename: req.file.originalname,
@@ -162,8 +149,66 @@ export function createApp(): Express {
     } catch (error) {
       res.status(502).json({
         error: {
-          code: 'TRANSCRIPTION_FAILED',
-          message: error instanceof Error ? error.message : '语音转写失败。',
+          code: 'VISION_UNDERSTANDING_FAILED',
+          message: error instanceof Error ? error.message : '图片识别失败。',
+        },
+      });
+    }
+  });
+
+  app.post('/api/v1/ingredients/parse-voice', upload.single('audio'), async (req, res) => {
+    const transcript = String(req.body?.transcript ?? '').trim();
+
+    if (!req.file && !transcript) {
+      res.status(400).json({
+        error: { code: 'INVALID_ARGUMENT', message: '请上传音频文件或直接提供 transcript。' },
+      });
+      return;
+    }
+
+    if (req.file && !req.file.mimetype.startsWith('audio/') && req.file.mimetype !== 'video/webm') {
+      res.status(400).json({
+        error: { code: 'INVALID_ARGUMENT', message: '仅支持音频文件上传。' },
+      });
+      return;
+    }
+
+    if (!transcript) {
+      res.status(501).json({
+        error: {
+          code: 'VOICE_TRANSCRIPTION_UNSUPPORTED',
+          message: '当前 SiliconFlow Chat Completions 方案仅支持对文本 transcript 做理解，不支持直接音频转写。',
+        },
+      });
+      return;
+    }
+
+    try {
+      const ingredients = isSiliconFlowConfigured()
+        ? parseIngredientJson(await understandIngredientsFromText(transcript), 'voice')
+        : parseTextToIngredients(transcript).map((item) => ({
+            ...item,
+            source: 'voice' as const,
+          }));
+
+      res.json({
+        data: {
+          transcript,
+          ingredients,
+          upload: req.file
+            ? {
+                filename: req.file.originalname,
+                mimetype: req.file.mimetype,
+                size: req.file.size,
+              }
+            : null,
+        },
+      });
+    } catch (error) {
+      res.status(502).json({
+        error: {
+          code: 'TEXT_UNDERSTANDING_FAILED',
+          message: error instanceof Error ? error.message : '语音文本理解失败。',
         },
       });
     }

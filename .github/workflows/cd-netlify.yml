@@ -1,0 +1,65 @@
+name: CD Netlify
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: netlify-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to Netlify
+    runs-on: ubuntu-latest
+
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+      SILICONFLOW_QWEN_MODEL: Qwen/Qwen3.5-35B-A3B
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.0
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.0
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate deployment secrets
+        run: |
+          test -n "$NETLIFY_AUTH_TOKEN" || (echo "Missing NETLIFY_AUTH_TOKEN" && exit 1)
+          test -n "$NETLIFY_SITE_ID" || (echo "Missing NETLIFY_SITE_ID" && exit 1)
+          test -n "$SILICONFLOW_API_KEY" || (echo "Missing SILICONFLOW_API_KEY" && exit 1)
+
+      - name: Verify
+        run: |
+          pnpm test:api
+          pnpm build:netlify
+
+      - name: Sync Netlify runtime env
+        run: |
+          pnpm dlx netlify-cli env:set SILICONFLOW_API_KEY "$SILICONFLOW_API_KEY" --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm dlx netlify-cli env:set SILICONFLOW_QWEN_MODEL "$SILICONFLOW_QWEN_MODEL" --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+
+      - name: Deploy
+        run: pnpm dlx netlify-cli deploy --prod --build --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"

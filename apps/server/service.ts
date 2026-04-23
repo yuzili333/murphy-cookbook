@@ -87,3 +87,14 @@ export function extractIngredientsFromFilename(filename: string) {
 
   return [createIngredient('番茄', 'image'), createIngredient('鸡蛋', 'image')];
 }
+
+export function parseIngredientJson(content: string, source: IngredientItem['source']) {
+  const parsed = JSON.parse(content) as {
+    ingredients?: Array<{ name?: string; quantity?: string }>;
+  };
+
+  const items = parsed.ingredients ?? [];
+  return items
+    .filter((item) => item.name)
+    .map((item) => createIngredient(item.name ?? '', source, item.quantity ?? '1份'));
+}

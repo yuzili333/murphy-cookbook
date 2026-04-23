@@ -1,9 +1,19 @@
 [build]
-command = "pnpm --filter @murphy-cookbook/frontend build"
+command = "pnpm build:netlify"
 publish = "apps/frontend/dist"
 
 [build.environment]
 NODE_VERSION = "20.19.0"
+
+[functions]
+directory = "apps/server/netlify/functions"
+node_bundler = "esbuild"
+
+[[redirects]]
+from = "/api/*"
+to = "/.netlify/functions/api/:splat"
+status = 200
+force = true
 
 [[redirects]]
 from = "/*"

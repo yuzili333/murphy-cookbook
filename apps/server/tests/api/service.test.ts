@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractIngredientsFromFilename, parseTextToIngredients, recommendRecipes } from '../../service.js';
-import { isOpenAIConfigured, transcribeAudioWithOpenAI } from '../../openai.js';
+import { extractIngredientsFromFilename, parseIngredientJson, parseTextToIngredients, recommendRecipes } from '../../service.js';
+import { isSiliconFlowConfigured, understandIngredientsFromImage, understandIngredientsFromText } from '../../siliconflow.js';
 
 test('parseTextToIngredients extracts ingredient tokens from chinese text', () => {
   const ingredients = parseTextToIngredients('两个鸡蛋 一个番茄 半根黄瓜');
@@ -28,40 +28,78 @@ test('recommendRecipes returns recipe matches for existing child profile', () =>
   assert.equal(result.data?.filteredAllergens[0], '花生');
 });
 
-test('isOpenAIConfigured returns false when OPENAI_API_KEY is missing', () => {
-  const originalKey = process.env.OPENAI_API_KEY;
-  delete process.env.OPENAI_API_KEY;
+test('parseIngredientJson converts LLM json output to ingredient items', () => {
+  const ingredients = parseIngredientJson(
+    '{"ingredients":[{"name":"鸡蛋","quantity":"2个"},{"name":"番茄","quantity":"1个"}]}',
+    'manual',
+  );
 
-  assert.equal(isOpenAIConfigured(), false);
+  assert.equal(ingredients.length, 2);
+  assert.equal(ingredients[0].name, '鸡蛋');
+  assert.equal(ingredients[0].quantity, '2个');
+});
+
+test('isSiliconFlowConfigured returns false when SILICONFLOW_API_KEY is missing', () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  delete process.env.SILICONFLOW_API_KEY;
+
+  assert.equal(isSiliconFlowConfigured(), false);
 
   if (originalKey) {
-    process.env.OPENAI_API_KEY = originalKey;
+    process.env.SILICONFLOW_API_KEY = originalKey;
   }
 });
 
-test('transcribeAudioWithOpenAI posts multipart audio and returns transcript text', async () => {
-  const originalKey = process.env.OPENAI_API_KEY;
+test('understandIngredientsFromText posts chat completions request and returns model content', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
-  process.env.OPENAI_API_KEY = 'test-key';
+  process.env.SILICONFLOW_API_KEY = 'test-key';
 
   global.fetch = (async () =>
-    new Response(JSON.stringify({ text: '鸡蛋 番茄 黄瓜' }), {
+    new Response(JSON.stringify({
+      choices: [{ message: { content: '{"ingredients":[{"name":"鸡蛋","quantity":"2个"}]}' } }],
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })) as typeof fetch;
 
-  const transcript = await transcribeAudioWithOpenAI({
-    buffer: Buffer.from('fake-audio-binary'),
-    filename: 'ingredients.webm',
-    mimetype: 'audio/webm',
-  });
+  const content = await understandIngredientsFromText('两个鸡蛋');
 
-  assert.equal(transcript, '鸡蛋 番茄 黄瓜');
+  assert.equal(content, '{"ingredients":[{"name":"鸡蛋","quantity":"2个"}]}');
 
   global.fetch = originalFetch;
   if (originalKey) {
-    process.env.OPENAI_API_KEY = originalKey;
+    process.env.SILICONFLOW_API_KEY = originalKey;
   } else {
-    delete process.env.OPENAI_API_KEY;
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('understandIngredientsFromImage posts image message and returns model content', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{ message: { content: '{"ingredients":[{"name":"番茄","quantity":"1份"}]}' } }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const content = await understandIngredientsFromImage({
+    buffer: Buffer.from('fake-image-binary'),
+    filename: 'food.jpg',
+    mimetype: 'image/jpeg',
+  });
+
+  assert.equal(content, '{"ingredients":[{"name":"番茄","quantity":"1份"}]}');
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
   }
 });

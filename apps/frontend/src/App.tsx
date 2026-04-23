@@ -462,7 +462,7 @@ export default function App() {
             </div>
             <div className="alert-box soft">
               <strong>提示</strong>
-              <p>这一步会把最终确认后的食材发送到真实后端推荐接口。语音转写依赖 `OPENAI_API_KEY` 配置。</p>
+              <p>这一步会把最终确认后的食材发送到真实后端推荐接口。文本与视觉理解使用 SiliconFlow 的 Qwen 模型。</p>
             </div>
             <div className="action-row sticky-actions">
               <button
