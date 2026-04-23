@@ -59,8 +59,8 @@ jobs:
 
       - name: Sync Netlify runtime env
         run: |
-          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_API_KEY "$SILICONFLOW_API_KEY" --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
-          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_QWEN_MODEL "$SILICONFLOW_QWEN_MODEL" --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_API_KEY "$SILICONFLOW_API_KEY" --filter @murphy-cookbook/frontend --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_QWEN_MODEL "$SILICONFLOW_QWEN_MODEL" --filter @murphy-cookbook/frontend --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
 
       - name: Deploy
-        run: pnpm --package netlify-cli dlx netlify deploy --prod --build --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+        run: pnpm --package netlify-cli dlx netlify deploy --prod --build --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"

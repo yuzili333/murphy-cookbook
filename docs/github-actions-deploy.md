@@ -21,3 +21,5 @@ Do not commit real API keys to `.env`, workflow files, or documentation.
 
 - `.github/workflows/ci.yml`: runs API tests and full workspace build on pull requests and pushes.
 - `.github/workflows/cd-netlify.yml`: deploys to Netlify on `main`/`master` push or manual dispatch.
+
+The Netlify CLI commands include `--filter @murphy-cookbook/frontend` because Netlify detects multiple workspace projects in this monorepo.
