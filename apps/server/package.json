@@ -7,7 +7,7 @@
     "dev": "tsx watch index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test:api": "node --import tsx --test tests/api/**/*.test.ts"
+    "test:api": "node --import tsx --test $(find tests/api -name '*.test.ts' -type f)"
   },
   "dependencies": {
     "cors": "^2.8.6",
