@@ -19,7 +19,7 @@ jobs:
   deploy:
     name: Deploy to Netlify
     runs-on: ubuntu-latest
-    environment: SILICONFLOW_API_KEY
+    environment: murphy-cookbook
 
     env:
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
@@ -59,8 +59,8 @@ jobs:
 
       - name: Sync Netlify runtime env
         run: |
-          pnpm dlx netlify-cli env:set SILICONFLOW_API_KEY "$SILICONFLOW_API_KEY" --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
-          pnpm dlx netlify-cli env:set SILICONFLOW_QWEN_MODEL "$SILICONFLOW_QWEN_MODEL" --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_API_KEY "$SILICONFLOW_API_KEY" --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_QWEN_MODEL "$SILICONFLOW_QWEN_MODEL" --context production --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
 
       - name: Deploy
-        run: pnpm dlx netlify-cli deploy --prod --build --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+        run: pnpm --package netlify-cli dlx netlify deploy --prod --build --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
