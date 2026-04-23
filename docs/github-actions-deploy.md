@@ -22,4 +22,6 @@ Do not commit real API keys to `.env`, workflow files, or documentation.
 - `.github/workflows/ci.yml`: runs API tests and full workspace build on pull requests and pushes.
 - `.github/workflows/cd-netlify.yml`: deploys to Netlify on `main`/`master` push or manual dispatch.
 
-The Netlify CLI commands include `--filter @murphy-cookbook/frontend` because Netlify detects multiple workspace projects in this monorepo.
+The CD workflow avoids Netlify monorepo project auto-detection by passing `NETLIFY_SITE_ID` directly. It deploys `apps/frontend/dist` as the static frontend and `apps/server/netlify/functions` as Netlify Functions for `@murphy-cookbook/server`.
+
+If the `Sync Netlify runtime env` step reports `Unauthorized: could not retrieve project`, verify that `NETLIFY_AUTH_TOKEN` was created by a Netlify user or team member with access to the site identified by `NETLIFY_SITE_ID`.
