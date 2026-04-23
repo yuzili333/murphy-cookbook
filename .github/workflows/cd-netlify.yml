@@ -19,6 +19,7 @@ jobs:
   deploy:
     name: Deploy to Netlify
     runs-on: ubuntu-latest
+    environment: SILICONFLOW_API_KEY
 
     env:
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
