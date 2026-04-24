@@ -44,6 +44,22 @@ test('parseIngredientJson converts LLM json output to ingredient items', () => {
   assert.equal(ingredients[0].quantity, '2个');
 });
 
+test('recommendRecipes uses provided profile snapshot when profileId is not found', () => {
+  const ingredients = parseTextToIngredients('鸡蛋 番茄');
+  const result = recommendRecipes('local_profile_001', ingredients, {
+    id: 'local_profile_001',
+    nickname: '小米',
+    age: 7,
+    tastePreferences: ['清淡'],
+    allergens: ['花生'],
+    dietaryHabits: ['低盐'],
+  });
+
+  assert.ok(result.data);
+  assert.equal(result.data?.filteredAllergens[0], '花生');
+  assert.equal(result.data?.recipes[0].name, '番茄鸡蛋面');
+});
+
 test('isSiliconFlowConfigured returns false when SILICONFLOW_API_KEY is missing', () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   delete process.env.SILICONFLOW_API_KEY;

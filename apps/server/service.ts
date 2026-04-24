@@ -4,6 +4,7 @@ import {
   normalizeIngredientName,
   recipeCatalog,
   summarizeRecipe,
+  type ChildProfile,
   type IngredientItem,
 } from './data.js';
 
@@ -18,8 +19,32 @@ export function parseTextToIngredients(text: string) {
   );
 }
 
-export function recommendRecipes(profileId: string, ingredients: IngredientItem[]) {
-  const profile = childProfiles.find((item) => item.id === profileId);
+function resolveProfile(profileId: string, profileInput?: Partial<ChildProfile> | null) {
+  const normalizedProfileId = profileId.trim();
+  const matchedProfile = childProfiles.find((item) => item.id === normalizedProfileId);
+
+  if (matchedProfile) {
+    return matchedProfile;
+  }
+
+  if (!profileInput?.nickname || !profileInput?.age) {
+    return null;
+  }
+
+  const resolvedProfileId = String(profileInput.id ?? normalizedProfileId).trim() || `profile_snapshot_${Date.now()}`;
+
+  return {
+    id: resolvedProfileId,
+    nickname: String(profileInput.nickname),
+    age: Number(profileInput.age),
+    tastePreferences: Array.isArray(profileInput.tastePreferences) ? profileInput.tastePreferences : [],
+    allergens: Array.isArray(profileInput.allergens) ? profileInput.allergens : [],
+    dietaryHabits: Array.isArray(profileInput.dietaryHabits) ? profileInput.dietaryHabits : [],
+  } satisfies ChildProfile;
+}
+
+export function recommendRecipes(profileId: string, ingredients: IngredientItem[], profileInput?: Partial<ChildProfile> | null) {
+  const profile = resolveProfile(profileId, profileInput);
   if (!profile) {
     return {
       error: { code: 'PROFILE_NOT_FOUND', message: '推荐前需要先选择儿童档案。' },

@@ -17,6 +17,14 @@ export interface ChildProfile {
   dietaryHabits: string[];
 }
 
+export interface CreateChildProfileInput {
+  nickname: string;
+  age: number;
+  tastePreferences: string[];
+  allergens: string[];
+  dietaryHabits: string[];
+}
+
 export interface IngredientItem {
   id: string;
   name: string;

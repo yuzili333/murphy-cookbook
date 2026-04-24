@@ -248,7 +248,8 @@ export function createApp(): Express {
   app.post('/api/v1/recommendations/recipes', (req, res) => {
     const profileId = String(req.body?.profileId ?? '');
     const ingredients = req.body?.ingredients ?? [];
-    const result = recommendRecipes(profileId, ingredients);
+    const profile = req.body?.profile ?? null;
+    const result = recommendRecipes(profileId, ingredients, profile);
 
     if (result.error) {
       const status = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;

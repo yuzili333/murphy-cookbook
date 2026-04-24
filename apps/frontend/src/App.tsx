@@ -5,6 +5,7 @@ import { RecipeCard } from './components/RecipeCard';
 import { StepCard } from './components/StepCard';
 import { quickIngredients } from './data/constants';
 import {
+  createChildProfile,
   fetchChildProfiles,
   fetchRecentCooked,
   fetchRecipeDetail,
@@ -16,6 +17,7 @@ import {
 } from './lib/api';
 import type {
   ChildProfile,
+  CreateChildProfileInput,
   FeedbackResponse,
   IngredientItem,
   PageId,
@@ -25,6 +27,50 @@ import type {
 
 const defaultTasteFeedback = '很好吃，番茄酸酸甜甜的。';
 const defaultDifficultyFeedback = '煮面的时候有点难。';
+const localProfilesStorageKey = 'murphy-cookbook.local-profiles.v1';
+
+function readLocalProfiles() {
+  if (typeof window === 'undefined') {
+    return [] as ChildProfile[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(localProfilesStorageKey);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw) as ChildProfile[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistLocalProfiles(profiles: ChildProfile[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(localProfilesStorageKey, JSON.stringify(profiles));
+}
+
+function mergeProfiles(remoteProfiles: ChildProfile[], localProfiles: ChildProfile[]) {
+  const merged = new Map<string, ChildProfile>();
+
+  for (const profile of [...remoteProfiles, ...localProfiles]) {
+    merged.set(profile.id, profile);
+  }
+
+  return Array.from(merged.values());
+}
+
+function parseTagInput(value: string) {
+  return value
+    .split(/[，,、\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 export default function App() {
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +90,14 @@ export default function App() {
   const [tasteFeedback, setTasteFeedback] = useState(defaultTasteFeedback);
   const [difficultyFeedback, setDifficultyFeedback] = useState(defaultDifficultyFeedback);
   const [feedback, setFeedback] = useState<FeedbackResponse | null>(null);
+  const [localProfiles, setLocalProfiles] = useState<ChildProfile[]>([]);
+  const [newProfileForm, setNewProfileForm] = useState({
+    nickname: '',
+    age: '8',
+    tastePreferences: '',
+    allergens: '',
+    dietaryHabits: '',
+  });
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isParsingText, setIsParsingText] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -51,6 +105,7 @@ export default function App() {
   const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [error, setError] = useState('');
 
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? null;
@@ -60,12 +115,15 @@ export default function App() {
     async function bootstrap() {
       try {
         setError('');
+        const localProfileData = readLocalProfiles();
+        setLocalProfiles(localProfileData);
         const [profileData, recentData] = await Promise.all([
           fetchChildProfiles(),
           fetchRecentCooked(),
         ]);
-        setProfiles(profileData);
-        setSelectedProfileId(profileData[0]?.id ?? '');
+        const mergedProfiles = mergeProfiles(profileData, localProfileData);
+        setProfiles(mergedProfiles);
+        setSelectedProfileId((current) => current || mergedProfiles[0]?.id || '');
         setRecentCooked(recentData);
       } catch (bootstrapError) {
         setError(bootstrapError instanceof Error ? bootstrapError.message : '初始化失败，请稍后重试。');
@@ -76,6 +134,14 @@ export default function App() {
 
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (selectedProfileId && profiles.some((profile) => profile.id === selectedProfileId)) {
+      return;
+    }
+
+    setSelectedProfileId(profiles[0]?.id ?? '');
+  }, [profiles, selectedProfileId]);
 
   const appendIngredients = (items: IngredientItem[]) => {
     setIngredients((current) => {
@@ -173,13 +239,85 @@ export default function App() {
     try {
       setIsFetchingRecommendations(true);
       setError('');
-      const data = await fetchRecommendations(selectedProfileId, ingredients);
+      if (!selectedProfile) {
+        setError('请先选择有效的儿童档案。');
+        return;
+      }
+
+      const data = await fetchRecommendations(selectedProfile, ingredients);
       setRecommendations(data.recipes);
       setPage('recipes');
     } catch (recommendationError) {
       setError(recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。');
     } finally {
       setIsFetchingRecommendations(false);
+    }
+  };
+
+  const handleCreateProfile = async () => {
+    const nickname = newProfileForm.nickname.trim();
+    const age = Number(newProfileForm.age);
+
+    if (!nickname || !Number.isFinite(age) || age <= 0) {
+      setError('请填写正确的儿童昵称和年龄。');
+      return;
+    }
+
+    const payload: CreateChildProfileInput = {
+      nickname,
+      age,
+      tastePreferences: parseTagInput(newProfileForm.tastePreferences),
+      allergens: parseTagInput(newProfileForm.allergens),
+      dietaryHabits: parseTagInput(newProfileForm.dietaryHabits),
+    };
+
+    const localProfile: ChildProfile = {
+      id: `local_profile_${crypto.randomUUID()}`,
+      ...payload,
+    };
+
+    try {
+      setIsCreatingProfile(true);
+      setError('');
+
+      let createdProfile = localProfile;
+
+      try {
+        createdProfile = await createChildProfile(payload);
+      } catch {
+        // Netlify Functions is stateless for in-memory profiles. Keep a local profile fallback.
+      }
+
+      const nextLocalProfiles = createdProfile.id.startsWith('local_profile_')
+        ? [...localProfiles, createdProfile]
+        : localProfiles;
+
+      if (createdProfile.id.startsWith('local_profile_')) {
+        setLocalProfiles(nextLocalProfiles);
+        persistLocalProfiles(nextLocalProfiles);
+      }
+
+      const mergedProfiles = mergeProfiles(
+        profiles.filter((profile) => !profile.id.startsWith('local_profile_')),
+        nextLocalProfiles.length > 0 ? nextLocalProfiles : localProfiles,
+      );
+
+      if (!mergedProfiles.some((profile) => profile.id === createdProfile.id)) {
+        mergedProfiles.push(createdProfile);
+      }
+
+      setProfiles(mergedProfiles);
+      setSelectedProfileId(createdProfile.id);
+      setNewProfileForm({
+        nickname: '',
+        age: '8',
+        tastePreferences: '',
+        allergens: '',
+        dietaryHabits: '',
+      });
+      setPage('input');
+    } finally {
+      setIsCreatingProfile(false);
     }
   };
 
@@ -311,7 +449,65 @@ export default function App() {
                 </button>
               ))}
             </div>
+            <div className="panel-subsection">
+              <h3>新增儿童档案</h3>
+              <div className="field-grid">
+                <div className="field">
+                  <label>昵称</label>
+                  <input
+                    placeholder="例如：小米"
+                    value={newProfileForm.nickname}
+                    onChange={(event) => setNewProfileForm((current) => ({ ...current, nickname: event.target.value }))}
+                  />
+                </div>
+                <div className="field">
+                  <label>年龄</label>
+                  <input
+                    inputMode="numeric"
+                    placeholder="例如：8"
+                    value={newProfileForm.age}
+                    onChange={(event) => setNewProfileForm((current) => ({ ...current, age: event.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="field">
+                <label>口味偏好</label>
+                <input
+                  placeholder="例如：清淡、喜欢鸡蛋、喜欢面食"
+                  value={newProfileForm.tastePreferences}
+                  onChange={(event) =>
+                    setNewProfileForm((current) => ({ ...current, tastePreferences: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label>过敏原</label>
+                <input
+                  placeholder="例如：花生、牛奶"
+                  value={newProfileForm.allergens}
+                  onChange={(event) => setNewProfileForm((current) => ({ ...current, allergens: event.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label>饮食习惯</label>
+                <input
+                  placeholder="例如：低盐、不吃辣"
+                  value={newProfileForm.dietaryHabits}
+                  onChange={(event) =>
+                    setNewProfileForm((current) => ({ ...current, dietaryHabits: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
             <div className="action-row">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void handleCreateProfile()}
+                disabled={isCreatingProfile}
+              >
+                {isCreatingProfile ? '保存中…' : '新增并使用这个档案'}
+              </button>
               <button type="button" className="primary-button" onClick={() => setPage('input')}>
                 确认并继续
               </button>

@@ -1,5 +1,6 @@
 import type {
   ChildProfile,
+  CreateChildProfileInput,
   FeedbackResponse,
   IngredientItem,
   ImageRecognitionResponse,
@@ -60,6 +61,13 @@ export function fetchChildProfiles() {
   return request<ChildProfile[]>('/child-profiles');
 }
 
+export function createChildProfile(payload: CreateChildProfileInput) {
+  return request<ChildProfile>('/child-profiles', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function parseIngredientText(text: string) {
   return request<{ ingredients: IngredientItem[] }>('/ingredients/parse-text', {
     method: 'POST',
@@ -87,11 +95,12 @@ export function uploadVoiceAudio(file: File) {
   });
 }
 
-export function fetchRecommendations(profileId: string, ingredients: IngredientItem[]) {
+export function fetchRecommendations(profile: ChildProfile, ingredients: IngredientItem[]) {
   return request<RecommendationResponse>('/recommendations/recipes', {
     method: 'POST',
     body: JSON.stringify({
-      profileId,
+      profileId: profile.id,
+      profile,
       ingredients: ingredients.map((ingredient) => ({
         name: ingredient.name,
         normalizedName: ingredient.normalizedName ?? ingredient.name,
