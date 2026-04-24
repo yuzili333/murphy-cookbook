@@ -302,6 +302,28 @@ button {
   justify-content: space-between;
 }
 
+.ingredient-listing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ingredient-listing > div {
+  min-width: 0;
+}
+
+.ingredient-thumb {
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  border: 1px solid rgba(22, 49, 58, 0.08);
+  background: rgba(255, 255, 255, 0.9);
+  object-fit: cover;
+  box-shadow: 0 8px 18px rgba(43, 84, 76, 0.08);
+}
+
 .active-step {
   border-color: rgba(239, 126, 86, 0.45);
   background: rgba(255, 244, 235, 0.92);
@@ -473,6 +495,12 @@ button {
 
   .page-grid {
     gap: 20px;
+  }
+
+  .ingredient-thumb {
+    flex-basis: 72px;
+    width: 72px;
+    height: 72px;
   }
 }
 

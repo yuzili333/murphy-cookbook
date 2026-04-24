@@ -63,8 +63,12 @@ jobs:
 
       - name: Sync Netlify runtime env
         run: |
-          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_API_KEY "$SILICONFLOW_API_KEY" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --scope functions --secret --force --auth "$NETLIFY_AUTH_TOKEN"
-          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_QWEN_MODEL "$SILICONFLOW_QWEN_MODEL" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --scope functions --force --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_API_KEY "$SILICONFLOW_API_KEY" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --secret --force --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_QWEN_MODEL "$SILICONFLOW_QWEN_MODEL" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --force --auth "$NETLIFY_AUTH_TOKEN"
+
+      - name: Verify Netlify runtime env metadata
+        run: |
+          pnpm --package netlify-cli dlx netlify env:list --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --auth "$NETLIFY_AUTH_TOKEN"
 
       - name: Deploy
         run: pnpm --package netlify-cli dlx netlify deploy --prod --filter @murphy-cookbook/frontend --dir apps/frontend/dist --functions apps/server/netlify/functions --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"

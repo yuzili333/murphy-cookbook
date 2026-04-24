@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { AppShell } from './components/AppShell';
+import { IngredientThumb } from './components/IngredientThumb';
 import { RecipeCard } from './components/RecipeCard';
 import { StepCard } from './components/StepCard';
 import { quickIngredients } from './data/constants';
@@ -412,9 +413,12 @@ export default function App() {
               {ingredients.length > 0 ? (
                 ingredients.map((ingredient) => (
                   <div key={ingredient.id} className="list-item">
-                    <div>
-                      <strong>{ingredient.name}</strong>
-                      <span>{ingredient.quantity} · 来源 {ingredient.source}</span>
+                    <div className="ingredient-listing">
+                      <IngredientThumb name={ingredient.name} />
+                      <div>
+                        <strong>{ingredient.name}</strong>
+                        <span>{ingredient.quantity} · 来源 {ingredient.source}</span>
+                      </div>
                     </div>
                     <button type="button" className="ghost-button" onClick={() => removeIngredient(ingredient.id)}>
                       删除
@@ -450,9 +454,12 @@ export default function App() {
             <div className="stack-list">
               {ingredients.map((ingredient) => (
                 <div key={ingredient.id} className="list-item">
-                  <div>
-                    <strong>{ingredient.name}</strong>
-                    <span>{ingredient.quantity}</span>
+                  <div className="ingredient-listing">
+                    <IngredientThumb name={ingredient.name} />
+                    <div>
+                      <strong>{ingredient.name}</strong>
+                      <span>{ingredient.quantity}</span>
+                    </div>
                   </div>
                   <button type="button" className="ghost-button" onClick={() => removeIngredient(ingredient.id)}>
                     删除

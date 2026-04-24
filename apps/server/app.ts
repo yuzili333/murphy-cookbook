@@ -13,6 +13,7 @@ import {
 } from './service.js';
 import {
   isSiliconFlowConfigured,
+  shouldRequireRealModel,
   understandIngredientsFromImage,
   understandIngredientsFromText,
 } from './siliconflow.js';
@@ -94,6 +95,16 @@ export function createApp(): Express {
     }
 
     try {
+      if (!isSiliconFlowConfigured() && shouldRequireRealModel()) {
+        res.status(500).json({
+          error: {
+            code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+            message: '服务端未配置 SiliconFlow API Key，无法使用生产环境食材理解能力。',
+          },
+        });
+        return;
+      }
+
       const ingredients = isSiliconFlowConfigured()
         ? parseIngredientJson(await understandIngredientsFromText(text), 'manual')
         : parseTextToIngredients(text);
@@ -125,6 +136,16 @@ export function createApp(): Express {
     }
 
     try {
+      if (!isSiliconFlowConfigured() && shouldRequireRealModel()) {
+        res.status(500).json({
+          error: {
+            code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+            message: '服务端未配置 SiliconFlow API Key，无法使用生产环境图片识别能力。',
+          },
+        });
+        return;
+      }
+
       const ingredients = isSiliconFlowConfigured()
         ? parseIngredientJson(
             await understandIngredientsFromImage({
@@ -184,6 +205,16 @@ export function createApp(): Express {
     }
 
     try {
+      if (!isSiliconFlowConfigured() && shouldRequireRealModel()) {
+        res.status(500).json({
+          error: {
+            code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+            message: '服务端未配置 SiliconFlow API Key，无法使用生产环境语音文本理解能力。',
+          },
+        });
+        return;
+      }
+
       const ingredients = isSiliconFlowConfigured()
         ? parseIngredientJson(await understandIngredientsFromText(transcript), 'voice')
         : parseTextToIngredients(transcript).map((item) => ({
@@ -271,6 +302,20 @@ export function createApp(): Express {
 
   app.get('/api/v1/history/recent-cooked', (_req, res) => {
     res.json({ data: recipeCatalog.slice(0, 2) });
+  });
+
+  app.get('/api/v1/debug/runtime-config', (_req, res) => {
+    res.json({
+      data: {
+        siliconFlowConfigured: isSiliconFlowConfigured(),
+        requireRealModel: shouldRequireRealModel(),
+        netlify: Boolean(process.env.NETLIFY),
+        lambda: Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT),
+        nodeEnv: process.env.NODE_ENV ?? '',
+        qwenModel: process.env.SILICONFLOW_QWEN_MODEL ?? '',
+        apiKeyLength: (process.env.SILICONFLOW_API_KEY ?? '').trim().length,
+      },
+    });
   });
 
   return app;

@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractIngredientsFromFilename, parseIngredientJson, parseTextToIngredients, recommendRecipes } from '../../service.js';
-import { isSiliconFlowConfigured, understandIngredientsFromImage, understandIngredientsFromText } from '../../siliconflow.js';
+import {
+  isSiliconFlowConfigured,
+  shouldRequireRealModel,
+  understandIngredientsFromImage,
+  understandIngredientsFromText,
+} from '../../siliconflow.js';
 
 test('parseTextToIngredients extracts ingredient tokens from chinese text', () => {
   const ingredients = parseTextToIngredients('两个鸡蛋 一个番茄 半根黄瓜');
@@ -97,6 +102,61 @@ test('understandIngredientsFromImage posts image message and returns model conte
   assert.equal(content, '{"ingredients":[{"name":"番茄","quantity":"1份"}]}');
 
   global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('shouldRequireRealModel returns true in production-like runtime', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalNetlify = process.env.NETLIFY;
+
+  process.env.NODE_ENV = 'production';
+  process.env.NETLIFY = 'true';
+  assert.equal(shouldRequireRealModel(), true);
+
+  if (originalNodeEnv) {
+    process.env.NODE_ENV = originalNodeEnv;
+  } else {
+    delete process.env.NODE_ENV;
+  }
+
+  if (originalNetlify) {
+    process.env.NETLIFY = originalNetlify;
+  } else {
+    delete process.env.NETLIFY;
+  }
+});
+
+test('shouldRequireRealModel returns false in local non-production runtime', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalNetlify = process.env.NETLIFY;
+
+  delete process.env.NODE_ENV;
+  delete process.env.NETLIFY;
+  assert.equal(shouldRequireRealModel(), false);
+
+  if (originalNodeEnv) {
+    process.env.NODE_ENV = originalNodeEnv;
+  } else {
+    delete process.env.NODE_ENV;
+  }
+
+  if (originalNetlify) {
+    process.env.NETLIFY = originalNetlify;
+  } else {
+    delete process.env.NETLIFY;
+  }
+});
+
+test('isSiliconFlowConfigured trims whitespace-only values', () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  process.env.SILICONFLOW_API_KEY = '   ';
+
+  assert.equal(isSiliconFlowConfigured(), false);
+
   if (originalKey) {
     process.env.SILICONFLOW_API_KEY = originalKey;
   } else {

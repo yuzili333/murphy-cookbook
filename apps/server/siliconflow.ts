@@ -12,7 +12,16 @@ interface SiliconFlowMessage {
 }
 
 export function isSiliconFlowConfigured() {
-  return Boolean(process.env.SILICONFLOW_API_KEY);
+  return Boolean(process.env.SILICONFLOW_API_KEY?.trim());
+}
+
+export function shouldRequireRealModel() {
+  return Boolean(
+    process.env.NETLIFY ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.LAMBDA_TASK_ROOT ||
+      process.env.NODE_ENV === 'production',
+  );
 }
 
 async function callSiliconFlow(messages: SiliconFlowMessage[]) {
