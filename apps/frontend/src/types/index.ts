@@ -6,7 +6,8 @@ export type PageId =
   | 'recipes'
   | 'detail'
   | 'cooking'
-  | 'feedback';
+  | 'feedback'
+  | 'logs';
 
 export interface ChildProfile {
   id: string;
@@ -37,6 +38,7 @@ export interface IngredientItem {
 export interface RecipeRecommendation {
   id: string;
   name: string;
+  imageUrl?: string;
   ageRange: string;
   difficulty: 'easy' | 'medium' | 'hard';
   estimatedTimeMinutes: number;
@@ -59,12 +61,13 @@ export interface CookingStep {
 export interface RecipeDetail extends RecipeRecommendation {
   prepTimeMinutes: number;
   cookTimeMinutes: number;
-  ingredients: Array<{ name: string; quantity: string }>;
+  ingredients: Array<{ name: string; quantity: string; imageUrl?: string }>;
   steps: CookingStep[];
 }
 
 export interface RecommendationResponse {
   recipes: RecipeRecommendation[];
+  recipeDetails?: RecipeDetail[];
   filteredAllergens: string[];
   sortBy: string;
 }
@@ -90,4 +93,30 @@ export interface VoiceParseResponse {
   transcript: string;
   ingredients: IngredientItem[];
   upload: UploadResult;
+}
+
+export interface LlmLogEntry {
+  timestamp?: string;
+  type?: string;
+  operation?: string;
+  model?: string;
+  success?: boolean;
+  durationMs?: number;
+  status?: number;
+  error?: string;
+  responsePreview?: string;
+  requestSummary?: unknown;
+  metadata?: Record<string, unknown>;
+  usage?: Record<string, unknown> | null;
+}
+
+export interface LlmLogQueryResult {
+  items: LlmLogEntry[];
+  filters: {
+    start: string;
+    end: string;
+    keyword: string;
+    limit: number;
+  };
+  logFile: string;
 }

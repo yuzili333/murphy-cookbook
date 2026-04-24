@@ -376,6 +376,84 @@ button {
   background: rgba(255, 255, 255, 0.84);
 }
 
+.recipe-cover,
+.detail-hero-image {
+  display: block;
+  width: 100%;
+  border-radius: 20px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.recipe-cover {
+  aspect-ratio: 16 / 10;
+  margin-bottom: 14px;
+}
+
+.detail-hero-image {
+  aspect-ratio: 16 / 9;
+  margin-bottom: 16px;
+}
+
+.zoomable-image-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.zoomable-image-button .ingredient-thumb {
+  display: block;
+}
+
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.image-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(10, 19, 24, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.image-lightbox-content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  width: min(100%, 960px);
+}
+
+.image-lightbox-image {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 820px);
+  object-fit: contain;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+}
+
+.image-lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
 .alert-box,
 .tip-card,
 .empty-state {
@@ -422,6 +500,30 @@ button {
 .hero-detail {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 243, 0.92));
+}
+
+.log-entry {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.log-pre {
+  margin: 10px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 14px;
+  background: rgba(22, 49, 58, 0.06);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-error {
+  color: #b2452f;
+  font-weight: 600;
 }
 
 .panel-subsection {

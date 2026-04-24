@@ -5,6 +5,7 @@ import {
   childProfiles,
   recipeCatalog,
 } from './data.js';
+import { getLocalLlmLogFilePath, readLocalLlmLogs, shouldUseLocalDebugLog } from './logger.js';
 import {
   extractIngredientsFromFilename,
   parseIngredientJson,
@@ -12,6 +13,7 @@ import {
   recommendRecipes,
 } from './service.js';
 import {
+  generateCookingFeedback,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
   understandIngredientsFromImage,
@@ -245,14 +247,21 @@ export function createApp(): Express {
     }
   });
 
-  app.post('/api/v1/recommendations/recipes', (req, res) => {
+  app.post('/api/v1/recommendations/recipes', async (req, res) => {
     const profileId = String(req.body?.profileId ?? '');
     const ingredients = req.body?.ingredients ?? [];
     const profile = req.body?.profile ?? null;
-    const result = recommendRecipes(profileId, ingredients, profile);
+    const result = await recommendRecipes(profileId, ingredients, profile);
 
-    if (result.error) {
-      const status = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    if ('error' in result) {
+      const status =
+        result.error.code === 'PROFILE_NOT_FOUND'
+          ? 404
+          : result.error.code === 'INVALID_ARGUMENT' || result.error.code === 'NO_RECIPE_MATCHED'
+            ? 400
+            : result.error.code === 'MODEL_PROVIDER_NOT_CONFIGURED'
+              ? 500
+              : 502;
       res.status(status).json({ error: result.error });
       return;
     }
@@ -277,32 +286,77 @@ export function createApp(): Express {
     res.json({ data: recipe });
   });
 
-  app.post('/api/v1/cooking-feedback', (req, res) => {
-    const { recipeId, tasteFeedback = '', difficultyFeedback = '' } = req.body ?? {};
+  app.post('/api/v1/cooking-feedback', async (req, res) => {
+    const { profileId = '', profile = null, recipeId, recipe: recipeInput = null, tasteFeedback = '', difficultyFeedback = '' } = req.body ?? {};
     const recipe = recipeCatalog.find((item) => item.id === recipeId);
+    const resolvedRecipe = recipeInput ?? recipe ?? null;
+    const resolvedProfile = profile ?? childProfiles.find((item) => item.id === String(profileId));
 
-    if (!recipe) {
+    if (!resolvedRecipe) {
       res.status(404).json({
         error: { code: 'RECIPE_NOT_FOUND', message: '未找到对应菜谱，无法生成点评。' },
       });
       return;
     }
 
-    res.json({
-      data: {
-        praise: `${recipe.name} 的颜色搭配很棒，看起来已经很有食欲了。`,
-        improvement: difficultyFeedback
-          ? `你提到“${difficultyFeedback}”，下次可以把困难步骤交给家长一起完成。`
-          : '下次可以把食材切得更均匀一点，成品会更整齐。',
-        nextSuggestion: tasteFeedback
-          ? `既然你觉得“${tasteFeedback}”，下一次可以试试同样清淡风格的鸡蛋料理。`
-          : '下次可以继续挑战一道类似难度的儿童主食。',
-      },
-    });
-  });
+    const fallbackFeedback = {
+      praise: `${resolvedRecipe.name} 的颜色搭配很棒，看起来已经很有食欲了。`,
+      improvement: difficultyFeedback
+        ? `你提到“${difficultyFeedback}”，下次可以把困难步骤交给家长一起完成。`
+        : '下次可以把食材切得更均匀一点，成品会更整齐。',
+      nextSuggestion: tasteFeedback
+        ? `既然你觉得“${tasteFeedback}”，下一次可以试试同样清淡风格的鸡蛋料理。`
+        : '下次可以继续挑战一道类似难度的儿童主食。',
+    };
 
-  app.get('/api/v1/history/recent-cooked', (_req, res) => {
-    res.json({ data: recipeCatalog.slice(0, 2) });
+    if (!resolvedProfile) {
+      if (canUseDevelopmentFallback()) {
+        res.json({ data: fallbackFeedback });
+        return;
+      }
+
+      res.status(404).json({
+        error: { code: 'PROFILE_NOT_FOUND', message: '未找到儿童档案，无法生成点评。' },
+      });
+      return;
+    }
+
+    if (!isSiliconFlowConfigured()) {
+      if (canUseDevelopmentFallback()) {
+        res.json({ data: fallbackFeedback });
+        return;
+      }
+
+      res.status(500).json({
+        error: {
+          code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+          message: '服务端未配置 SiliconFlow API Key，无法生成生产环境点评。',
+        },
+      });
+      return;
+    }
+
+    try {
+      const feedback = await generateCookingFeedback({
+        profile: resolvedProfile,
+        recipe: resolvedRecipe,
+        tasteFeedback: String(tasteFeedback),
+        difficultyFeedback: String(difficultyFeedback),
+      });
+      res.json({ data: feedback });
+    } catch (error) {
+      if (canUseDevelopmentFallback()) {
+        res.json({ data: fallbackFeedback });
+        return;
+      }
+
+      res.status(502).json({
+        error: {
+          code: 'COOKING_FEEDBACK_FAILED',
+          message: error instanceof Error ? error.message : '点评生成失败。',
+        },
+      });
+    }
   });
 
   app.get('/api/v1/debug/runtime-config', (_req, res) => {
@@ -319,5 +373,33 @@ export function createApp(): Express {
     });
   });
 
+  app.get('/api/v1/debug/llm-logs', (req, res) => {
+    if (!shouldUseLocalDebugLog()) {
+      res.status(404).json({
+        error: { code: 'DEBUG_LOG_DISABLED', message: '当前环境未启用本地调试日志。' },
+      });
+      return;
+    }
+
+    const start = typeof req.query.start === 'string' ? req.query.start : undefined;
+    const end = typeof req.query.end === 'string' ? req.query.end : undefined;
+    const keyword = typeof req.query.keyword === 'string' ? req.query.keyword : undefined;
+    const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+
+    res.json({
+      data: {
+        items: readLocalLlmLogs({ start, end, keyword, limit }),
+        filters: {
+          start: start ?? '',
+          end: end ?? '',
+          keyword: keyword ?? '',
+          limit: limit ?? 200,
+        },
+        logFile: getLocalLlmLogFilePath(),
+      },
+    });
+  });
+
   return app;
 }
+  const canUseDevelopmentFallback = () => !shouldRequireRealModel();

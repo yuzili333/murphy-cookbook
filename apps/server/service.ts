@@ -7,6 +7,21 @@ import {
   type ChildProfile,
   type IngredientItem,
 } from './data.js';
+import {
+  generateRecipePlan,
+  isSiliconFlowConfigured,
+  shouldRequireRealModel,
+  type GeneratedRecommendationPayload,
+} from './siliconflow.js';
+
+export interface RecommendationError {
+  code: string;
+  message: string;
+}
+
+export type RecommendationResult =
+  | { data: GeneratedRecommendationPayload }
+  | { error: RecommendationError };
 
 export function parseTextToIngredients(text: string) {
   const parts = text
@@ -19,7 +34,7 @@ export function parseTextToIngredients(text: string) {
   );
 }
 
-function resolveProfile(profileId: string, profileInput?: Partial<ChildProfile> | null) {
+export function resolveProfile(profileId: string, profileInput?: Partial<ChildProfile> | null) {
   const normalizedProfileId = profileId.trim();
   const matchedProfile = childProfiles.find((item) => item.id === normalizedProfileId);
 
@@ -43,7 +58,11 @@ function resolveProfile(profileId: string, profileInput?: Partial<ChildProfile> 
   } satisfies ChildProfile;
 }
 
-export function recommendRecipes(profileId: string, ingredients: IngredientItem[], profileInput?: Partial<ChildProfile> | null) {
+function validateRecommendationInput(
+  profileId: string,
+  ingredients: IngredientItem[],
+  profileInput?: Partial<ChildProfile> | null,
+): { profile: ChildProfile } | { error: RecommendationError } {
   const profile = resolveProfile(profileId, profileInput);
   if (!profile) {
     return {
@@ -56,6 +75,11 @@ export function recommendRecipes(profileId: string, ingredients: IngredientItem[
       error: { code: 'INVALID_ARGUMENT', message: '至少需要一个食材才能开始推荐。' },
     };
   }
+
+  return { profile };
+}
+
+export function getMockRecipeRecommendations(profile: ChildProfile, ingredients: IngredientItem[]): RecommendationResult {
 
   const normalizedInputs = new Set(
     ingredients.map((item) => normalizeIngredientName(item.normalizedName ?? item.name)),
@@ -94,10 +118,58 @@ export function recommendRecipes(profileId: string, ingredients: IngredientItem[
   return {
     data: {
       recipes,
+      recipeDetails: recipes
+        .map((recipe) => recipeCatalog.find((item) => item.id === recipe.id))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item)),
       filteredAllergens: profile.allergens,
       sortBy: 'balanced',
     },
   };
+}
+
+export async function recommendRecipes(
+  profileId: string,
+  ingredients: IngredientItem[],
+  profileInput?: Partial<ChildProfile> | null,
+): Promise<RecommendationResult> {
+  const validation = validateRecommendationInput(profileId, ingredients, profileInput);
+
+  if ('error' in validation) {
+    return { error: validation.error };
+  }
+
+  const { profile } = validation;
+  const fallbackResult = getMockRecipeRecommendations(profile, ingredients);
+
+  if (!isSiliconFlowConfigured()) {
+    if (shouldRequireRealModel()) {
+      return {
+        error: {
+          code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+          message: '服务端未配置 SiliconFlow API Key，无法生成生产环境菜谱推荐。',
+        },
+      };
+    }
+
+    return fallbackResult;
+  }
+
+  try {
+    return {
+      data: await generateRecipePlan(profile, ingredients),
+    };
+  } catch (error) {
+    if (!shouldRequireRealModel()) {
+      return fallbackResult;
+    }
+
+    return {
+      error: {
+        code: 'RECIPE_RECOMMENDATION_FAILED',
+        message: error instanceof Error ? error.message : '菜谱推荐生成失败。',
+      },
+    };
+  }
 }
 
 const filenameIngredientMap = ['番茄', '鸡蛋', '黄瓜', '玉米', '面条', '土豆', '南瓜', '胡萝卜'];

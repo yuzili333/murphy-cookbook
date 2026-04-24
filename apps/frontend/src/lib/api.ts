@@ -4,6 +4,7 @@ import type {
   FeedbackResponse,
   IngredientItem,
   ImageRecognitionResponse,
+  LlmLogQueryResult,
   RecipeDetail,
   RecommendationResponse,
   VoiceParseResponse,
@@ -119,7 +120,9 @@ export function fetchRecipeDetail(recipeId: string) {
 
 export function submitCookingFeedback(payload: {
   profileId: string;
+  profile: ChildProfile;
   recipeId: string;
+  recipe: RecipeDetail;
   tasteFeedback: string;
   difficultyFeedback: string;
   imageUrl?: string;
@@ -130,6 +133,19 @@ export function submitCookingFeedback(payload: {
   });
 }
 
-export function fetchRecentCooked() {
-  return request<RecipeDetail[]>('/history/recent-cooked');
+export function fetchLlmLogs(params: {
+  start?: string;
+  end?: string;
+  keyword?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+
+  if (params.start) search.set('start', params.start);
+  if (params.end) search.set('end', params.end);
+  if (params.keyword) search.set('keyword', params.keyword);
+  if (params.limit) search.set('limit', String(params.limit));
+
+  const query = search.toString();
+  return request<LlmLogQueryResult>(`/debug/llm-logs${query ? `?${query}` : ''}`);
 }

@@ -19,6 +19,7 @@ export interface IngredientItem {
 export interface RecipeRecommendation {
   id: string;
   name: string;
+  imageUrl?: string;
   ageRange: string;
   difficulty: 'easy' | 'medium' | 'hard';
   estimatedTimeMinutes: number;
@@ -41,9 +42,45 @@ export interface CookingStep {
 export interface RecipeDetail extends RecipeRecommendation {
   prepTimeMinutes: number;
   cookTimeMinutes: number;
-  ingredients: Array<{ name: string; quantity: string }>;
+  ingredients: Array<{ name: string; quantity: string; imageUrl?: string }>;
   steps: CookingStep[];
 }
+
+const ingredientImageKeywords: Record<string, string> = {
+  番茄: 'tomato',
+  鸡蛋: 'egg',
+  黄瓜: 'cucumber',
+  玉米: 'corn',
+  面条: 'noodles',
+  土豆: 'potato',
+  南瓜: 'pumpkin',
+  胡萝卜: 'carrot',
+  洋葱: 'onion',
+  西兰花: 'broccoli',
+  青菜: 'bok-choy',
+  菠菜: 'spinach',
+  香菇: 'shiitake',
+  蘑菇: 'mushroom',
+  生菜: 'lettuce',
+  豆腐: 'tofu',
+  米饭: 'rice',
+};
+
+const recipeImageKeywords: Record<string, string> = {
+  番茄鸡蛋面: 'tomato-egg-noodles',
+  黄瓜鸡蛋卷: 'cucumber-egg-roll',
+};
+
+const ingredientAliases: Record<string, string> = {
+  西红柿: '番茄',
+  番茄: '番茄',
+  鸡蛋: '鸡蛋',
+  黄瓜: '黄瓜',
+  玉米: '玉米',
+  面条: '面条',
+  土豆: '土豆',
+  面: '面条',
+};
 
 export const childProfiles: ChildProfile[] = [
   {
@@ -60,6 +97,7 @@ export const recipeCatalog: RecipeDetail[] = [
   {
     id: 'recipe_001',
     name: '番茄鸡蛋面',
+    imageUrl: buildRecipeImageUrl('番茄鸡蛋面'),
     ageRange: '7-12 岁',
     difficulty: 'easy',
     estimatedTimeMinutes: 20,
@@ -71,9 +109,9 @@ export const recipeCatalog: RecipeDetail[] = [
     prepTimeMinutes: 5,
     cookTimeMinutes: 15,
     ingredients: [
-      { name: '番茄', quantity: '1个' },
-      { name: '鸡蛋', quantity: '2个' },
-      { name: '面条', quantity: '1份' },
+      { name: '番茄', quantity: '1个', imageUrl: buildIngredientImageUrl('番茄') },
+      { name: '鸡蛋', quantity: '2个', imageUrl: buildIngredientImageUrl('鸡蛋') },
+      { name: '面条', quantity: '1份', imageUrl: buildIngredientImageUrl('面条') },
     ],
     steps: [
       {
@@ -121,6 +159,7 @@ export const recipeCatalog: RecipeDetail[] = [
   {
     id: 'recipe_002',
     name: '黄瓜鸡蛋卷',
+    imageUrl: buildRecipeImageUrl('黄瓜鸡蛋卷'),
     ageRange: '7-12 岁',
     difficulty: 'easy',
     estimatedTimeMinutes: 15,
@@ -132,8 +171,8 @@ export const recipeCatalog: RecipeDetail[] = [
     prepTimeMinutes: 5,
     cookTimeMinutes: 10,
     ingredients: [
-      { name: '黄瓜', quantity: '1根' },
-      { name: '鸡蛋', quantity: '2个' },
+      { name: '黄瓜', quantity: '1根', imageUrl: buildIngredientImageUrl('黄瓜') },
+      { name: '鸡蛋', quantity: '2个', imageUrl: buildIngredientImageUrl('鸡蛋') },
     ],
     steps: [
       {
@@ -164,19 +203,49 @@ export const recipeCatalog: RecipeDetail[] = [
   },
 ];
 
-const ingredientAliases: Record<string, string> = {
-  西红柿: '番茄',
-  番茄: '番茄',
-  鸡蛋: '鸡蛋',
-  黄瓜: '黄瓜',
-  玉米: '玉米',
-  面条: '面条',
-  土豆: '土豆',
-  面: '面条',
-};
-
 export function normalizeIngredientName(name: string) {
   return ingredientAliases[name.trim()] ?? name.trim();
+}
+
+export function buildIngredientImageUrl(name: string) {
+  const normalized = normalizeIngredientName(name);
+  const keyword = ingredientImageKeywords[normalized] ?? encodeURIComponent(normalized);
+  return `https://loremflickr.com/320/240/${keyword}`;
+}
+
+export function buildRecipeImageUrl(name: string) {
+  const keyword = recipeImageKeywords[name.trim()] ?? encodeURIComponent(name.trim());
+  return `https://loremflickr.com/640/420/${keyword},food`;
+}
+
+export function normalizeChildFriendlyQuantity(quantity: string) {
+  const normalized = quantity.trim();
+
+  if (!normalized) {
+    return '1平勺';
+  }
+
+  if (/(适量|少许|微量|一点点|少量)/.test(normalized)) {
+    return '1平勺';
+  }
+
+  if (/半勺/.test(normalized)) {
+    return '半平勺';
+  }
+
+  if (/一勺|1勺/.test(normalized)) {
+    return '1平勺';
+  }
+
+  if (/两勺|2勺/.test(normalized)) {
+    return '2平勺';
+  }
+
+  if (/三勺|3勺/.test(normalized)) {
+    return '3平勺';
+  }
+
+  return normalized;
 }
 
 export function createIngredient(name: string, source: IngredientItem['source'], quantity = '1份'): IngredientItem {
@@ -196,6 +265,7 @@ export function summarizeRecipe(recipe: RecipeDetail): RecipeRecommendation {
   return {
     id: recipe.id,
     name: recipe.name,
+    imageUrl: recipe.imageUrl,
     ageRange: recipe.ageRange,
     difficulty: recipe.difficulty,
     estimatedTimeMinutes: recipe.estimatedTimeMinutes,

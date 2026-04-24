@@ -9,6 +9,8 @@ apps/frontend/dist/
 apps/server/dist/
 apps/frontend/*.tsbuildinfo
 apps/server/*.tsbuildinfo
+.local/
+apps/server/logs/
 
 # env
 .env

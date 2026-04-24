@@ -16,6 +16,7 @@ const pageOrder: PageId[] = [
   'detail',
   'cooking',
   'feedback',
+  'logs',
 ];
 
 const pageLabels: Record<PageId, string> = {
@@ -27,6 +28,7 @@ const pageLabels: Record<PageId, string> = {
   detail: '菜谱详情',
   cooking: '分步烹饪',
   feedback: '成果点评',
+  logs: '调试日志',
 };
 
 export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {

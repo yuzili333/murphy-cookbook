@@ -3,11 +3,12 @@ import { AppShell } from './components/AppShell';
 import { IngredientThumb } from './components/IngredientThumb';
 import { RecipeCard } from './components/RecipeCard';
 import { StepCard } from './components/StepCard';
+import { ZoomableImage } from './components/ZoomableImage';
 import { quickIngredients } from './data/constants';
 import {
   createChildProfile,
   fetchChildProfiles,
-  fetchRecentCooked,
+  fetchLlmLogs,
   fetchRecipeDetail,
   fetchRecommendations,
   parseIngredientText,
@@ -20,6 +21,7 @@ import type {
   CreateChildProfileInput,
   FeedbackResponse,
   IngredientItem,
+  LlmLogEntry,
   PageId,
   RecipeDetail,
   RecipeRecommendation,
@@ -28,6 +30,8 @@ import type {
 const defaultTasteFeedback = '很好吃，番茄酸酸甜甜的。';
 const defaultDifficultyFeedback = '煮面的时候有点难。';
 const localProfilesStorageKey = 'murphy-cookbook.local-profiles.v1';
+const recentCookedStorageKey = 'murphy-cookbook.recent-cooked.v1';
+type RecentCookedByProfile = Record<string, RecipeDetail[]>;
 
 function readLocalProfiles() {
   if (typeof window === 'undefined') {
@@ -53,6 +57,37 @@ function persistLocalProfiles(profiles: ChildProfile[]) {
   }
 
   window.localStorage.setItem(localProfilesStorageKey, JSON.stringify(profiles));
+}
+
+function readRecentCookedRecipes() {
+  if (typeof window === 'undefined') {
+    return {} as RecentCookedByProfile;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(recentCookedStorageKey);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as RecentCookedByProfile;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistRecentCookedRecipes(recipes: RecentCookedByProfile) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(recentCookedStorageKey, JSON.stringify(recipes));
+}
+
+function mergeRecentCookedRecipes(nextRecipe: RecipeDetail, currentRecipes: RecipeDetail[]) {
+  const deduped = [nextRecipe, ...currentRecipes.filter((recipe) => recipe.id !== nextRecipe.id)];
+  return deduped.slice(0, 8);
 }
 
 function mergeProfiles(remoteProfiles: ChildProfile[], localProfiles: ChildProfile[]) {
@@ -82,6 +117,8 @@ export default function App() {
   const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
   const [recommendations, setRecommendations] = useState<RecipeRecommendation[]>([]);
   const [recentCooked, setRecentCooked] = useState<RecipeDetail[]>([]);
+  const [recentCookedByProfile, setRecentCookedByProfile] = useState<RecentCookedByProfile>({});
+  const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [manualIngredient, setManualIngredient] = useState('');
@@ -91,6 +128,13 @@ export default function App() {
   const [difficultyFeedback, setDifficultyFeedback] = useState(defaultDifficultyFeedback);
   const [feedback, setFeedback] = useState<FeedbackResponse | null>(null);
   const [localProfiles, setLocalProfiles] = useState<ChildProfile[]>([]);
+  const [llmLogs, setLlmLogs] = useState<LlmLogEntry[]>([]);
+  const [llmLogFile, setLlmLogFile] = useState('');
+  const [logFilters, setLogFilters] = useState({
+    start: '',
+    end: '',
+    keyword: '',
+  });
   const [newProfileForm, setNewProfileForm] = useState({
     nickname: '',
     age: '8',
@@ -106,6 +150,7 @@ export default function App() {
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+  const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [error, setError] = useState('');
 
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? null;
@@ -116,15 +161,14 @@ export default function App() {
       try {
         setError('');
         const localProfileData = readLocalProfiles();
+        const localRecentCooked = readRecentCookedRecipes();
         setLocalProfiles(localProfileData);
-        const [profileData, recentData] = await Promise.all([
-          fetchChildProfiles(),
-          fetchRecentCooked(),
-        ]);
+        const profileData = await fetchChildProfiles();
         const mergedProfiles = mergeProfiles(profileData, localProfileData);
         setProfiles(mergedProfiles);
         setSelectedProfileId((current) => current || mergedProfiles[0]?.id || '');
-        setRecentCooked(recentData);
+        setRecentCookedByProfile(localRecentCooked);
+        setRecentCooked(localRecentCooked[mergedProfiles[0]?.id ?? ''] ?? []);
       } catch (bootstrapError) {
         setError(bootstrapError instanceof Error ? bootstrapError.message : '初始化失败，请稍后重试。');
       } finally {
@@ -142,6 +186,10 @@ export default function App() {
 
     setSelectedProfileId(profiles[0]?.id ?? '');
   }, [profiles, selectedProfileId]);
+
+  useEffect(() => {
+    setRecentCooked(recentCookedByProfile[selectedProfileId] ?? []);
+  }, [recentCookedByProfile, selectedProfileId]);
 
   const appendIngredients = (items: IngredientItem[]) => {
     setIngredients((current) => {
@@ -216,6 +264,15 @@ export default function App() {
   };
 
   const fetchRecipeAndOpen = async (id: string) => {
+    const cachedRecipe = recipeDetailsById[id];
+
+    if (cachedRecipe) {
+      setSelectedRecipe(cachedRecipe);
+      setStepIndex(0);
+      setPage('detail');
+      return;
+    }
+
     try {
       setIsFetchingDetail(true);
       setError('');
@@ -246,6 +303,9 @@ export default function App() {
 
       const data = await fetchRecommendations(selectedProfile, ingredients);
       setRecommendations(data.recipes);
+      setRecipeDetailsById(
+        Object.fromEntries((data.recipeDetails ?? []).map((recipe) => [recipe.id, recipe])),
+      );
       setPage('recipes');
     } catch (recommendationError) {
       setError(recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。');
@@ -322,14 +382,16 @@ export default function App() {
   };
 
   const handleSubmitFeedback = async () => {
-    if (!selectedProfileId || !selectedRecipe) return;
+    if (!selectedProfileId || !selectedProfile || !selectedRecipe) return;
 
     try {
       setIsSubmittingFeedback(true);
       setError('');
       const result = await submitCookingFeedback({
         profileId: selectedProfileId,
+        profile: selectedProfile,
         recipeId: selectedRecipe.id,
+        recipe: selectedRecipe,
         tasteFeedback,
         difficultyFeedback,
       });
@@ -338,6 +400,56 @@ export default function App() {
       setError(feedbackError instanceof Error ? feedbackError.message : '点评生成失败。');
     } finally {
       setIsSubmittingFeedback(false);
+    }
+  };
+
+  const saveRecentCookedRecipe = (recipe: RecipeDetail) => {
+    if (!selectedProfileId) {
+      return;
+    }
+
+    setRecentCookedByProfile((current) => {
+      const nextGroup = mergeRecentCookedRecipes(recipe, current[selectedProfileId] ?? []);
+      const next = {
+        ...current,
+        [selectedProfileId]: nextGroup,
+      };
+      persistRecentCookedRecipes(next);
+      return next;
+    });
+  };
+
+  const clearRecentCookedRecipes = () => {
+    if (!selectedProfileId) {
+      return;
+    }
+
+    setRecentCookedByProfile((current) => {
+      const next = {
+        ...current,
+        [selectedProfileId]: [],
+      };
+      persistRecentCookedRecipes(next);
+      return next;
+    });
+  };
+
+  const handleFetchLogs = async () => {
+    try {
+      setIsFetchingLogs(true);
+      setError('');
+      const data = await fetchLlmLogs({
+        start: logFilters.start ? new Date(logFilters.start).toISOString() : undefined,
+        end: logFilters.end ? new Date(logFilters.end).toISOString() : undefined,
+        keyword: logFilters.keyword.trim() || undefined,
+        limit: 200,
+      });
+      setLlmLogs(data.items);
+      setLlmLogFile(data.logFile);
+    } catch (logError) {
+      setError(logError instanceof Error ? logError.message : '日志读取失败。');
+    } finally {
+      setIsFetchingLogs(false);
     }
   };
 
@@ -414,18 +526,39 @@ export default function App() {
 
           <div className="info-card">
             <p className="eyebrow">最近做过</p>
+            <div className="section-header">
+              <div>
+                <h3>{recentCooked.length} 条记录</h3>
+                <p className="muted">当前档案：{selectedProfile?.nickname ?? '未选择'}</p>
+              </div>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={clearRecentCookedRecipes}
+                disabled={recentCooked.length === 0}
+              >
+                清空最近记录
+              </button>
+            </div>
             <div className="stack-list">
-              {recentCooked.map((recipe) => (
-                <button
-                  key={recipe.id}
-                  type="button"
-                  className="list-button"
-                  onClick={() => void fetchRecipeAndOpen(recipe.id)}
-                >
-                  <strong>{recipe.name}</strong>
-                  <span>{recipe.difficulty} · {recipe.estimatedTimeMinutes} 分钟</span>
-                </button>
-              ))}
+              {recentCooked.length > 0 ? (
+                recentCooked.map((recipe) => (
+                  <button
+                    key={recipe.id}
+                    type="button"
+                    className="list-button"
+                    onClick={() => void fetchRecipeAndOpen(recipe.id)}
+                  >
+                    <strong>{recipe.name}</strong>
+                    <span>{recipe.difficulty} · {recipe.estimatedTimeMinutes} 分钟</span>
+                  </button>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <strong>当前档案还没有最近记录</strong>
+                  <p>完成一道菜后，这里会只展示当前孩子做过的菜谱。</p>
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -712,6 +845,7 @@ export default function App() {
               <h2>正在加载菜谱详情…</h2>
             ) : (
               <>
+                <ZoomableImage className="detail-hero-image" src={selectedRecipe.imageUrl} alt={selectedRecipe.name} />
                 <h2>{selectedRecipe.name}</h2>
                 <p className="muted">
                   {selectedRecipe.ageRange} · {selectedRecipe.difficulty} · 准备 {selectedRecipe.prepTimeMinutes} 分钟 · 制作 {selectedRecipe.cookTimeMinutes} 分钟
@@ -740,8 +874,13 @@ export default function App() {
                   <div className="stack-list compact-list">
                     {selectedRecipe.ingredients.map((ingredient) => (
                       <div key={`${selectedRecipe.id}-${ingredient.name}`} className="list-item static">
-                        <strong>{ingredient.name}</strong>
-                        <span>{ingredient.quantity}</span>
+                        <div className="ingredient-listing">
+                          <ZoomableImage className="ingredient-thumb" src={ingredient.imageUrl} alt={ingredient.name} />
+                          <div>
+                            <strong>{ingredient.name}</strong>
+                            <span>{ingredient.quantity}</span>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -814,6 +953,7 @@ export default function App() {
                     return;
                   }
 
+                  saveRecentCookedRecipe(selectedRecipe);
                   setFeedback(null);
                   setPage('feedback');
                 }}
@@ -871,6 +1011,99 @@ export default function App() {
               <button type="button" className="primary-button" onClick={() => setPage('home')}>
                 返回首页
               </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {page === 'logs' ? (
+        <section className="page-grid">
+          <div className="panel">
+            <p className="eyebrow">本地调试日志</p>
+            <h2>查看大模型接口调用记录</h2>
+            <p className="muted">
+              仅用于本地开发调试。支持按时间范围和关键字检索请求摘要、响应摘要和错误信息。
+            </p>
+            <div className="field-grid">
+              <div className="field">
+                <label>开始时间</label>
+                <input
+                  type="datetime-local"
+                  value={logFilters.start}
+                  onChange={(event) => setLogFilters((current) => ({ ...current, start: event.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label>结束时间</label>
+                <input
+                  type="datetime-local"
+                  value={logFilters.end}
+                  onChange={(event) => setLogFilters((current) => ({ ...current, end: event.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label>关键字</label>
+              <input
+                placeholder="例如：generate_recipe_plan / error / 番茄"
+                value={logFilters.keyword}
+                onChange={(event) => setLogFilters((current) => ({ ...current, keyword: event.target.value }))}
+              />
+            </div>
+            <div className="action-row">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => void handleFetchLogs()}
+                disabled={isFetchingLogs}
+              >
+                {isFetchingLogs ? '检索中…' : '检索日志'}
+              </button>
+            </div>
+            {llmLogFile ? (
+              <div className="tip-card compact-card">
+                <strong>日志文件</strong>
+                <p>{llmLogFile}</p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="panel">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">结果</p>
+                <h3>{llmLogs.length} 条记录</h3>
+              </div>
+            </div>
+            <div className="stack-list">
+              {llmLogs.length > 0 ? (
+                llmLogs.map((entry, index) => (
+                  <article key={`${entry.timestamp ?? 'log'}_${index}`} className="log-entry">
+                    <div className="chip-row">
+                      <span className="chip">{entry.operation ?? 'unknown'}</span>
+                      <span className="chip">{entry.success ? 'success' : 'error'}</span>
+                      <span className="chip">{entry.durationMs ?? 0} ms</span>
+                    </div>
+                    <strong>{entry.timestamp ?? '无时间戳'}</strong>
+                    <p className="muted">模型：{entry.model ?? 'unknown'}</p>
+                    {entry.error ? <p className="log-error">{entry.error}</p> : null}
+                    {entry.responsePreview ? (
+                      <pre className="log-pre">{entry.responsePreview}</pre>
+                    ) : null}
+                    {entry.requestSummary ? (
+                      <pre className="log-pre">{JSON.stringify(entry.requestSummary, null, 2)}</pre>
+                    ) : null}
+                    {entry.metadata ? (
+                      <pre className="log-pre">{JSON.stringify(entry.metadata, null, 2)}</pre>
+                    ) : null}
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <strong>还没有日志结果</strong>
+                  <p>先在本地触发一次食材识别、菜谱推荐或点评，再回来检索。</p>
+                </div>
+              )}
             </div>
           </div>
         </section>

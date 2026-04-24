@@ -1,4 +1,5 @@
 import type { RecipeRecommendation } from '../types';
+import { ZoomableImage } from './ZoomableImage';
 
 interface RecipeCardProps {
   recipe: RecipeRecommendation;
@@ -8,6 +9,7 @@ interface RecipeCardProps {
 export function RecipeCard({ recipe, onSelect }: RecipeCardProps) {
   return (
     <article className="recipe-card">
+      <ZoomableImage className="recipe-cover" src={recipe.imageUrl} alt={recipe.name} />
       <div className="recipe-header">
         <div>
           <h3>{recipe.name}</h3>
