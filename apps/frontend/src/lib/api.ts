@@ -8,7 +8,19 @@ import type {
   VoiceParseResponse,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
+function resolveDefaultApiBase() {
+  if (typeof window !== 'undefined' && window.location.hostname.endsWith('netlify.app')) {
+    return '/.netlify/functions/api/v1';
+  }
+
+  return '/api/v1';
+}
+
+function normalizeApiBase(base: string) {
+  return base.endsWith('/') ? base.slice(0, -1) : base;
+}
+
+const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL ?? resolveDefaultApiBase());
 
 interface ApiEnvelope<T> {
   data: T;
