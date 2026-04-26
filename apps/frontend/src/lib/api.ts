@@ -6,6 +6,7 @@ import type {
   ImageRecognitionResponse,
   LlmLogQueryResult,
   RecipeDetail,
+  RecipeRecommendation,
   RecommendationResponse,
   VoiceParseResponse,
 } from '../types';
@@ -116,6 +117,28 @@ export function fetchRecommendations(profile: ChildProfile, ingredients: Ingredi
 
 export function fetchRecipeDetail(recipeId: string) {
   return request<RecipeDetail>(`/recipes/${recipeId}`);
+}
+
+export function fetchGeneratedRecipeDetail(payload: {
+  profileId: string;
+  profile: ChildProfile;
+  ingredients: IngredientItem[];
+  recipe: RecipeDetail | RecipeRecommendation;
+}) {
+  return request<RecipeDetail>('/recipes/detail', {
+    method: 'POST',
+    body: JSON.stringify({
+      profileId: payload.profileId,
+      profile: payload.profile,
+      ingredients: payload.ingredients.map((ingredient) => ({
+        name: ingredient.name,
+        normalizedName: ingredient.normalizedName ?? ingredient.name,
+        quantity: ingredient.quantity,
+        source: ingredient.source,
+      })),
+      recipe: payload.recipe,
+    }),
+  });
 }
 
 export function submitCookingFeedback(payload: {

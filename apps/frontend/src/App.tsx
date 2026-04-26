@@ -2,19 +2,20 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { AppShell } from './components/AppShell';
 import { IngredientThumb } from './components/IngredientThumb';
 import { RecipeCard } from './components/RecipeCard';
+import { RecipeName } from './components/RecipeName';
 import { StepCard } from './components/StepCard';
 import { ZoomableImage } from './components/ZoomableImage';
 import { quickIngredients } from './data/constants';
 import {
   createChildProfile,
   fetchChildProfiles,
+  fetchGeneratedRecipeDetail,
   fetchLlmLogs,
   fetchRecipeDetail,
   fetchRecommendations,
   parseIngredientText,
   submitCookingFeedback,
   uploadIngredientImage,
-  uploadVoiceAudio,
 } from './lib/api';
 import type {
   ChildProfile,
@@ -31,7 +32,9 @@ const defaultTasteFeedback = '很好吃，番茄酸酸甜甜的。';
 const defaultDifficultyFeedback = '煮面的时候有点难。';
 const localProfilesStorageKey = 'murphy-cookbook.local-profiles.v1';
 const recentCookedStorageKey = 'murphy-cookbook.recent-cooked.v1';
+const favoriteRecipesStorageKey = 'murphy-cookbook.favorite-recipes.v1';
 type RecentCookedByProfile = Record<string, RecipeDetail[]>;
+type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
 
 function readLocalProfiles() {
   if (typeof window === 'undefined') {
@@ -85,6 +88,32 @@ function persistRecentCookedRecipes(recipes: RecentCookedByProfile) {
   window.localStorage.setItem(recentCookedStorageKey, JSON.stringify(recipes));
 }
 
+function readFavoriteRecipes() {
+  if (typeof window === 'undefined') {
+    return {} as FavoriteRecipesByProfile;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(favoriteRecipesStorageKey);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as FavoriteRecipesByProfile;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistFavoriteRecipes(recipes: FavoriteRecipesByProfile) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(favoriteRecipesStorageKey, JSON.stringify(recipes));
+}
+
 function mergeRecentCookedRecipes(nextRecipe: RecipeDetail, currentRecipes: RecipeDetail[]) {
   const deduped = [nextRecipe, ...currentRecipes.filter((recipe) => recipe.id !== nextRecipe.id)];
   return deduped.slice(0, 8);
@@ -108,8 +137,8 @@ function parseTagInput(value: string) {
 }
 
 export default function App() {
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const audioInputRef = useRef<HTMLInputElement>(null);
+  const cameraImageInputRef = useRef<HTMLInputElement>(null);
+  const fileImageInputRef = useRef<HTMLInputElement>(null);
 
   const [page, setPage] = useState<PageId>('home');
   const [profiles, setProfiles] = useState<ChildProfile[]>([]);
@@ -118,6 +147,8 @@ export default function App() {
   const [recommendations, setRecommendations] = useState<RecipeRecommendation[]>([]);
   const [recentCooked, setRecentCooked] = useState<RecipeDetail[]>([]);
   const [recentCookedByProfile, setRecentCookedByProfile] = useState<RecentCookedByProfile>({});
+  const [favoriteRecipesByProfile, setFavoriteRecipesByProfile] = useState<FavoriteRecipesByProfile>({});
+  const [favoriteRecipes, setFavoriteRecipes] = useState<RecipeRecommendation[]>([]);
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -145,13 +176,49 @@ export default function App() {
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isParsingText, setIsParsingText] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+  const [isListeningVoice, setIsListeningVoice] = useState(false);
   const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [error, setError] = useState('');
+
+  const speakText = (text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setError('当前设备浏览器不支持语音朗读功能。');
+      return;
+    }
+
+    const content = text.trim();
+    if (!content) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(content);
+    utterance.lang = 'zh-CN';
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const speakStep = (step: RecipeDetail['steps'][number]) => {
+    speakText([
+      step.title,
+      step.childAction || step.description,
+      step.tip ? `小贴士：${step.tip}` : '',
+      step.requiresParentAssist
+        ? step.parentAction || '这一步需要家长陪同完成。'
+        : '这一步可以由孩子独立完成。',
+      step.expectedResult ? `完成后应该看到：${step.expectedResult}` : '',
+    ].filter(Boolean).join('。'));
+  };
+
+  const speakRecipeOverview = (recipe: RecipeDetail) => {
+    const stepTitles = recipe.steps.map((step, index) => `第${index + 1}步，${step.title}`).join('；');
+    speakText(`${recipe.name}。一共${recipe.steps.length}步。${stepTitles}。点击每一步的朗读按钮，可以继续听详细讲解。`);
+  };
 
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? null;
   const currentStep = selectedRecipe?.steps[stepIndex] ?? null;
@@ -162,6 +229,7 @@ export default function App() {
         setError('');
         const localProfileData = readLocalProfiles();
         const localRecentCooked = readRecentCookedRecipes();
+        const localFavoriteRecipes = readFavoriteRecipes();
         setLocalProfiles(localProfileData);
         const profileData = await fetchChildProfiles();
         const mergedProfiles = mergeProfiles(profileData, localProfileData);
@@ -169,6 +237,8 @@ export default function App() {
         setSelectedProfileId((current) => current || mergedProfiles[0]?.id || '');
         setRecentCookedByProfile(localRecentCooked);
         setRecentCooked(localRecentCooked[mergedProfiles[0]?.id ?? ''] ?? []);
+        setFavoriteRecipesByProfile(localFavoriteRecipes);
+        setFavoriteRecipes(localFavoriteRecipes[mergedProfiles[0]?.id ?? ''] ?? []);
       } catch (bootstrapError) {
         setError(bootstrapError instanceof Error ? bootstrapError.message : '初始化失败，请稍后重试。');
       } finally {
@@ -190,6 +260,10 @@ export default function App() {
   useEffect(() => {
     setRecentCooked(recentCookedByProfile[selectedProfileId] ?? []);
   }, [recentCookedByProfile, selectedProfileId]);
+
+  useEffect(() => {
+    setFavoriteRecipes(favoriteRecipesByProfile[selectedProfileId] ?? []);
+  }, [favoriteRecipesByProfile, selectedProfileId]);
 
   const appendIngredients = (items: IngredientItem[]) => {
     setIngredients((current) => {
@@ -240,22 +314,141 @@ export default function App() {
     }
   };
 
-  const handleAudioFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleStartVoiceInput = async () => {
+    if (typeof window === 'undefined') {
+      setError('当前环境不支持语音输入。');
+      return;
+    }
+
+    if (!window.isSecureContext) {
+      setError('当前页面不是安全连接，浏览器会拦截麦克风。请改用 HTTPS 地址访问，或直接在本机 localhost 打开。局域网 HTTP 开发地址通常无法语音输入。');
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError('当前浏览器不支持麦克风访问接口，请改用 Safari/Chrome 新版本，或使用文本输入。');
+      return;
+    }
+
+    const SpeechRecognitionCtor =
+      (
+        window as Window & {
+          SpeechRecognition?: new () => {
+            continuous: boolean;
+            interimResults: boolean;
+            lang: string;
+            maxAlternatives: number;
+            onstart: (() => void) | null;
+            onresult:
+              | ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void)
+              | null;
+            onerror: ((event: { error?: string }) => void) | null;
+            onend: (() => void) | null;
+            start: () => void;
+          };
+          webkitSpeechRecognition?: new () => {
+            continuous: boolean;
+            interimResults: boolean;
+            lang: string;
+            maxAlternatives: number;
+            onstart: (() => void) | null;
+            onresult:
+              | ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void)
+              | null;
+            onerror: ((event: { error?: string }) => void) | null;
+            onend: (() => void) | null;
+            start: () => void;
+          };
+        }
+      ).SpeechRecognition ??
+      (window as Window & { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition;
+
+    if (!SpeechRecognitionCtor) {
+      setError('当前设备浏览器没有开放系统语音转文字能力。请改用 Safari/Chrome 新版本，或先使用系统键盘麦克风转文字再粘贴。');
+      return;
+    }
 
     try {
-      setIsUploadingAudio(true);
       setError('');
-      const data = await uploadVoiceAudio(file);
-      appendIngredients(data.ingredients);
-      setVoiceTranscript(data.transcript);
-      setLastUploadMessage(`已上传音频 ${data.upload.filename}，完成语音转写。`);
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : '语音上传失败。');
-    } finally {
-      setIsUploadingAudio(false);
-      event.target.value = '';
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStream.getTracks().forEach((track) => track.stop());
+
+      const recognition = new SpeechRecognitionCtor() as {
+        continuous: boolean;
+        interimResults: boolean;
+        lang: string;
+        maxAlternatives: number;
+        onstart: (() => void) | null;
+        onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+        onerror: ((event: { error?: string }) => void) | null;
+        onend: (() => void) | null;
+        start: () => void;
+      };
+
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'zh-CN';
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        setIsListeningVoice(true);
+        setLastUploadMessage('正在调用系统麦克风，请开始说出食材名称。');
+      };
+
+      recognition.onresult = async (event) => {
+        const transcript = Array.from(event.results)
+          .map((result) => result[0]?.transcript ?? '')
+          .join(' ')
+          .trim();
+
+        if (!transcript) {
+          setError('没有识别到有效语音内容，请再试一次。');
+          return;
+        }
+
+        setVoiceTranscript(transcript);
+        setLastUploadMessage('语音识别完成，正在解析食材。');
+
+        try {
+          const data = await parseIngredientText(transcript);
+          appendIngredients(data.ingredients);
+          setLastUploadMessage(`语音识别成功：${transcript}`);
+        } catch (parseError) {
+          setError(parseError instanceof Error ? parseError.message : '语音文本解析失败。');
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setError('当前浏览器未获得麦克风或语音识别权限，请先允许系统麦克风访问；如果你是通过局域网 HTTP 访问开发环境，也可能被浏览器直接拦截。');
+          return;
+        }
+
+        if (event.error === 'no-speech') {
+          setError('没有听到清晰语音，请靠近设备并再试一次。');
+          return;
+        }
+
+        if (event.error === 'audio-capture') {
+          setError('浏览器没有成功连接系统麦克风。请检查系统麦克风权限、浏览器权限，或改用 HTTPS 地址重新打开。');
+          return;
+        }
+
+        setError('当前设备暂时无法完成系统语音输入，请改用文本输入。');
+      };
+
+      recognition.onend = () => {
+        setIsListeningVoice(false);
+      };
+
+      recognition.start();
+    } catch (voiceError) {
+      setIsListeningVoice(false);
+      setError(
+        voiceError instanceof Error
+          ? `无法启动系统语音输入：${voiceError.message}`
+          : '无法启动系统语音输入。请检查 HTTPS、安全权限和浏览器麦克风授权。',
+      );
     }
   };
 
@@ -263,8 +456,13 @@ export default function App() {
     setIngredients((current) => current.filter((item) => item.id !== id));
   };
 
-  const fetchRecipeAndOpen = async (id: string) => {
-    const cachedRecipe = recipeDetailsById[id];
+  const fetchRecipeAndOpen = async (recipeOrId: string | RecipeRecommendation) => {
+    const id = typeof recipeOrId === 'string' ? recipeOrId : recipeOrId.id;
+    const cachedRecipe =
+      recipeDetailsById[id] ??
+      Object.values(recentCookedByProfile)
+        .flat()
+        .find((recipe) => recipe.id === id);
 
     if (cachedRecipe) {
       setSelectedRecipe(cachedRecipe);
@@ -276,7 +474,24 @@ export default function App() {
     try {
       setIsFetchingDetail(true);
       setError('');
-      const recipe = await fetchRecipeDetail(id);
+      const recommendedRecipe =
+        typeof recipeOrId === 'string'
+          ? recommendations.find((item) => item.id === id) ?? null
+          : recipeOrId;
+      const recipe =
+        recommendedRecipe && selectedProfile
+          ? await fetchGeneratedRecipeDetail({
+              profileId: selectedProfile.id,
+              profile: selectedProfile,
+              ingredients,
+              recipe: recommendedRecipe,
+            })
+          : await fetchRecipeDetail(id);
+
+      setRecipeDetailsById((current) => ({
+        ...current,
+        [recipe.id]: recipe,
+      }));
       setSelectedRecipe(recipe);
       setStepIndex(0);
       setPage('detail');
@@ -303,9 +518,6 @@ export default function App() {
 
       const data = await fetchRecommendations(selectedProfile, ingredients);
       setRecommendations(data.recipes);
-      setRecipeDetailsById(
-        Object.fromEntries((data.recipeDetails ?? []).map((recipe) => [recipe.id, recipe])),
-      );
       setPage('recipes');
     } catch (recommendationError) {
       setError(recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。');
@@ -434,6 +646,57 @@ export default function App() {
     });
   };
 
+  const toggleFavoriteRecipe = (recipe: RecipeRecommendation) => {
+    if (!selectedProfileId) {
+      setError('请先选择儿童档案后再收藏菜谱。');
+      return;
+    }
+
+    setFavoriteRecipesByProfile((current) => {
+      const currentRecipes = current[selectedProfileId] ?? [];
+      const exists = currentRecipes.some((item) => item.id === recipe.id);
+      const nextGroup = exists
+        ? currentRecipes.filter((item) => item.id !== recipe.id)
+        : [recipe, ...currentRecipes.filter((item) => item.id !== recipe.id)].slice(0, 20);
+      const next = {
+        ...current,
+        [selectedProfileId]: nextGroup,
+      };
+      persistFavoriteRecipes(next);
+      return next;
+    });
+  };
+
+  const removeFavoriteRecipe = (recipeId: string) => {
+    if (!selectedProfileId) {
+      return;
+    }
+
+    setFavoriteRecipesByProfile((current) => {
+      const next = {
+        ...current,
+        [selectedProfileId]: (current[selectedProfileId] ?? []).filter((item) => item.id !== recipeId),
+      };
+      persistFavoriteRecipes(next);
+      return next;
+    });
+  };
+
+  const clearFavoriteRecipes = () => {
+    if (!selectedProfileId) {
+      return;
+    }
+
+    setFavoriteRecipesByProfile((current) => {
+      const next = {
+        ...current,
+        [selectedProfileId]: [],
+      };
+      persistFavoriteRecipes(next);
+      return next;
+    });
+  };
+
   const handleFetchLogs = async () => {
     try {
       setIsFetchingLogs(true);
@@ -469,7 +732,7 @@ export default function App() {
   return (
     <AppShell currentPage={page} onNavigate={setPage}>
       <input
-        ref={imageInputRef}
+        ref={cameraImageInputRef}
         className="sr-only-input"
         type="file"
         accept="image/*"
@@ -477,12 +740,11 @@ export default function App() {
         onChange={(event) => void handleImageFileChange(event)}
       />
       <input
-        ref={audioInputRef}
+        ref={fileImageInputRef}
         className="sr-only-input"
         type="file"
-        accept="audio/*,.webm,.wav,.m4a,.mp3"
-        capture
-        onChange={(event) => void handleAudioFileChange(event)}
+        accept="image/*"
+        onChange={(event) => void handleImageFileChange(event)}
       />
 
       {error ? (
@@ -498,7 +760,7 @@ export default function App() {
             <p className="eyebrow">今日任务</p>
             <h2>用家里现有食材，给 {selectedProfile?.nickname ?? '孩子'} 做一份安全又好吃的儿童餐。</h2>
             <p className="muted">
-              图片现在走真实文件上传，语音现在走真实音频上传与后端转写接口，优先适配手机和平板浏览器。
+              图片支持分开拍摄与本地上传，语音优先调用当前设备系统麦克风与语音转文字能力，优先适配手机和平板浏览器。
             </p>
             <div className="action-row">
               <button type="button" className="primary-button" onClick={() => setPage('input')}>
@@ -549,7 +811,7 @@ export default function App() {
                     className="list-button"
                     onClick={() => void fetchRecipeAndOpen(recipe.id)}
                   >
-                    <strong>{recipe.name}</strong>
+                    <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
                     <span>{recipe.difficulty} · {recipe.estimatedTimeMinutes} 分钟</span>
                   </button>
                 ))
@@ -557,6 +819,36 @@ export default function App() {
                 <div className="empty-state">
                   <strong>当前档案还没有最近记录</strong>
                   <p>完成一道菜后，这里会只展示当前孩子做过的菜谱。</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="info-card">
+            <p className="eyebrow">我的收藏</p>
+            <div className="section-header">
+              <div>
+                <h3>{favoriteRecipes.length} 条收藏</h3>
+                <p className="muted">当前档案：{selectedProfile?.nickname ?? '未选择'}</p>
+              </div>
+            </div>
+            <div className="stack-list">
+              {favoriteRecipes.length > 0 ? (
+                favoriteRecipes.map((recipe) => (
+                  <button
+                    key={recipe.id}
+                    type="button"
+                    className="list-button"
+                    onClick={() => void fetchRecipeAndOpen(recipe)}
+                  >
+                    <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
+                    <span>{recipe.difficulty} · {recipe.estimatedTimeMinutes} 分钟</span>
+                  </button>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <strong>当前档案还没有收藏菜谱</strong>
+                  <p>在推荐页点击“收藏”，以后就能快速复用。</p>
                 </div>
               )}
             </div>
@@ -649,6 +941,62 @@ export default function App() {
         </section>
       ) : null}
 
+      {page === 'favorites' ? (
+        <section className="page-grid">
+          <div className="panel">
+            <div className="section-header">
+              <div>
+                <p className="eyebrow">菜谱收藏</p>
+                <h2>{selectedProfile?.nickname ?? '当前孩子'} 的收藏菜谱</h2>
+                <p className="muted">收藏保存在当前设备本地缓存，可反复打开和复用。</p>
+              </div>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={clearFavoriteRecipes}
+                disabled={favoriteRecipes.length === 0}
+              >
+                清空收藏
+              </button>
+            </div>
+
+            <div className="stack-list">
+              {favoriteRecipes.length > 0 ? (
+                favoriteRecipes.map((recipe) => (
+                  <div key={recipe.id} className="list-item static">
+                    <div>
+                      <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
+                      <span>{recipe.difficulty} · {recipe.estimatedTimeMinutes} 分钟 · {recipe.ageRange}</span>
+                    </div>
+                    <div className="action-row">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => void fetchRecipeAndOpen(recipe)}
+                      >
+                        查看详情
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => removeFavoriteRecipe(recipe.id)}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <strong>当前档案还没有收藏菜谱</strong>
+                  <p>先去推荐页收藏喜欢的菜谱，这里会保留本地收藏记录。</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {page === 'input' ? (
         <section className="page-grid">
           <div className="panel">
@@ -658,18 +1006,26 @@ export default function App() {
               <button
                 type="button"
                 className="fake-upload fake-upload-button"
-                onClick={() => imageInputRef.current?.click()}
+                onClick={() => cameraImageInputRef.current?.click()}
                 disabled={isUploadingImage}
               >
-                {isUploadingImage ? '上传图片中…' : '拍照或上传食材图片'}
+                {isUploadingImage ? '上传图片中…' : '拍摄食材图片'}
               </button>
               <button
                 type="button"
                 className="fake-upload fake-upload-button"
-                onClick={() => audioInputRef.current?.click()}
-                disabled={isUploadingAudio}
+                onClick={() => fileImageInputRef.current?.click()}
+                disabled={isUploadingImage}
               >
-                {isUploadingAudio ? '转写中…' : '录音或上传音频'}
+                {isUploadingImage ? '上传图片中…' : '选择本地图片'}
+              </button>
+              <button
+                type="button"
+                className="fake-upload fake-upload-button"
+                onClick={() => void handleStartVoiceInput()}
+                disabled={isListeningVoice}
+              >
+                {isListeningVoice ? '正在语音识别…' : '开始语音输入'}
               </button>
             </div>
 
@@ -830,7 +1186,13 @@ export default function App() {
             </div>
             <div className="recipe-list">
               {recommendations.map((recipe) => (
-                <RecipeCard key={recipe.id} recipe={recipe} onSelect={(id) => void fetchRecipeAndOpen(id)} />
+                <RecipeCard
+                  key={recipe.id}
+                  recipe={recipe}
+                  onSelect={() => void fetchRecipeAndOpen(recipe)}
+                  onToggleFavorite={toggleFavoriteRecipe}
+                  isFavorite={favoriteRecipes.some((item) => item.id === recipe.id)}
+                />
               ))}
             </div>
           </div>
@@ -846,10 +1208,15 @@ export default function App() {
             ) : (
               <>
                 <ZoomableImage className="detail-hero-image" src={selectedRecipe.imageUrl} alt={selectedRecipe.name} />
-                <h2>{selectedRecipe.name}</h2>
+                <RecipeName as="h2" name={selectedRecipe.name} pinyin={selectedRecipe.namePinyin} />
                 <p className="muted">
                   {selectedRecipe.ageRange} · {selectedRecipe.difficulty} · 准备 {selectedRecipe.prepTimeMinutes} 分钟 · 制作 {selectedRecipe.cookTimeMinutes} 分钟
                 </p>
+                <div className="action-row">
+                  <button type="button" className="secondary-button" onClick={() => speakRecipeOverview(selectedRecipe)}>
+                    语音介绍整道菜
+                  </button>
+                </div>
                 <div className="chip-row">
                   {selectedRecipe.fitReasons.map((reason) => (
                     <span key={reason} className="chip fit-chip">
@@ -892,6 +1259,13 @@ export default function App() {
                       <li key={step.id}>
                         <strong>{step.title}</strong>
                         <p>{step.description}</p>
+                        <p className="muted">{step.childAction || '按提示一步一步做，先慢一点再继续。'}</p>
+                        <p className="muted">{step.expectedResult || '完成后看一看食材颜色和状态有没有变化。'}</p>
+                        <div className="action-row compact-list">
+                          <button type="button" className="ghost-button" onClick={() => speakStep(step)}>
+                            朗读这一步
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ol>
@@ -914,8 +1288,14 @@ export default function App() {
 
       {page === 'cooking' && selectedRecipe && currentStep ? (
         <section className="page-grid">
-          <StepCard step={currentStep} index={stepIndex} total={selectedRecipe.steps.length} />
-          <div className="panel">
+          <div className="panel cooking-panel">
+            <StepCard
+              step={currentStep}
+              index={stepIndex}
+              total={selectedRecipe.steps.length}
+              onSpeak={speakStep}
+              embedded
+            />
             <p className="eyebrow">烹饪进度</p>
             <div className="progress-bar" aria-hidden="true">
               <div
@@ -925,7 +1305,7 @@ export default function App() {
                 }}
               />
             </div>
-            <div className="stack-list">
+            <div className="stack-list compact-step-list">
               {selectedRecipe.steps.map((step, index) => (
                 <div
                   key={step.id}
@@ -936,11 +1316,12 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <div className="action-row sticky-actions">
+            <div className="action-row sticky-actions cooking-actions">
               <button
                 type="button"
                 className="secondary-button"
                 onClick={() => setStepIndex((current) => Math.max(0, current - 1))}
+                disabled={stepIndex === 0}
               >
                 上一步
               </button>
@@ -969,7 +1350,9 @@ export default function App() {
         <section className="page-grid">
           <div className="panel">
             <p className="eyebrow">成果点评</p>
-            <h2>{selectedProfile?.nickname ?? '孩子'} 完成了 {selectedRecipe.name}</h2>
+            <h2>
+              {selectedProfile?.nickname ?? '孩子'} 完成了 <RecipeName as="span" name={selectedRecipe.name} pinyin={selectedRecipe.namePinyin} />
+            </h2>
             <div className="fake-upload large">上传成品图片（MVP 占位）</div>
             <div className="field">
               <label>今天味道怎么样？</label>

@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useRef } from 'react';
+import type { ReactNode, TouchEvent } from 'react';
 import type { PageId } from '../types';
 
 interface AppShellProps {
@@ -9,6 +10,7 @@ interface AppShellProps {
 
 const pageOrder: PageId[] = [
   'home',
+  'favorites',
   'profile',
   'input',
   'confirm',
@@ -21,6 +23,7 @@ const pageOrder: PageId[] = [
 
 const pageLabels: Record<PageId, string> = {
   home: '首页',
+  favorites: '菜谱收藏',
   profile: '儿童档案',
   input: '食材输入',
   confirm: '识别确认',
@@ -32,6 +35,55 @@ const pageLabels: Record<PageId, string> = {
 };
 
 export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+
+  const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('input, textarea, select, button')) {
+      touchStartXRef.current = null;
+      touchStartYRef.current = null;
+      return;
+    }
+
+    touchStartXRef.current = event.changedTouches[0]?.clientX ?? null;
+    touchStartYRef.current = event.changedTouches[0]?.clientY ?? null;
+  };
+
+  const handleTouchEnd = (event: TouchEvent<HTMLElement>) => {
+    const startX = touchStartXRef.current;
+    const startY = touchStartYRef.current;
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+
+    if (startX === null || startY === null) {
+      return;
+    }
+
+    const endX = event.changedTouches[0]?.clientX ?? startX;
+    const endY = event.changedTouches[0]?.clientY ?? startY;
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+
+    if (Math.abs(deltaX) < 72 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) {
+      return;
+    }
+
+    const currentIndex = pageOrder.indexOf(currentPage);
+    if (currentIndex === -1) {
+      return;
+    }
+
+    if (deltaX < 0 && currentIndex < pageOrder.length - 1) {
+      onNavigate(pageOrder[currentIndex + 1]);
+      return;
+    }
+
+    if (deltaX > 0 && currentIndex > 0) {
+      onNavigate(pageOrder[currentIndex - 1]);
+    }
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -56,7 +108,9 @@ export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
           ))}
         </nav>
       </aside>
-      <main className="main-panel">{children}</main>
+      <main className="main-panel" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        {children}
+      </main>
     </div>
   );
 }

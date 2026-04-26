@@ -4,8 +4,10 @@ import {
   normalizeChildFriendlyQuantity,
   normalizeIngredientName,
   summarizeRecipe,
+  recipeCatalog,
   type ChildProfile,
   type IngredientItem,
+  type RecipeRecommendation,
   type RecipeDetail,
 } from './data.js';
 import { getLocalLlmLogFilePath, writeLocalJsonLog } from './logger.js';
@@ -26,6 +28,7 @@ interface SiliconFlowMessage {
 interface SiliconFlowCallOptions {
   operation: string;
   metadata?: Record<string, unknown>;
+  maxTokens?: number;
 }
 
 export function isSiliconFlowConfigured() {
@@ -102,7 +105,7 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
         stream: false,
         enable_thinking: false,
         temperature: 0.1,
-        max_tokens: 1800,
+        max_tokens: options.maxTokens ?? 1800,
         response_format: {
           type: 'json_object',
         },
@@ -127,11 +130,12 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
     }
 
     const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
       usage?: Record<string, unknown>;
     };
 
     const content = payload.choices?.[0]?.message?.content?.trim() ?? '';
+    const finishReason = payload.choices?.[0]?.finish_reason ?? null;
 
     writeLocalJsonLog({
       type: 'llm_call',
@@ -141,6 +145,7 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
       durationMs: Date.now() - startedAt,
       requestSummary: summarizeMessages(messages),
       responsePreview: content.slice(0, 500),
+      finishReason,
       usage: payload.usage ?? null,
       metadata: options.metadata ?? {},
       logFile: getLocalLlmLogFilePath(),
@@ -163,6 +168,102 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
     }
 
     throw error;
+  }
+}
+
+function stripMarkdownCodeFence(content: string) {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('```')) {
+    return trimmed;
+  }
+
+  return trimmed
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim();
+}
+
+function extractRecipesFromPossiblyTruncatedJson(content: string) {
+  const recipesKeyIndex = content.indexOf('"recipes"');
+  if (recipesKeyIndex === -1) {
+    return [];
+  }
+
+  const arrayStartIndex = content.indexOf('[', recipesKeyIndex);
+  if (arrayStartIndex === -1) {
+    return [];
+  }
+
+  const results: Array<Partial<RecipeDetail>> = [];
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let objectStart = -1;
+
+  for (let index = arrayStartIndex + 1; index < content.length; index += 1) {
+    const char = content[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === '{') {
+      if (depth === 0) {
+        objectStart = index;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0 && objectStart !== -1) {
+        const candidate = content.slice(objectStart, index + 1);
+        try {
+          results.push(JSON.parse(candidate) as Partial<RecipeDetail>);
+        } catch {
+          // Skip incomplete or malformed recipe objects.
+        }
+        objectStart = -1;
+      }
+      continue;
+    }
+
+    if (char === ']' && depth === 0) {
+      break;
+    }
+  }
+
+  return results;
+}
+
+function parseRecipePlanPayload(content: string) {
+  const normalizedContent = stripMarkdownCodeFence(content);
+
+  try {
+    return JSON.parse(normalizedContent) as { recipes?: Array<Partial<RecipeDetail>> };
+  } catch {
+    const salvagedRecipes = extractRecipesFromPossiblyTruncatedJson(normalizedContent);
+    if (salvagedRecipes.length > 0) {
+      return { recipes: salvagedRecipes };
+    }
+
+    throw new Error('菜谱推荐模型返回内容无法解析为有效 JSON。');
   }
 }
 
@@ -193,6 +294,12 @@ export interface GeneratedRecommendationPayload {
   sortBy: string;
 }
 
+export interface GeneratedRecommendationSummaryPayload {
+  recipes: RecipeRecommendation[];
+  filteredAllergens: string[];
+  sortBy: string;
+}
+
 function normalizeGeneratedRecipeDetails(
   payload: {
     recipes?: Array<Partial<RecipeDetail>>;
@@ -205,6 +312,10 @@ function normalizeGeneratedRecipeDetails(
   const recipeDetails = (payload.recipes ?? [])
     .filter((recipe) => recipe.name)
     .map((recipe, index) => {
+      const recipeVisualQuery =
+        typeof (recipe as { imageSearchQuery?: unknown }).imageSearchQuery === 'string'
+          ? String((recipe as { imageSearchQuery?: string }).imageSearchQuery)
+          : '';
       const normalizedIngredients = (recipe.ingredients ?? []).filter((item) => item?.name);
       const prepTimeMinutes = Math.max(1, Number(recipe.prepTimeMinutes ?? 5));
       const cookTimeMinutes = Math.max(1, Number(recipe.cookTimeMinutes ?? 10));
@@ -219,7 +330,12 @@ function normalizeGeneratedRecipeDetails(
       return {
         id: String(recipe.id ?? `recipe_gen_${slugifyRecipeName(String(recipe.name))}_${index + 1}`),
         name: String(recipe.name),
-        imageUrl: String(recipe.imageUrl ?? buildRecipeImageUrl(String(recipe.name))),
+        namePinyin: String((recipe as { namePinyin?: string }).namePinyin ?? ''),
+        imageUrl: buildRecipeImageUrl(
+          String(recipe.name),
+          recipeVisualQuery,
+          normalizedIngredients.map((item) => String(item.name ?? '')),
+        ),
         ageRange: String(recipe.ageRange ?? `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`),
         difficulty: recipe.difficulty === 'hard' || recipe.difficulty === 'medium' ? recipe.difficulty : 'easy',
         estimatedTimeMinutes,
@@ -236,7 +352,12 @@ function normalizeGeneratedRecipeDetails(
         ingredients: normalizedIngredients.map((item) => ({
           name: String(item.name),
           quantity: normalizeChildFriendlyQuantity(String(item.quantity ?? '1平勺')),
-          imageUrl: buildIngredientImageUrl(String(item.name)),
+          imageUrl: buildIngredientImageUrl(
+            String(item.name),
+            typeof (item as { imageSearchQuery?: unknown }).imageSearchQuery === 'string'
+              ? String((item as { imageSearchQuery?: string }).imageSearchQuery)
+              : '',
+          ),
         })),
         steps: Array.isArray(recipe.steps)
           ? recipe.steps
@@ -246,6 +367,15 @@ function normalizeGeneratedRecipeDetails(
                 title: String(step.title),
                 description: String(step.description),
                 tip: String(step.tip ?? '慢慢来，先确认安全再动手。'),
+                childAction: String((step as { childAction?: string }).childAction ?? step.description ?? ''),
+                parentAction: String(
+                  (step as { parentAction?: string }).parentAction ??
+                    (step.requiresParentAssist ? '这一小步建议家长在旁边陪着一起完成。' : ''),
+                ),
+                expectedResult: String(
+                  (step as { expectedResult?: string }).expectedResult ??
+                    '完成这一步后，先停下来看看食材颜色和形状有没有变化。',
+                ),
                 riskLevel: normalizeRiskLevel(String(step.riskLevel ?? 'medium')),
                 requiresParentAssist: Boolean(step.requiresParentAssist),
               }))
@@ -259,7 +389,48 @@ function normalizeGeneratedRecipeDetails(
     recipeDetails,
     filteredAllergens: profile.allergens,
     sortBy: 'balanced',
-  } satisfies GeneratedRecommendationPayload;
+} satisfies GeneratedRecommendationPayload;
+}
+
+function normalizeGeneratedRecipeSummaries(
+  payload: {
+    recipes?: Array<Partial<RecipeRecommendation>>;
+  },
+  profile: ChildProfile,
+) {
+  const recipes = (payload.recipes ?? [])
+    .filter((recipe) => recipe.name)
+    .map((recipe, index) => {
+      const recipeVisualQuery =
+        typeof (recipe as { imageSearchQuery?: unknown }).imageSearchQuery === 'string'
+          ? String((recipe as { imageSearchQuery?: string }).imageSearchQuery)
+          : '';
+
+      return {
+        id: String(recipe.id ?? `recipe_gen_summary_${slugifyRecipeName(String(recipe.name))}_${index + 1}`),
+        name: String(recipe.name),
+        namePinyin: String((recipe as { namePinyin?: string }).namePinyin ?? ''),
+        imageUrl: buildRecipeImageUrl(String(recipe.name), recipeVisualQuery),
+        ageRange: String(recipe.ageRange ?? `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`),
+        difficulty: recipe.difficulty === 'hard' || recipe.difficulty === 'medium' ? recipe.difficulty : 'easy',
+        estimatedTimeMinutes: Math.max(1, Number(recipe.estimatedTimeMinutes ?? 20)),
+        fitReasons: Array.isArray(recipe.fitReasons) ? recipe.fitReasons.map(String).slice(0, 3) : ['适合当前儿童档案'],
+        riskAlerts: Array.isArray(recipe.riskAlerts) ? recipe.riskAlerts.map(String).slice(0, 3) : [],
+        nutritionSummary: String(recipe.nutritionSummary ?? '营养搭配均衡，适合作为儿童一餐。'),
+        extraIngredients: Array.isArray(recipe.extraIngredients) ? recipe.extraIngredients.map(String).slice(0, 4) : [],
+        canCookWithCurrentIngredients:
+          typeof recipe.canCookWithCurrentIngredients === 'boolean'
+            ? recipe.canCookWithCurrentIngredients
+            : false,
+      } satisfies RecipeRecommendation;
+    })
+    .filter((recipe) => recipe.fitReasons.length > 0);
+
+  return {
+    recipes,
+    filteredAllergens: profile.allergens,
+    sortBy: 'balanced',
+  } satisfies GeneratedRecommendationSummaryPayload;
 }
 
 function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: IngredientItem[]) {
@@ -276,20 +447,68 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
   ].join('\n');
 
   return [
-    '任务: 为儿童生成 2-4 个推荐菜谱，并输出严格 JSON。',
+    '任务: 为儿童生成 5 个推荐菜谱卡片，并输出严格 JSON。',
     '儿童档案:',
     profileLines,
     '现有食材清单:',
     ingredientLines,
     '生成要求:',
-    '1. 优先使用现有食材，缺少食材尽量少。',
+    '1. 只返回 5 道推荐菜谱，优先使用现有食材，缺少食材尽量少。',
     '2. 菜谱要适合儿童年龄、口味和饮食习惯。',
     '3. 严格避开过敏原和明显不适宜儿童的做法。',
-    '4. 步骤要短、清晰、可执行，适合亲子共做。',
-    '5. 每道菜都必须包含安全提醒和家长陪同标记。',
-    '6. 菜谱必须提供 imageUrl，配料也必须提供 imageUrl，可使用公开网络图片地址。',
-    '7. 任何调味料和近似量不要写“适量/少许/微量”，统一改成儿童可理解的勺数，例如1平勺、半平勺、2平勺。',
+    '4. 这里只生成推荐卡片摘要，不要生成步骤、配料明细、prepTimeMinutes、cookTimeMinutes。',
+    '5. 每道菜都必须包含 namePinyin，使用带声调的汉语拼音，并按词分隔，例如 "fān qié jī dàn miàn"。',
+    '6. 每道菜都必须包含 imageSearchQuery，使用 2-4 个英文单词描述成品图主体，例如 "broccoli egg noodles"；画面必须是这道菜做熟后的成品近景，不能是无关菜品、原料堆或餐厅环境。',
+    '7. 不要生成泛化图片词，例如 "food"、"meal"、"dish" 单独出现，必须包含核心主食材和成品形式。',
     '8. 输出字段必须完整，不要输出任何解释文字。',
+  ].join('\n');
+}
+
+function buildRecipeDetailUserPrompt(
+  profile: ChildProfile,
+  ingredients: IngredientItem[],
+  recipe: RecipeRecommendation,
+) {
+  const ingredientLines = ingredients
+    .map((item, index) => `${index + 1}. ${item.name}｜数量:${item.quantity}｜来源:${item.source}`)
+    .join('\n');
+
+  const profileLines = [
+    `昵称: ${profile.nickname}`,
+    `年龄: ${profile.age} 岁`,
+    `口味偏好: ${profile.tastePreferences.join('、') || '无'}`,
+    `过敏原: ${profile.allergens.join('、') || '无'}`,
+    `饮食习惯: ${profile.dietaryHabits.join('、') || '无'}`,
+  ].join('\n');
+
+  const recipeLines = [
+    `菜名: ${recipe.name}`,
+    `年龄段: ${recipe.ageRange}`,
+    `难度: ${recipe.difficulty}`,
+    `预计总时长: ${recipe.estimatedTimeMinutes} 分钟`,
+    `适配原因: ${recipe.fitReasons.join('、') || '无'}`,
+    `风险提醒: ${recipe.riskAlerts.join('、') || '无'}`,
+    `额外食材: ${recipe.extraIngredients.join('、') || '无'}`,
+  ].join('\n');
+
+  return [
+    '任务: 基于已选推荐卡片，生成 1 道儿童菜谱详情，并输出严格 JSON。',
+    '儿童档案:',
+    profileLines,
+    '现有食材清单:',
+    ingredientLines,
+    '目标推荐卡片:',
+    recipeLines,
+    '生成要求:',
+    '1. 只生成这一道菜的详情，不要生成其他备选菜。',
+    '2. 输出完整字段：id、name、namePinyin、imageSearchQuery、ageRange、difficulty、estimatedTimeMinutes、fitReasons、riskAlerts、nutritionSummary、extraIngredients、canCookWithCurrentIngredients、prepTimeMinutes、cookTimeMinutes、ingredients、steps。',
+    '3. 菜谱必须提供 namePinyin，使用带声调的汉语拼音，并按词分隔，例如 "fān qié jī dàn miàn"。',
+    '4. 菜谱必须提供 imageSearchQuery，使用 2-4 个英文单词准确描述成品图主体，例如 "broccoli egg noodles"；必须是做熟后的菜品成品图，不要写模糊词。',
+    '5. 每个配料必须提供 imageSearchQuery，使用 1-3 个英文单词准确描述单个原料，例如 "broccoli florets"、"raw egg"；必须是单个食材特写，不要把调料或其他食材混进去。',
+    '6. 任何调味料和近似量不要写“适量/少许/微量”，统一改成儿童可理解的勺数，例如1平勺、半平勺、2平勺。',
+    '7. 每一步 steps 除了 title、description、tip、riskLevel、requiresParentAssist，还要尽量补充 childAction、parentAction、expectedResult，帮助识字量少的儿童理解。',
+    '8. 步骤要短、清晰、适合亲子共做，并标注风险等级与是否需要家长协助。',
+    '9. 输出字段必须完整，不要输出任何解释文字。',
   ].join('\n');
 }
 
@@ -357,7 +576,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 2-4 个安全、适龄、可执行的儿童菜谱。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","imageUrl":"公开网络图片地址","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺","imageUrl":"公开网络图片地址"}],"steps":[{"id":"可选","title":"步骤标题","description":"步骤描述","tip":"提示","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出额外说明。',
+        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 5 个安全、适龄、可执行的儿童菜谱推荐卡片。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true}]}。不要输出额外说明。',
     },
     {
       role: 'user',
@@ -365,6 +584,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     },
   ], {
     operation: 'generate_recipe_plan',
+    maxTokens: 900,
     metadata: {
       profileId: profile.id,
       age: profile.age,
@@ -373,11 +593,78 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     },
   });
 
-  return normalizeGeneratedRecipeDetails(
-    JSON.parse(content) as { recipes?: Array<Partial<RecipeDetail>> },
+  const summaryPayload = normalizeGeneratedRecipeSummaries(
+    parseRecipePlanPayload(content),
+    profile,
+  );
+
+  return {
+    ...summaryPayload,
+    recipeDetails: [],
+  };
+}
+
+export async function generateRecipeDetail(
+  profile: ChildProfile,
+  ingredients: IngredientItem[],
+  recipe: RecipeRecommendation,
+) {
+  const catalogRecipe = recipeCatalog.find((item) => item.id === recipe.id);
+  if (catalogRecipe) {
+    return catalogRecipe;
+  }
+
+  const content = await callSiliconFlow([
+    {
+      role: 'system',
+      content:
+        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和指定推荐卡片，生成 1 个完整儿童菜谱详情。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺","imageSearchQuery":"1到3个英文单词的单食材检索词"}],"steps":[{"id":"可选","title":"步骤标题","description":"步骤描述","tip":"提示","childAction":"孩子要做什么","parentAction":"家长何时介入","expectedResult":"完成后看到什么","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出额外说明。',
+    },
+    {
+      role: 'user',
+      content: buildRecipeDetailUserPrompt(profile, ingredients, recipe),
+    },
+  ], {
+    operation: 'generate_recipe_detail',
+    maxTokens: 1800,
+    metadata: {
+      profileId: profile.id,
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+      ingredientCount: ingredients.length,
+      ingredientNames: ingredients.map((item) => item.name),
+    },
+  });
+
+  const detailPayload = normalizeGeneratedRecipeDetails(
+    parseRecipePlanPayload(content),
     profile,
     ingredients,
   );
+
+  const matched = detailPayload.recipeDetails[0];
+  if (!matched) {
+    throw new Error('菜谱详情生成失败，未返回有效步骤。');
+  }
+
+  return {
+    ...matched,
+    id: recipe.id || matched.id,
+    imageUrl: recipe.imageUrl ?? matched.imageUrl,
+    name: recipe.name || matched.name,
+    namePinyin: recipe.namePinyin || matched.namePinyin,
+    ageRange: recipe.ageRange || matched.ageRange,
+    difficulty: recipe.difficulty || matched.difficulty,
+    estimatedTimeMinutes: recipe.estimatedTimeMinutes || matched.estimatedTimeMinutes,
+    fitReasons: recipe.fitReasons.length > 0 ? recipe.fitReasons : matched.fitReasons,
+    riskAlerts: recipe.riskAlerts.length > 0 ? recipe.riskAlerts : matched.riskAlerts,
+    nutritionSummary: recipe.nutritionSummary || matched.nutritionSummary,
+    extraIngredients: recipe.extraIngredients.length > 0 ? recipe.extraIngredients : matched.extraIngredients,
+    canCookWithCurrentIngredients:
+      typeof recipe.canCookWithCurrentIngredients === 'boolean'
+        ? recipe.canCookWithCurrentIngredients
+        : matched.canCookWithCurrentIngredients,
+  } satisfies RecipeDetail;
 }
 
 export async function generateCookingFeedback(input: {

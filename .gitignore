@@ -11,6 +11,7 @@ apps/frontend/*.tsbuildinfo
 apps/server/*.tsbuildinfo
 .local/
 apps/server/logs/
+.local/certs/
 
 # env
 .env

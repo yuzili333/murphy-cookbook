@@ -46,13 +46,59 @@ export interface ReadLocalLlmLogsOptions {
   limit?: number;
 }
 
+function parseLogDateInput(value?: string) {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const direct = Date.parse(normalized);
+  if (Number.isFinite(direct)) {
+    return direct;
+  }
+
+  const compactMatch = normalized.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::|[-])(\d{2})$/,
+  );
+  if (!compactMatch) {
+    return null;
+  }
+
+  const [, year, month, day, hour, minute, second] = compactMatch;
+  const localDate = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+
+  return Number.isNaN(localDate.getTime()) ? null : localDate.getTime();
+}
+
+function formatLogTimestamp(value: unknown) {
+  const timestamp = typeof value === 'string' ? parseLogDateInput(value) : null;
+  if (timestamp === null) {
+    return typeof value === 'string' ? value : '';
+  }
+
+  const date = new Date(timestamp);
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+}
+
 export function readLocalLlmLogs(options: ReadLocalLlmLogsOptions = {}) {
   if (!existsSync(llmLogFile)) {
     return [];
   }
 
-  const startTime = options.start ? Date.parse(options.start) : null;
-  const endTime = options.end ? Date.parse(options.end) : null;
+  const startTime = parseLogDateInput(options.start);
+  const endTime = parseLogDateInput(options.end);
   const keyword = options.keyword?.trim().toLowerCase() ?? '';
   const limit = Math.max(1, Math.min(Number(options.limit ?? 200), 500));
 
@@ -71,25 +117,33 @@ export function readLocalLlmLogs(options: ReadLocalLlmLogsOptions = {}) {
     })
     .filter((entry): entry is Record<string, unknown> => Boolean(entry))
     .filter((entry) => {
-      const timestamp = typeof entry.timestamp === 'string' ? Date.parse(entry.timestamp) : NaN;
+      const timestamp = typeof entry.timestamp === 'string' ? parseLogDateInput(entry.timestamp) : null;
       const raw = JSON.stringify(entry).toLowerCase();
-
-      if (startTime && Number.isFinite(timestamp) && timestamp < startTime) {
-        return false;
-      }
-
-      if (endTime && Number.isFinite(timestamp) && timestamp > endTime) {
-        return false;
-      }
 
       if (keyword && !raw.includes(keyword)) {
         return false;
       }
 
-      return true;
-    })
-    .slice(-limit)
-    .reverse();
+      if (startTime !== null && (timestamp === null || timestamp < startTime)) {
+        return false;
+      }
 
-  return entries;
+      if (endTime !== null && (timestamp === null || timestamp > endTime)) {
+        return false;
+      }
+
+      return true;
+    });
+
+  return entries
+    .sort((left, right) => {
+      const leftTime = typeof left.timestamp === 'string' ? parseLogDateInput(left.timestamp) ?? 0 : 0;
+      const rightTime = typeof right.timestamp === 'string' ? parseLogDateInput(right.timestamp) ?? 0 : 0;
+      return rightTime - leftTime;
+    })
+    .slice(0, limit)
+    .map((entry) => ({
+      ...entry,
+      timestamp: formatLogTimestamp(entry.timestamp),
+    }));
 }

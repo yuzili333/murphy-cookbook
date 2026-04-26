@@ -1,13 +1,17 @@
 import {
+  buildIngredientImageUrl,
   childProfiles,
   createIngredient,
   normalizeIngredientName,
   recipeCatalog,
   summarizeRecipe,
+  type RecipeRecommendation,
   type ChildProfile,
   type IngredientItem,
+  type RecipeDetail,
 } from './data.js';
 import {
+  generateRecipeDetail,
   generateRecipePlan,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
@@ -167,6 +171,81 @@ export async function recommendRecipes(
       error: {
         code: 'RECIPE_RECOMMENDATION_FAILED',
         message: error instanceof Error ? error.message : '菜谱推荐生成失败。',
+      },
+    };
+  }
+}
+
+export async function getRecipeDetailForRecommendation(input: {
+  profileId: string;
+  ingredients: IngredientItem[];
+  recipe: RecipeRecommendation;
+  profileInput?: Partial<ChildProfile> | null;
+}): Promise<{ data: RecipeDetail } | { error: RecommendationError }> {
+  const validation = validateRecommendationInput(input.profileId, input.ingredients, input.profileInput);
+
+  if ('error' in validation) {
+    return { error: validation.error };
+  }
+
+  const { profile } = validation;
+  const fallbackRecipe =
+    recipeCatalog.find((item) => item.id === input.recipe.id) ??
+    ({
+      ...input.recipe,
+      prepTimeMinutes: Math.max(1, Math.round(input.recipe.estimatedTimeMinutes * 0.3)),
+      cookTimeMinutes: Math.max(1, input.recipe.estimatedTimeMinutes - Math.max(1, Math.round(input.recipe.estimatedTimeMinutes * 0.3))),
+      ingredients: input.ingredients.map((ingredient) => ({
+        name: ingredient.name,
+        quantity: ingredient.quantity,
+        imageUrl: buildIngredientImageUrl(ingredient.name),
+      })),
+      steps: [
+        {
+          id: `step_${input.recipe.id}_1`,
+          title: '准备食材',
+          description: '把食材洗净，摆放整齐，先让家长确认需要切开的部分。',
+          tip: '先准备好小碗和勺子，再开始动手。',
+          riskLevel: 'low',
+          requiresParentAssist: false,
+        },
+        {
+          id: `step_${input.recipe.id}_2`,
+          title: '开始烹饪',
+          description: '按照推荐菜名完成主要烹饪步骤，涉及明火和热锅时请家长全程陪同。',
+          tip: '每完成一步都停下来检查一下安全和口味。',
+          riskLevel: 'high',
+          requiresParentAssist: true,
+        },
+      ],
+    } satisfies RecipeDetail);
+
+  if (!isSiliconFlowConfigured()) {
+    if (shouldRequireRealModel()) {
+      return {
+        error: {
+          code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+          message: '服务端未配置 SiliconFlow API Key，无法生成生产环境菜谱详情。',
+        },
+      };
+    }
+
+    return { data: fallbackRecipe };
+  }
+
+  try {
+    return {
+      data: await generateRecipeDetail(profile, input.ingredients, input.recipe),
+    };
+  } catch (error) {
+    if (!shouldRequireRealModel()) {
+      return { data: fallbackRecipe };
+    }
+
+    return {
+      error: {
+        code: 'RECIPE_DETAIL_FAILED',
+        message: error instanceof Error ? error.message : '菜谱详情生成失败。',
       },
     };
   }

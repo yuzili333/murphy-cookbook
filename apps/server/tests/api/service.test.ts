@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractIngredientsFromFilename, parseIngredientJson, parseTextToIngredients, recommendRecipes } from '../../service.js';
+import {
+  extractIngredientsFromFilename,
+  getRecipeDetailForRecommendation,
+  parseIngredientJson,
+  parseTextToIngredients,
+  recommendRecipes,
+} from '../../service.js';
 import {
   generateCookingFeedback,
   generateRecipePlan,
@@ -311,8 +317,178 @@ test('generateRecipePlan returns normalized recipe details from model output', a
   );
 
   assert.equal(result.recipes[0].name, '番茄鸡蛋面');
-  assert.equal(result.recipeDetails[0].steps[0].title, '准备食材');
+  assert.equal(result.recipeDetails.length, 0);
   assert.equal(result.filteredAllergens[0], '花生');
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('recommendRecipes uses salvaged model recipes when recipe JSON is truncated', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalNetlify = process.env.NETLIFY;
+  const originalLambda = process.env.AWS_LAMBDA_FUNCTION_NAME;
+  const originalLambdaTaskRoot = process.env.LAMBDA_TASK_ROOT;
+
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  process.env.NODE_ENV = 'development';
+  delete process.env.NETLIFY;
+  delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+  delete process.env.LAMBDA_TASK_ROOT;
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        finish_reason: 'length',
+        message: {
+          content: `{
+            "recipes": [
+              {
+                "id": "recipe_001",
+                "name": "西兰花鸡蛋软面",
+                "imageUrl": "https://example.com/recipe-1.jpg",
+                "ageRange": "7-12 岁",
+                "difficulty": "easy",
+                "estimatedTimeMinutes": 20,
+                "fitReasons": ["符合清淡口味"],
+                "riskAlerts": ["煮面时注意防烫"],
+                "nutritionSummary": "富含膳食纤维和维生素。",
+                "extraIngredients": ["鸡蛋 2 个", "细面条 1 把"],
+                "canCookWithCurrentIngredients": false,
+                "prepTimeMinutes": 5,
+                "cookTimeMinutes": 15,
+                "ingredients": [
+                  { "name": "西兰花", "quantity": "1份", "imageUrl": "https://example.com/broccoli.jpg" },
+                  { "name": "鸡蛋", "quantity": "2个", "imageUrl": "https://example.com/egg.jpg" }
+                ],
+                "steps": [
+                  {
+                    "title": "准备食材",
+                    "description": "把西兰花切小朵，鸡蛋打散。",
+                    "tip": "切菜时请家长陪同。",
+                    "riskLevel": "medium",
+                    "requiresParentAssist": true
+                  }
+                ]
+              },
+              {
+                "id": "recipe_002",
+                "name": "西兰花蒸蛋"`,
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await recommendRecipes('cp_001', [
+    {
+      id: 'ing_1',
+      name: '西兰花',
+      normalizedName: '西兰花',
+      quantity: '1份',
+      source: 'image',
+    },
+  ]);
+
+  if ('error' in result) {
+    assert.fail(`expected salvaged recommendation data, got ${result.error.code}`);
+  }
+
+  assert.equal(result.data.recipes.length, 1);
+  assert.equal(result.data.recipes[0].name, '西兰花鸡蛋软面');
+  assert.equal(result.data.recipeDetails.length, 0);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('getRecipeDetailForRecommendation generates detail on demand from recipe card', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: 'recipe_dynamic_001',
+              name: '西兰花鸡蛋软面',
+              imageUrl: 'https://example.com/recipe.jpg',
+              ageRange: '7-12 岁',
+              difficulty: 'easy',
+              estimatedTimeMinutes: 20,
+              fitReasons: ['符合清淡口味'],
+              riskAlerts: ['煮面时注意防烫'],
+              nutritionSummary: '富含膳食纤维和维生素。',
+              extraIngredients: ['鸡蛋 2 个', '细面条 1 把'],
+              canCookWithCurrentIngredients: false,
+              prepTimeMinutes: 5,
+              cookTimeMinutes: 15,
+              ingredients: [
+                { name: '西兰花', quantity: '1份', imageUrl: 'https://example.com/broccoli.jpg' },
+                { name: '鸡蛋', quantity: '2个', imageUrl: 'https://example.com/egg.jpg' },
+              ],
+              steps: [{
+                title: '准备食材',
+                description: '把西兰花切小朵，鸡蛋打散。',
+                tip: '切菜时请家长陪同。',
+                riskLevel: 'medium',
+                requiresParentAssist: true,
+              }],
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'cp_001',
+    ingredients: [
+      {
+        id: 'ing_1',
+        name: '西兰花',
+        normalizedName: '西兰花',
+        quantity: '1份',
+        source: 'image',
+      },
+    ],
+    recipe: {
+      id: 'recipe_dynamic_001',
+      name: '西兰花鸡蛋软面',
+      imageUrl: 'https://example.com/cover.jpg',
+      ageRange: '7-12 岁',
+      difficulty: 'easy',
+      estimatedTimeMinutes: 20,
+      fitReasons: ['符合清淡口味'],
+      riskAlerts: ['煮面时注意防烫'],
+      nutritionSummary: '富含膳食纤维和维生素。',
+      extraIngredients: ['鸡蛋 2 个', '细面条 1 把'],
+      canCookWithCurrentIngredients: false,
+    },
+  });
+
+  if ('error' in result) {
+    assert.fail(`expected detail data, got ${result.error.code}`);
+  }
+
+  assert.equal(result.data.id, 'recipe_dynamic_001');
+  assert.equal(result.data.steps[0].title, '准备食材');
 
   global.fetch = originalFetch;
   if (originalKey) {

@@ -8,6 +8,7 @@ import {
 import { getLocalLlmLogFilePath, readLocalLlmLogs, shouldUseLocalDebugLog } from './logger.js';
 import {
   extractIngredientsFromFilename,
+  getRecipeDetailForRecommendation,
   parseIngredientJson,
   parseTextToIngredients,
   recommendRecipes,
@@ -284,6 +285,42 @@ export function createApp(): Express {
     }
 
     res.json({ data: recipe });
+  });
+
+  app.post('/api/v1/recipes/detail', async (req, res) => {
+    const profileId = String(req.body?.profileId ?? '');
+    const ingredients = Array.isArray(req.body?.ingredients) ? req.body.ingredients : [];
+    const profile = req.body?.profile ?? null;
+    const recipe = req.body?.recipe ?? null;
+
+    if (!recipe?.id || !recipe?.name) {
+      res.status(400).json({
+        error: { code: 'INVALID_ARGUMENT', message: '请提供有效的推荐菜谱卡片信息。' },
+      });
+      return;
+    }
+
+    const result = await getRecipeDetailForRecommendation({
+      profileId,
+      ingredients,
+      profileInput: profile,
+      recipe,
+    });
+
+    if ('error' in result) {
+      const status =
+        result.error.code === 'PROFILE_NOT_FOUND'
+          ? 404
+          : result.error.code === 'INVALID_ARGUMENT'
+            ? 400
+            : result.error.code === 'MODEL_PROVIDER_NOT_CONFIGURED'
+              ? 500
+              : 502;
+      res.status(status).json({ error: result.error });
+      return;
+    }
+
+    res.json({ data: result.data });
   });
 
   app.post('/api/v1/cooking-feedback', async (req, res) => {

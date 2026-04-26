@@ -1,26 +1,34 @@
 import type { RecipeRecommendation } from '../types';
+import { RecipeName } from './RecipeName';
 import { ZoomableImage } from './ZoomableImage';
 
 interface RecipeCardProps {
   recipe: RecipeRecommendation;
   onSelect: (id: string) => void;
+  onToggleFavorite: (recipe: RecipeRecommendation) => void;
+  isFavorite: boolean;
 }
 
-export function RecipeCard({ recipe, onSelect }: RecipeCardProps) {
+export function RecipeCard({ recipe, onSelect, onToggleFavorite, isFavorite }: RecipeCardProps) {
   return (
     <article className="recipe-card">
       <ZoomableImage className="recipe-cover" src={recipe.imageUrl} alt={recipe.name} />
       <div className="recipe-header">
         <div>
-          <h3>{recipe.name}</h3>
+          <RecipeName as="h3" name={recipe.name} pinyin={recipe.namePinyin} />
           <p className="muted">
             {recipe.ageRange} · {recipe.difficulty} · {recipe.estimatedTimeMinutes}{' '}
             分钟
           </p>
         </div>
-        <button type="button" className="ghost-button" onClick={() => onSelect(recipe.id)}>
-          查看详情
-        </button>
+        <div className="action-row">
+          <button type="button" className="ghost-button" onClick={() => onToggleFavorite(recipe)}>
+            {isFavorite ? '取消收藏' : '收藏'}
+          </button>
+          <button type="button" className="ghost-button" onClick={() => onSelect(recipe.id)}>
+            查看详情
+          </button>
+        </div>
       </div>
 
       <div className="chip-row">

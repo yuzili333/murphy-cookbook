@@ -1,5 +1,6 @@
 export type PageId =
   | 'home'
+  | 'favorites'
   | 'profile'
   | 'input'
   | 'confirm'
@@ -38,6 +39,7 @@ export interface IngredientItem {
 export interface RecipeRecommendation {
   id: string;
   name: string;
+  namePinyin?: string;
   imageUrl?: string;
   ageRange: string;
   difficulty: 'easy' | 'medium' | 'hard';
@@ -56,6 +58,9 @@ export interface CookingStep {
   tip: string;
   riskLevel: 'low' | 'medium' | 'high';
   requiresParentAssist: boolean;
+  childAction?: string;
+  parentAction?: string;
+  expectedResult?: string;
 }
 
 export interface RecipeDetail extends RecipeRecommendation {
@@ -67,7 +72,6 @@ export interface RecipeDetail extends RecipeRecommendation {
 
 export interface RecommendationResponse {
   recipes: RecipeRecommendation[];
-  recipeDetails?: RecipeDetail[];
   filteredAllergens: string[];
   sortBy: string;
 }

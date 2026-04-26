@@ -80,6 +80,25 @@ button {
   line-height: 1.05;
 }
 
+.recipe-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+
+.recipe-ruby {
+  ruby-align: center;
+}
+
+.recipe-ruby rt {
+  font-size: 0.42em;
+  letter-spacing: 0.02em;
+  color: #7c8a94;
+  font-weight: 700;
+}
+
 .eyebrow {
   margin: 0;
   color: var(--secondary);
@@ -572,6 +591,36 @@ button {
 
 .step-preview {
   padding-left: 20px;
+}
+
+.embedded-step-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cooking-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.compact-step-list {
+  gap: 10px;
+}
+
+.compact-step-list .list-item,
+.compact-step-list .list-button {
+  padding: 12px 14px;
+}
+
+.compact-step-list .list-item {
+  align-items: center;
+}
+
+.cooking-actions {
+  margin-top: 0;
 }
 
 @media (min-width: 768px) {
