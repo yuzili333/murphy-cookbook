@@ -21,6 +21,16 @@ export interface RecipeRecommendation {
   name: string;
   namePinyin?: string;
   imageUrl?: string;
+  englishName: string;
+  nameLearning: {
+    characters: Array<{
+      character: string;
+      pinyin: string;
+      strokes: number;
+      structure: string;
+      hint: string;
+    }>;
+  };
   ageRange: string;
   difficulty: 'easy' | 'medium' | 'hard';
   estimatedTimeMinutes: number;
@@ -38,6 +48,9 @@ export interface CookingStep {
   tip: string;
   riskLevel: 'low' | 'medium' | 'high';
   requiresParentAssist: boolean;
+  childAction?: string;
+  parentAction?: string;
+  expectedResult?: string;
 }
 
 export interface RecipeDetail extends RecipeRecommendation {
@@ -487,7 +500,17 @@ export const recipeCatalog: RecipeDetail[] = [
     id: 'recipe_001',
     name: '番茄鸡蛋面',
     namePinyin: 'fān qié jī dàn miàn',
-    imageUrl: buildRecipeImageUrl('番茄鸡蛋面', '', ['番茄', '鸡蛋', '面条']),
+    imageUrl: buildRecipeImageUrl('番茄鸡蛋面', undefined, ['番茄', '鸡蛋', '面条']),
+    englishName: 'Tomato Egg Noodles',
+    nameLearning: {
+      characters: [
+        { character: '番', pinyin: 'fān', strokes: 12, structure: '上下结构', hint: '上面像采字头，下面是田。' },
+        { character: '茄', pinyin: 'qié', strokes: 8, structure: '上下结构', hint: '草字头表示它和植物有关。' },
+        { character: '鸡', pinyin: 'jī', strokes: 7, structure: '左右结构', hint: '右边的鸟提示它和小鸟、家禽有关。' },
+        { character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '下面的虫是这个字的一部分。' },
+        { character: '面', pinyin: 'miàn', strokes: 9, structure: '独体字', hint: '笔画包围成一个方方的面。' },
+      ],
+    },
     ageRange: '7-12 岁',
     difficulty: 'easy',
     estimatedTimeMinutes: 20,
@@ -550,7 +573,17 @@ export const recipeCatalog: RecipeDetail[] = [
     id: 'recipe_002',
     name: '黄瓜鸡蛋卷',
     namePinyin: 'huáng guā jī dàn juǎn',
-    imageUrl: buildRecipeImageUrl('黄瓜鸡蛋卷', '', ['黄瓜', '鸡蛋']),
+    imageUrl: buildRecipeImageUrl('黄瓜鸡蛋卷', undefined, ['黄瓜', '鸡蛋']),
+    englishName: 'Cucumber Egg Roll',
+    nameLearning: {
+      characters: [
+        { character: '黄', pinyin: 'huáng', strokes: 11, structure: '上中下结构', hint: '中间部分要写得稳，像一层层叠起来。' },
+        { character: '瓜', pinyin: 'guā', strokes: 5, structure: '独体字', hint: '撇和捺像瓜藤伸出来。' },
+        { character: '鸡', pinyin: 'jī', strokes: 7, structure: '左右结构', hint: '右边的鸟提示它和小鸟、家禽有关。' },
+        { character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '下面的虫是这个字的一部分。' },
+        { character: '卷', pinyin: 'juǎn', strokes: 8, structure: '上下结构', hint: '下面像卷起来的小尾巴。' },
+      ],
+    },
     ageRange: '7-12 岁',
     difficulty: 'easy',
     estimatedTimeMinutes: 15,
@@ -600,6 +633,8 @@ export function summarizeRecipe(recipe: RecipeDetail): RecipeRecommendation {
     name: recipe.name,
     namePinyin: recipe.namePinyin,
     imageUrl: recipe.imageUrl,
+    englishName: recipe.englishName,
+    nameLearning: recipe.nameLearning,
     ageRange: recipe.ageRange,
     difficulty: recipe.difficulty,
     estimatedTimeMinutes: recipe.estimatedTimeMinutes,

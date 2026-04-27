@@ -168,6 +168,18 @@
       {
         "id": "recipe_001",
         "name": "番茄鸡蛋面",
+        "englishName": "Tomato Egg Noodles",
+        "nameLearning": {
+          "characters": [
+            {
+              "character": "番",
+              "pinyin": "fān",
+              "strokes": 12,
+              "structure": "上下结构",
+              "hint": "上面像采字头，下面是田。"
+            }
+          ]
+        },
         "ageRange": "7-12",
         "difficulty": "easy",
         "estimatedTimeMinutes": 20,
@@ -197,6 +209,18 @@
   "data": {
     "id": "recipe_001",
     "name": "番茄鸡蛋面",
+    "englishName": "Tomato Egg Noodles",
+    "nameLearning": {
+      "characters": [
+        {
+          "character": "番",
+          "pinyin": "fān",
+          "strokes": 12,
+          "structure": "上下结构",
+          "hint": "上面像采字头，下面是田。"
+        }
+      ]
+    },
     "heroImage": "/mock/recipe-tomato-egg-noodle.png",
     "ageRange": "7-12",
     "difficulty": "easy",

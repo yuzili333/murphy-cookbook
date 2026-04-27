@@ -41,6 +41,16 @@ export interface RecipeRecommendation {
   name: string;
   namePinyin?: string;
   imageUrl?: string;
+  englishName: string;
+  nameLearning: {
+    characters: Array<{
+      character: string;
+      pinyin: string;
+      strokes: number;
+      structure: string;
+      hint: string;
+    }>;
+  };
   ageRange: string;
   difficulty: 'easy' | 'medium' | 'hard';
   estimatedTimeMinutes: number;

@@ -48,6 +48,8 @@
       "required": [
         "id",
         "name",
+        "english_name",
+        "name_learning",
         "age_range",
         "difficulty",
         "estimated_time_minutes",
@@ -66,6 +68,13 @@
         "name": {
           "type": "string",
           "minLength": 1
+        },
+        "english_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name_learning": {
+          "$ref": "#/$defs/nameLearning"
         },
         "age_range": {
           "type": "string",
@@ -114,6 +123,52 @@
           "items": {
             "$ref": "#/$defs/stepPreview"
           }
+        }
+      }
+    },
+    "nameLearning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["characters"],
+      "properties": {
+        "characters": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "$ref": "#/$defs/nameCharacter"
+          }
+        }
+      }
+    },
+    "nameCharacter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["character", "pinyin", "strokes", "structure", "hint"],
+      "properties": {
+        "character": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1
+        },
+        "pinyin": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Use tone-mark pinyin such as fān or qié, not numeric tone pinyin such as fan1."
+        },
+        "strokes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 40
+        },
+        "structure": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hint": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
         }
       }
     },

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, TouchEvent } from 'react';
 import type { PageId } from '../types';
 
@@ -10,8 +10,6 @@ interface AppShellProps {
 
 const pageOrder: PageId[] = [
   'home',
-  'favorites',
-  'profile',
   'input',
   'confirm',
   'recipes',
@@ -20,6 +18,8 @@ const pageOrder: PageId[] = [
   'feedback',
   'logs',
 ];
+
+const settingsPages: PageId[] = ['favorites', 'profile'];
 
 const pageLabels: Record<PageId, string> = {
   home: '首页',
@@ -35,8 +35,25 @@ const pageLabels: Record<PageId, string> = {
 };
 
 export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
+  const navRef = useRef<HTMLElement>(null);
+  const mainPanelRef = useRef<HTMLElement>(null);
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const activeItem = navRef.current?.querySelector<HTMLElement>('.nav-item.active');
+    activeItem?.scrollIntoView({
+      block: 'nearest',
+      inline: 'center',
+      behavior: 'smooth',
+    });
+
+    mainPanelRef.current?.scrollIntoView({
+      block: 'start',
+      behavior: 'smooth',
+    });
+  }, [currentPage]);
 
   const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
     const target = event.target as HTMLElement | null;
@@ -84,8 +101,29 @@ export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
     }
   };
 
+  const handleSettingsNavigate = (page: PageId) => {
+    onNavigate(page);
+    setIsSettingsOpen(false);
+  };
+
   return (
     <div className="app-shell">
+      <button
+        type="button"
+        className="settings-trigger"
+        onClick={() => setIsSettingsOpen(true)}
+        aria-label="打开用户设置"
+      >
+        <svg
+          className="settings-trigger-icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Zm0 5.6a1.85 1.85 0 1 1 0-3.7 1.85 1.85 0 0 1 0 3.7Z" />
+          <path d="M20.32 10.6 18.9 10.2a7.14 7.14 0 0 0-.55-1.33l.72-1.29a1.15 1.15 0 0 0-.18-1.34l-1.13-1.13a1.15 1.15 0 0 0-1.34-.18l-1.29.72c-.43-.23-.87-.42-1.33-.55l-.4-1.42A1.16 1.16 0 0 0 12.28 3h-1.6c-.53 0-.99.36-1.12.87l-.4 1.42c-.46.13-.9.32-1.33.55l-1.29-.72a1.15 1.15 0 0 0-1.34.18L4.07 6.43a1.15 1.15 0 0 0-.18 1.34l.72 1.29c-.23.43-.42.87-.55 1.33l-1.42.4A1.16 1.16 0 0 0 1.77 11.9v1.6c0 .53.36.99.87 1.12l1.42.4c.13.46.32.9.55 1.33l-.72 1.29c-.25.45-.18 1.02.18 1.34l1.13 1.13c.36.36.89.43 1.34.18l1.29-.72c.43.23.87.42 1.33.55l.4 1.42c.13.51.59.87 1.12.87h1.6c.53 0 .99-.36 1.12-.87l.4-1.42c.46-.13.9-.32 1.33-.55l1.29.72c.45.25.98.18 1.34-.18l1.13-1.13c.36-.32.43-.89.18-1.34l-.72-1.29c.23-.43.42-.87.55-1.33l1.42-.4c.51-.13.87-.59.87-1.12v-1.6c0-.53-.36-.99-.87-1.12Zm-1.03 2.32-1.24.35a.95.95 0 0 0-.66.67 5.56 5.56 0 0 1-.74 1.79.95.95 0 0 0-.02.94l.63 1.13-.65.65-1.13-.63a.95.95 0 0 0-.94.02 5.56 5.56 0 0 1-1.79.74.95.95 0 0 0-.67.66l-.35 1.24h-.92l-.35-1.24a.95.95 0 0 0-.67-.66 5.56 5.56 0 0 1-1.79-.74.95.95 0 0 0-.94-.02l-1.13.63-.65-.65.63-1.13a.95.95 0 0 0-.02-.94 5.56 5.56 0 0 1-.74-1.79.95.95 0 0 0-.66-.67l-1.24-.35V12l1.24-.35a.95.95 0 0 0 .66-.67c.17-.63.42-1.23.74-1.79a.95.95 0 0 0 .02-.94l-.63-1.13.65-.65 1.13.63c.3.17.66.16.94-.02.56-.32 1.16-.57 1.79-.74.32-.08.58-.34.67-.66l.35-1.24h.92l.35 1.24c.09.32.35.58.67.66.63.17 1.23.42 1.79.74.28.18.64.19.94.02l1.13-.63.65.65-.63 1.13a.95.95 0 0 0 .02.94c.32.56.57 1.16.74 1.79.08.32.34.58.66.67l1.24.35v.92Z" />
+        </svg>
+      </button>
       <aside className="sidebar">
         <div className="brand-block">
           <p className="eyebrow">Murphy's Cookbook</p>
@@ -94,7 +132,7 @@ export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
             用现有食材，完成安全、适龄、可执行的亲子料理。
           </p>
         </div>
-        <nav className="progress-nav" aria-label="MVP page flow">
+        <nav ref={navRef} className="progress-nav" aria-label="MVP page flow">
           {pageOrder.map((page, index) => (
             <button
               key={page}
@@ -108,9 +146,44 @@ export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
           ))}
         </nav>
       </aside>
-      <main className="main-panel" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+      <main ref={mainPanelRef} className="main-panel" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
         {children}
       </main>
+
+      {isSettingsOpen ? (
+        <div className="settings-layer" role="presentation">
+          <button
+            type="button"
+            className="settings-backdrop"
+            aria-label="关闭用户设置"
+            onClick={() => setIsSettingsOpen(false)}
+          />
+          <aside className="settings-drawer" aria-label="用户设置">
+            <div className="drawer-header">
+              <div>
+                <p className="eyebrow">用户设置</p>
+                <h2>管理家庭资料</h2>
+              </div>
+              <button type="button" className="ghost-button" onClick={() => setIsSettingsOpen(false)}>
+                关闭
+              </button>
+            </div>
+            <div className="settings-menu">
+              {settingsPages.map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  className={page === currentPage ? 'settings-menu-item active' : 'settings-menu-item'}
+                  onClick={() => handleSettingsNavigate(page)}
+                >
+                  <strong>{pageLabels[page]}</strong>
+                  <span>{page === 'favorites' ? '查看和管理已收藏菜谱' : '选择或新增儿童档案'}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -7,7 +7,6 @@ import {
 } from './data.js';
 import { getLocalLlmLogFilePath, readLocalLlmLogs, shouldUseLocalDebugLog } from './logger.js';
 import {
-  extractIngredientsFromFilename,
   getRecipeDetailForRecommendation,
   parseIngredientJson,
   parseTextToIngredients,
@@ -139,26 +138,24 @@ export function createApp(): Express {
     }
 
     try {
-      if (!isSiliconFlowConfigured() && shouldRequireRealModel()) {
+      if (!isSiliconFlowConfigured()) {
         res.status(500).json({
           error: {
             code: 'MODEL_PROVIDER_NOT_CONFIGURED',
-            message: '服务端未配置 SiliconFlow API Key，无法使用生产环境图片识别能力。',
+            message: '服务端未配置 SiliconFlow API Key，无法使用图片识别大模型能力。',
           },
         });
         return;
       }
 
-      const ingredients = isSiliconFlowConfigured()
-        ? parseIngredientJson(
-            await understandIngredientsFromImage({
-              buffer: req.file.buffer,
-              mimetype: req.file.mimetype,
-              filename: req.file.originalname,
-            }),
-            'image',
-          )
-        : extractIngredientsFromFilename(req.file.originalname);
+      const ingredients = parseIngredientJson(
+        await understandIngredientsFromImage({
+          buffer: req.file.buffer,
+          mimetype: req.file.mimetype,
+          filename: req.file.originalname,
+        }),
+        'image',
+      );
 
       res.json({
         data: {

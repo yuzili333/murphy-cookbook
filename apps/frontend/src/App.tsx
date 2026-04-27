@@ -17,6 +17,7 @@ import {
   submitCookingFeedback,
   uploadIngredientImage,
 } from './lib/api';
+import { buildCharacterSpeech, formatPinyin, speak, stopSpeaking } from './lib/speech';
 import type {
   ChildProfile,
   CreateChildProfileInput,
@@ -151,6 +152,7 @@ export default function App() {
   const [favoriteRecipes, setFavoriteRecipes] = useState<RecipeRecommendation[]>([]);
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
+  const [learningRecipe, setLearningRecipe] = useState<RecipeRecommendation | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [manualIngredient, setManualIngredient] = useState('');
   const [voiceTranscript, setVoiceTranscript] = useState('');
@@ -222,6 +224,11 @@ export default function App() {
 
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? null;
   const currentStep = selectedRecipe?.steps[stepIndex] ?? null;
+
+  const closeLearningDrawer = () => {
+    stopSpeaking();
+    setLearningRecipe(null);
+  };
 
   useEffect(() => {
     async function bootstrap() {
@@ -766,9 +773,6 @@ export default function App() {
               <button type="button" className="primary-button" onClick={() => setPage('input')}>
                 开始输入食材
               </button>
-              <button type="button" className="secondary-button" onClick={() => setPage('profile')}>
-                查看档案
-              </button>
             </div>
           </div>
 
@@ -819,36 +823,6 @@ export default function App() {
                 <div className="empty-state">
                   <strong>当前档案还没有最近记录</strong>
                   <p>完成一道菜后，这里会只展示当前孩子做过的菜谱。</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="info-card">
-            <p className="eyebrow">我的收藏</p>
-            <div className="section-header">
-              <div>
-                <h3>{favoriteRecipes.length} 条收藏</h3>
-                <p className="muted">当前档案：{selectedProfile?.nickname ?? '未选择'}</p>
-              </div>
-            </div>
-            <div className="stack-list">
-              {favoriteRecipes.length > 0 ? (
-                favoriteRecipes.map((recipe) => (
-                  <button
-                    key={recipe.id}
-                    type="button"
-                    className="list-button"
-                    onClick={() => void fetchRecipeAndOpen(recipe)}
-                  >
-                    <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
-                    <span>{recipe.difficulty} · {recipe.estimatedTimeMinutes} 分钟</span>
-                  </button>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <strong>当前档案还没有收藏菜谱</strong>
-                  <p>在推荐页点击“收藏”，以后就能快速复用。</p>
                 </div>
               )}
             </div>
@@ -1189,7 +1163,8 @@ export default function App() {
                 <RecipeCard
                   key={recipe.id}
                   recipe={recipe}
-                  onSelect={() => void fetchRecipeAndOpen(recipe)}
+                  onSelect={(id) => void fetchRecipeAndOpen(id)}
+                  onOpenLearning={setLearningRecipe}
                   onToggleFavorite={toggleFavoriteRecipe}
                   isFavorite={favoriteRecipes.some((item) => item.id === recipe.id)}
                 />
@@ -1208,7 +1183,24 @@ export default function App() {
             ) : (
               <>
                 <ZoomableImage className="detail-hero-image" src={selectedRecipe.imageUrl} alt={selectedRecipe.name} />
-                <RecipeName as="h2" name={selectedRecipe.name} pinyin={selectedRecipe.namePinyin} />
+                <div className="detail-name-group">
+                  <button
+                    type="button"
+                    className="name-audio-button detail-chinese-name"
+                    onClick={() => setLearningRecipe(selectedRecipe)}
+                    aria-label={`打开菜名识字抽屉：${selectedRecipe.name}`}
+                  >
+                    <RecipeName as="span" name={selectedRecipe.name} pinyin={selectedRecipe.namePinyin} />
+                  </button>
+                  <button
+                    type="button"
+                    className="name-audio-button english-name"
+                    onClick={() => speak(selectedRecipe.englishName, 'en-US')}
+                    aria-label={`Read English recipe name: ${selectedRecipe.englishName}`}
+                  >
+                    {selectedRecipe.englishName}
+                  </button>
+                </div>
                 <p className="muted">
                   {selectedRecipe.ageRange} · {selectedRecipe.difficulty} · 准备 {selectedRecipe.prepTimeMinutes} 分钟 · 制作 {selectedRecipe.cookTimeMinutes} 分钟
                 </p>
@@ -1490,6 +1482,49 @@ export default function App() {
             </div>
           </div>
         </section>
+      ) : null}
+
+      {learningRecipe ? (
+        <div className="drawer-layer" role="presentation">
+          <button
+            type="button"
+            className="drawer-backdrop"
+            aria-label="关闭菜名识字抽屉"
+            onClick={closeLearningDrawer}
+          />
+          <aside className="learning-drawer" aria-label={`${learningRecipe.name} 菜名识字`}>
+            <div className="drawer-header">
+              <div>
+                <p className="eyebrow">菜名识字</p>
+                <h2>{learningRecipe.name}</h2>
+                <p className="english-title">{learningRecipe.englishName}</p>
+              </div>
+              <button type="button" className="ghost-button" onClick={closeLearningDrawer}>
+                关闭
+              </button>
+            </div>
+            <div className="literacy-grid">
+              {learningRecipe.nameLearning.characters.map((item) => (
+                <button
+                  key={`${learningRecipe.id}-${item.character}`}
+                  type="button"
+                  className="literacy-token"
+                  onClick={() => speak(buildCharacterSpeech(item), 'zh-CN')}
+                  aria-label={`播报汉字 ${item.character}`}
+                >
+                  <ruby className="literacy-ruby">
+                    <span className="literacy-character">{item.character}</span>
+                    <rp>(</rp>
+                    <rt>{formatPinyin(item.pinyin)}</rt>
+                    <rp>)</rp>
+                  </ruby>
+                  <span>{item.strokes} 画 · {item.structure}</span>
+                  <small>{item.hint}</small>
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
       ) : null}
     </AppShell>
   );

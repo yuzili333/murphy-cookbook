@@ -16,6 +16,8 @@
   --shadow: 0 16px 40px rgba(43, 84, 76, 0.12);
   --primary: #ef7e56;
   --secondary: #2f8f83;
+  --accent: #ef7e56;
+  --text: #16313a;
   --text-soft: #5a6f75;
   --warning: #fff1d8;
   --success: #e6faf2;
@@ -62,6 +64,45 @@ button {
 
 .app-shell {
   min-height: 100vh;
+}
+
+.settings-trigger {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(22, 49, 58, 0.12);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(240, 251, 246, 0.92));
+  color: var(--secondary);
+  box-shadow: 0 10px 26px rgba(43, 84, 76, 0.12);
+  backdrop-filter: blur(14px);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.settings-trigger:hover {
+  border-color: rgba(47, 143, 131, 0.34);
+  box-shadow: 0 14px 30px rgba(43, 84, 76, 0.16);
+  transform: translateY(-1px);
+}
+
+.settings-trigger:focus-visible {
+  outline: 3px solid rgba(239, 126, 86, 0.28);
+  outline-offset: 3px;
+}
+
+.settings-trigger-icon {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
 }
 
 .sidebar {
@@ -325,11 +366,30 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   min-width: 0;
 }
 
 .ingredient-listing > div {
+  flex: 1 1 auto;
+  display: grid;
+  gap: 2px;
+  width: 100%;
   min-width: 0;
+}
+
+.ingredient-listing .zoomable-image-button {
+  flex: 0 0 64px;
+  width: 64px;
+  max-width: 64px;
+}
+
+.ingredient-listing strong,
+.ingredient-listing span {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .ingredient-thumb {
@@ -395,82 +455,229 @@ button {
   background: rgba(255, 255, 255, 0.84);
 }
 
+.zoomable-image-button {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  background: transparent;
+  text-align: left;
+}
+
 .recipe-cover,
 .detail-hero-image {
   display: block;
   width: 100%;
-  border-radius: 20px;
+  max-width: 100%;
   object-fit: cover;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .recipe-cover {
   aspect-ratio: 16 / 10;
+  max-height: 240px;
+  border-radius: 18px;
   margin-bottom: 14px;
 }
 
 .detail-hero-image {
   aspect-ratio: 16 / 9;
-  margin-bottom: 16px;
+  max-height: min(420px, 55vh);
+  border-radius: 22px;
+  margin-bottom: 18px;
 }
 
-.zoomable-image-button {
-  display: block;
-  width: 100%;
-  padding: 0;
+.recipe-name-group,
+.detail-name-group {
+  display: grid;
+  gap: 4px;
+}
+
+.name-audio-button {
+  appearance: none;
+  width: fit-content;
   border: 0;
+  padding: 0;
   background: transparent;
+  color: var(--text);
   text-align: left;
+  cursor: pointer;
 }
 
-.zoomable-image-button .ingredient-thumb {
-  display: block;
+.name-audio-button:hover {
+  color: var(--accent);
 }
 
-.image-lightbox {
+.chinese-name {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.detail-chinese-name {
+  font-size: clamp(1.55rem, 5vw, 2.8rem);
+  font-weight: 800;
+  line-height: 1.08;
+}
+
+.english-name,
+.english-title {
+  color: var(--muted);
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+
+.drawer-layer {
   position: fixed;
   inset: 0;
-  z-index: 40;
-  display: grid;
-  place-items: center;
-  padding: 20px;
+  z-index: 20;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
 }
 
-.image-lightbox-backdrop {
+.drawer-backdrop {
   position: absolute;
   inset: 0;
   border: 0;
-  background: rgba(10, 19, 24, 0.72);
-  backdrop-filter: blur(8px);
+  background: rgba(22, 49, 58, 0.28);
+  pointer-events: auto;
 }
 
-.image-lightbox-content {
+.learning-drawer {
   position: relative;
-  z-index: 1;
+  width: min(420px, 100%);
+  min-height: 100%;
+  overflow-y: auto;
+  padding: 20px;
+  border-left: 1px solid var(--border);
+  background: rgba(255, 249, 239, 0.98);
+  box-shadow: -18px 0 48px rgba(22, 49, 58, 0.18);
+  pointer-events: auto;
+  animation: drawer-slide-in 180ms ease-out;
+}
+
+.settings-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.settings-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(22, 49, 58, 0.24);
+  pointer-events: auto;
+}
+
+.settings-drawer {
+  position: relative;
+  width: min(360px, 100%);
+  min-height: 100%;
+  overflow-y: auto;
+  padding: 20px;
+  border-left: 1px solid var(--border);
+  background: rgba(255, 249, 239, 0.98);
+  box-shadow: -18px 0 48px rgba(22, 49, 58, 0.18);
+  pointer-events: auto;
+  animation: drawer-slide-in 180ms ease-out;
+}
+
+.settings-menu {
   display: grid;
   gap: 12px;
-  width: min(100%, 960px);
+  margin-top: 18px;
 }
 
-.image-lightbox-image {
-  display: block;
+.settings-menu-item {
+  display: grid;
+  gap: 4px;
   width: 100%;
-  max-height: min(70vh, 820px);
-  object-fit: contain;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  text-align: left;
 }
 
-.image-lightbox-toolbar {
+.settings-menu-item span {
+  color: var(--text-soft);
+  font-size: 0.94rem;
+}
+
+.settings-menu-item.active {
+  border-color: rgba(239, 126, 86, 0.5);
+  background: linear-gradient(135deg, rgba(239, 126, 86, 0.16), rgba(255, 255, 255, 0.94));
+  box-shadow: var(--shadow);
+}
+
+.drawer-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+}
+
+.drawer-header h2 {
+  margin: 8px 0 4px;
+  font-size: 1.8rem;
+  line-height: 1.1;
+}
+
+.literacy-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.literacy-token {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(47, 143, 131, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  text-align: left;
+}
+
+.literacy-token:hover {
+  border-color: rgba(239, 126, 86, 0.36);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.literacy-ruby {
+  width: fit-content;
+  ruby-align: center;
+}
+
+.literacy-ruby rt {
+  color: var(--secondary);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.literacy-character {
+  font-size: 1.7rem;
+  font-weight: 800;
+}
+
+@keyframes drawer-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
 }
 
 .alert-box,
@@ -519,6 +726,50 @@ button {
 .hero-detail {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 243, 0.92));
+}
+
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.image-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(22, 49, 58, 0.5);
+}
+
+.image-lightbox-content {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  width: min(960px, 100%);
+  max-height: calc(100vh - 48px);
+  padding: 14px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow);
+}
+
+.image-lightbox-image {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(100vh - 150px);
+  border-radius: 18px;
+  object-fit: contain;
+}
+
+.image-lightbox-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .log-entry {
@@ -652,6 +903,12 @@ button {
     flex-basis: 72px;
     width: 72px;
     height: 72px;
+  }
+
+  .ingredient-listing .zoomable-image-button {
+    flex-basis: 72px;
+    width: 72px;
+    max-width: 72px;
   }
 }
 

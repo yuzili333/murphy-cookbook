@@ -44,6 +44,10 @@ test('recommendRecipes returns model-generated recipe matches for existing child
           content: JSON.stringify({
             recipes: [{
               name: '番茄鸡蛋面',
+              englishName: 'Tomato Egg Noodles',
+              nameLearning: {
+                characters: [{ character: '番', pinyin: 'fān', strokes: 12, structure: '上下结构', hint: '上面像采字头，下面是田。' }],
+              },
               ageRange: '7-12 岁',
               difficulty: 'easy',
               estimatedTimeMinutes: 20,
@@ -87,6 +91,11 @@ test('recommendRecipes returns model-generated recipe matches for existing child
   } else {
     delete process.env.SILICONFLOW_API_KEY;
   }
+  assert.ok(result.data);
+  assert.equal(result.data?.recipes[0].name, '番茄鸡蛋面');
+  assert.equal(result.data?.recipes[0].englishName, 'Tomato Egg Noodles');
+  assert.equal(result.data?.recipes[0].nameLearning.characters[0].character, '番');
+  assert.equal(result.data?.filteredAllergens[0], '花生');
 });
 
 test('parseIngredientJson converts LLM json output to ingredient items', () => {
@@ -471,7 +480,10 @@ test('getRecipeDetailForRecommendation generates detail on demand from recipe ca
     recipe: {
       id: 'recipe_dynamic_001',
       name: '西兰花鸡蛋软面',
-      imageUrl: 'https://example.com/cover.jpg',
+      englishName: 'Broccoli Egg Soft Noodles',
+      nameLearning: {
+        characters: [{ character: '西', pinyin: 'xī', strokes: 6, structure: '独体字', hint: '先从菜名里读一读。' }],
+      },
       ageRange: '7-12 岁',
       difficulty: 'easy',
       estimatedTimeMinutes: 20,
@@ -527,6 +539,10 @@ test('generateCookingFeedback returns parsed feedback fields', async () => {
     recipe: {
       id: 'recipe_test',
       name: '番茄鸡蛋面',
+      englishName: 'Tomato Egg Noodles',
+      nameLearning: {
+        characters: [{ character: '番', pinyin: 'fān', strokes: 12, structure: '上下结构', hint: '上面像采字头，下面是田。' }],
+      },
       ageRange: '7-12 岁',
       difficulty: 'easy',
       estimatedTimeMinutes: 20,
