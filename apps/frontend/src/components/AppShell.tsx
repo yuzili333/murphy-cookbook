@@ -5,6 +5,7 @@ import type { PageId } from '../types';
 interface AppShellProps {
   currentPage: PageId;
   onNavigate: (page: PageId) => void;
+  onOpenConversations?: () => void;
   children: ReactNode;
 }
 
@@ -19,7 +20,7 @@ const pageOrder: PageId[] = [
   'logs',
 ];
 
-const settingsPages: PageId[] = ['favorites', 'profile'];
+const settingsPages: PageId[] = ['favorites'];
 
 const pageLabels: Record<PageId, string> = {
   home: '首页',
@@ -34,7 +35,7 @@ const pageLabels: Record<PageId, string> = {
   logs: '调试日志',
 };
 
-export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
+export function AppShell({ currentPage, onNavigate, onOpenConversations, children }: AppShellProps) {
   const navRef = useRef<HTMLElement>(null);
   const mainPanelRef = useRef<HTMLElement>(null);
   const touchStartXRef = useRef<number | null>(null);
@@ -125,12 +126,21 @@ export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
         </svg>
       </button>
       <aside className="sidebar">
+        <button
+          type="button"
+          className="chat-menu-button"
+          onClick={() => {
+            onNavigate('home');
+            onOpenConversations?.();
+          }}
+          aria-label="打开历史对话"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M4.8 6.8h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 0 0 0 1.8Zm0 6.1h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 1 0 0 1.8Zm0 6.1h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 1 0 0 1.8Z" />
+          </svg>
+        </button>
         <div className="brand-block">
-          <p className="eyebrow">Murphy's Cookbook</p>
-          <h1>儿童烹饪食谱智能体</h1>
-          <p className="muted">
-            用现有食材，完成安全、适龄、可执行的亲子料理。
-          </p>
+          <h2 className="eyebrow">Murphy's Cookbook</h2>
         </div>
         <nav ref={navRef} className="progress-nav" aria-label="MVP page flow">
           {pageOrder.map((page, index) => (
@@ -162,7 +172,7 @@ export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
             <div className="drawer-header">
               <div>
                 <p className="eyebrow">用户设置</p>
-                <h2>管理家庭资料</h2>
+                <h2>用户设置</h2>
               </div>
               <button type="button" className="ghost-button" onClick={() => setIsSettingsOpen(false)}>
                 关闭
@@ -177,7 +187,7 @@ export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
                   onClick={() => handleSettingsNavigate(page)}
                 >
                   <strong>{pageLabels[page]}</strong>
-                  <span>{page === 'favorites' ? '查看和管理已收藏菜谱' : '选择或新增儿童档案'}</span>
+                  <span>查看和管理已收藏菜谱</span>
                 </button>
               ))}
             </div>

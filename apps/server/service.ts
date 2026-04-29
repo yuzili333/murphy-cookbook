@@ -135,6 +135,7 @@ export async function recommendRecipes(
   profileId: string,
   ingredients: IngredientItem[],
   profileInput?: Partial<ChildProfile> | null,
+  userPrompt = '',
 ): Promise<RecommendationResult> {
   const validation = validateRecommendationInput(profileId, ingredients, profileInput);
 
@@ -160,7 +161,7 @@ export async function recommendRecipes(
 
   try {
     return {
-      data: await generateRecipePlan(profile, ingredients),
+      data: await generateRecipePlan(profile, ingredients, userPrompt),
     };
   } catch (error) {
     if (!shouldRequireRealModel()) {

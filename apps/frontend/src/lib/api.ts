@@ -97,12 +97,13 @@ export function uploadVoiceAudio(file: File) {
   });
 }
 
-export function fetchRecommendations(profile: ChildProfile, ingredients: IngredientItem[]) {
+export function fetchRecommendations(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
   return request<RecommendationResponse>('/recommendations/recipes', {
     method: 'POST',
     body: JSON.stringify({
       profileId: profile.id,
       profile,
+      userPrompt,
       ingredients: ingredients.map((ingredient) => ({
         name: ingredient.name,
         normalizedName: ingredient.normalizedName ?? ingredient.name,

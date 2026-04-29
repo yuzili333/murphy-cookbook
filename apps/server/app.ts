@@ -249,7 +249,8 @@ export function createApp(): Express {
     const profileId = String(req.body?.profileId ?? '');
     const ingredients = req.body?.ingredients ?? [];
     const profile = req.body?.profile ?? null;
-    const result = await recommendRecipes(profileId, ingredients, profile);
+    const userPrompt = String(req.body?.userPrompt ?? '');
+    const result = await recommendRecipes(profileId, ingredients, profile, userPrompt);
 
     if ('error' in result) {
       const status =

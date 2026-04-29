@@ -19,3 +19,6 @@ apps/server/logs/
 !.env.example
 apps/*/.env
 apps/*/.env.*
+
+# qianwen
+apps/frontend/qianwen

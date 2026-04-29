@@ -483,7 +483,7 @@ function normalizeGeneratedRecipeSummaries(
   } satisfies GeneratedRecommendationSummaryPayload;
 }
 
-function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: IngredientItem[]) {
+function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
   const ingredientLines = ingredients
     .map((item, index) => `${index + 1}. ${item.name}｜数量:${item.quantity}｜来源:${item.source}`)
     .join('\n');
@@ -500,10 +500,12 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
     '任务: 为儿童生成 5 个推荐菜谱卡片，并输出严格 JSON。',
     '儿童档案:',
     profileLines,
+    userPrompt.trim() ? '用户本轮对话描述:' : '',
+    userPrompt.trim() ? userPrompt.trim() : '',
     '现有食材清单:',
     ingredientLines,
     '生成要求:',
-    '1. 只返回 5 道推荐菜谱，优先使用现有食材，缺少食材尽量少。',
+    '1. 只返回 5 道推荐菜谱，优先使用现有食材，并结合用户本轮对话里的口味、场景、时间和限制条件；缺少食材尽量少。',
     '2. 菜谱要适合儿童年龄、口味和饮食习惯。',
     '3. 严格避开过敏原和明显不适宜儿童的做法。',
     '4. 这里只生成推荐卡片摘要，不要生成步骤、配料明细、prepTimeMinutes、cookTimeMinutes。',
@@ -625,7 +627,7 @@ export async function understandIngredientsFromImage(file: {
   return content;
 }
 
-export async function generateRecipePlan(profile: ChildProfile, ingredients: IngredientItem[]) {
+export async function generateRecipePlan(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
   const content = await callSiliconFlow([
     {
       role: 'system',
@@ -634,7 +636,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     },
     {
       role: 'user',
-      content: buildRecipePlanUserPrompt(profile, ingredients),
+      content: buildRecipePlanUserPrompt(profile, ingredients, userPrompt),
     },
   ], {
     operation: 'generate_recipe_plan',
@@ -644,6 +646,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
       age: profile.age,
       ingredientCount: ingredients.length,
       ingredientNames: ingredients.map((item) => item.name),
+      userPromptLength: userPrompt.length,
     },
   });
 

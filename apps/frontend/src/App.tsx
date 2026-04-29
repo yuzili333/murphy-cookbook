@@ -8,7 +8,6 @@ import { ZoomableImage } from './components/ZoomableImage';
 import { quickIngredients } from './data/constants';
 import {
   createChildProfile,
-  fetchChildProfiles,
   fetchGeneratedRecipeDetail,
   fetchLlmLogs,
   fetchRecipeDetail,
@@ -34,8 +33,58 @@ const defaultDifficultyFeedback = '煮面的时候有点难。';
 const localProfilesStorageKey = 'murphy-cookbook.local-profiles.v1';
 const recentCookedStorageKey = 'murphy-cookbook.recent-cooked.v1';
 const favoriteRecipesStorageKey = 'murphy-cookbook.favorite-recipes.v1';
+const chatMessagesStorageKey = 'murphy-cookbook.chat-messages.v1';
+const likedRecipesStorageKey = 'murphy-cookbook.liked-recipes.v1';
+const childContextStorageKey = 'murphy-cookbook.child-context.v1';
+const chatSessionsStorageKey = 'murphy-cookbook.chat-sessions.v1';
+const activeChatSessionStorageKey = 'murphy-cookbook.active-chat-session.v1';
+const conversationProfileId = 'chat_context_profile';
 type RecentCookedByProfile = Record<string, RecipeDetail[]>;
 type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  createdAt: string;
+  ingredients?: IngredientItem[];
+  recipes?: RecipeRecommendation[];
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  childContext: string;
+  ingredients: IngredientItem[];
+  messages: ChatMessage[];
+}
+
+function createWelcomeMessage(childContext = ''): ChatMessage {
+  return {
+    id: `chat_welcome_${crypto.randomUUID()}`,
+    role: 'assistant',
+    text: childContext
+      ? '你好，我是 Murphy 的儿童菜谱助手。孩子情况已保存，告诉我今天有什么食材，也可以拍照上传。'
+      : '你好，我是 Murphy 的儿童菜谱助手。首次使用前，请先告诉我孩子的年龄、是否有过敏原、饮食偏好和口味偏好。例如：孩子 7 岁，无过敏，喜欢软一点、少油少盐，不吃辣。',
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function createChatSession(input?: Partial<ChatSession>): ChatSession {
+  const now = new Date().toISOString();
+  const childContext = input?.childContext ?? '';
+  return {
+    id: input?.id ?? `session_${crypto.randomUUID()}`,
+    title: input?.title ?? '新对话',
+    createdAt: input?.createdAt ?? now,
+    updatedAt: input?.updatedAt ?? now,
+    childContext,
+    ingredients: input?.ingredients ?? [],
+    messages: input?.messages?.length ? input.messages : [createWelcomeMessage(childContext)],
+  };
+}
 
 function readLocalProfiles() {
   if (typeof window === 'undefined') {
@@ -115,6 +164,140 @@ function persistFavoriteRecipes(recipes: FavoriteRecipesByProfile) {
   window.localStorage.setItem(favoriteRecipesStorageKey, JSON.stringify(recipes));
 }
 
+function readChatMessages() {
+  if (typeof window === 'undefined') {
+    return [] as ChatMessage[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(chatMessagesStorageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistChatMessages(messages: ChatMessage[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(chatMessagesStorageKey, JSON.stringify(messages.slice(-40)));
+}
+
+function readLikedRecipeIds() {
+  if (typeof window === 'undefined') {
+    return [] as string[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(likedRecipesStorageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as string[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistLikedRecipeIds(ids: string[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(likedRecipesStorageKey, JSON.stringify(ids));
+}
+
+function readChildContext() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return window.localStorage.getItem(childContextStorageKey) ?? '';
+}
+
+function persistChildContext(context: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(childContextStorageKey, context);
+}
+
+function readChatSessions() {
+  if (typeof window === 'undefined') {
+    return [] as ChatSession[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(chatSessionsStorageKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ChatSession[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistChatSessions(sessions: ChatSession[]) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(chatSessionsStorageKey, JSON.stringify(sessions.slice(0, 30)));
+}
+
+function readActiveChatSessionId() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return window.localStorage.getItem(activeChatSessionStorageKey) ?? '';
+}
+
+function persistActiveChatSessionId(sessionId: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(activeChatSessionStorageKey, sessionId);
+}
+
+function buildSessionTitle(messages: ChatMessage[], childContext: string) {
+  const firstUserMessage = messages.find((message) => message.role === 'user')?.text ?? childContext;
+  const normalized = firstUserMessage.trim().replace(/\s+/g, ' ');
+  return normalized ? normalized.slice(0, 24) : '新对话';
+}
+
+function buildConversationProfile(childContext: string): ChildProfile {
+  const ageMatch = childContext.match(/(\d{1,2})\s*岁/);
+  const age = ageMatch ? Number(ageMatch[1]) : 8;
+
+  return {
+    id: conversationProfileId,
+    nickname: '当前孩子',
+    age: Number.isFinite(age) && age > 0 ? age : 8,
+    tastePreferences: childContext ? [`对话记录：${childContext}`] : [],
+    allergens: childContext.includes('无过敏') || childContext.includes('没有过敏') ? [] : ['见对话记录'],
+    dietaryHabits: childContext ? [`对话记录：${childContext}`] : [],
+  };
+}
+
+function mergeIngredientItems(current: IngredientItem[], nextItems: IngredientItem[]) {
+  const merged = [...current];
+
+  for (const item of nextItems) {
+    const exists = merged.some((currentItem) => currentItem.name === item.name);
+    if (!exists) {
+      merged.push(item);
+    }
+  }
+
+  return merged;
+}
+
 function mergeRecentCookedRecipes(nextRecipe: RecipeDetail, currentRecipes: RecipeDetail[]) {
   const deduped = [nextRecipe, ...currentRecipes.filter((recipe) => recipe.id !== nextRecipe.id)];
   return deduped.slice(0, 8);
@@ -137,19 +320,34 @@ function parseTagInput(value: string) {
     .filter(Boolean);
 }
 
+function PlayInlineIcon() {
+  return (
+    <svg className="inline-play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M8.2 5.6v12.8c0 .75.82 1.21 1.46.82l10.1-6.4a.97.97 0 0 0 0-1.64l-10.1-6.4a.96.96 0 0 0-1.46.82Z" />
+      <path d="M4.8 6.6a.9.9 0 0 1 1.8 0v10.8a.9.9 0 1 1-1.8 0V6.6Z" />
+    </svg>
+  );
+}
+
 export default function App() {
   const cameraImageInputRef = useRef<HTMLInputElement>(null);
   const fileImageInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
 
   const [page, setPage] = useState<PageId>('home');
   const [profiles, setProfiles] = useState<ChildProfile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
   const [recommendations, setRecommendations] = useState<RecipeRecommendation[]>([]);
-  const [recentCooked, setRecentCooked] = useState<RecipeDetail[]>([]);
   const [recentCookedByProfile, setRecentCookedByProfile] = useState<RecentCookedByProfile>({});
   const [favoriteRecipesByProfile, setFavoriteRecipesByProfile] = useState<FavoriteRecipesByProfile>({});
   const [favoriteRecipes, setFavoriteRecipes] = useState<RecipeRecommendation[]>([]);
+  const [likedRecipeIds, setLikedRecipeIds] = useState<string[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeChatSessionId, setActiveChatSessionId] = useState('');
+  const [isConversationDrawerOpen, setIsConversationDrawerOpen] = useState(false);
+  const [childContext, setChildContext] = useState('');
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
   const [learningRecipe, setLearningRecipe] = useState<RecipeRecommendation | null>(null);
@@ -180,6 +378,7 @@ export default function App() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isListeningVoice, setIsListeningVoice] = useState(false);
   const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false);
+  const [isChatSending, setIsChatSending] = useState(false);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
@@ -222,7 +421,9 @@ export default function App() {
     speakText(`${recipe.name}。一共${recipe.steps.length}步。${stepTitles}。点击每一步的朗读按钮，可以继续听详细讲解。`);
   };
 
-  const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? null;
+  const hasChildContext = childContext.trim().length > 0;
+  const conversationProfile = buildConversationProfile(childContext);
+  const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? conversationProfile;
   const currentStep = selectedRecipe?.steps[stepIndex] ?? null;
 
   const closeLearningDrawer = () => {
@@ -237,15 +438,36 @@ export default function App() {
         const localProfileData = readLocalProfiles();
         const localRecentCooked = readRecentCookedRecipes();
         const localFavoriteRecipes = readFavoriteRecipes();
+        const localChatMessages = readChatMessages();
+        const localLikedRecipeIds = readLikedRecipeIds();
+        const localChildContext = readChildContext();
+        const localChatSessions = readChatSessions();
+        const localActiveChatSessionId = readActiveChatSessionId();
         setLocalProfiles(localProfileData);
-        const profileData = await fetchChildProfiles();
-        const mergedProfiles = mergeProfiles(profileData, localProfileData);
+        const mergedProfiles = mergeProfiles([], localProfileData);
         setProfiles(mergedProfiles);
-        setSelectedProfileId((current) => current || mergedProfiles[0]?.id || '');
+        setSelectedProfileId((current) => current || conversationProfileId);
         setRecentCookedByProfile(localRecentCooked);
-        setRecentCooked(localRecentCooked[mergedProfiles[0]?.id ?? ''] ?? []);
         setFavoriteRecipesByProfile(localFavoriteRecipes);
-        setFavoriteRecipes(localFavoriteRecipes[mergedProfiles[0]?.id ?? ''] ?? []);
+        setFavoriteRecipes(localFavoriteRecipes[conversationProfileId] ?? []);
+        const initialSessions = localChatSessions.length > 0
+          ? localChatSessions
+          : [createChatSession({
+              childContext: localChildContext,
+              messages: localChatMessages.length > 0 ? localChatMessages : undefined,
+              title: buildSessionTitle(localChatMessages, localChildContext),
+            })];
+        const activeSession =
+          initialSessions.find((session) => session.id === localActiveChatSessionId) ?? initialSessions[0];
+        setChatSessions(initialSessions);
+        setActiveChatSessionId(activeSession.id);
+        setChildContext(activeSession.childContext);
+        setIngredients(activeSession.ingredients);
+        setChatMessages(activeSession.messages);
+        const activeRecipes = activeSession.messages.flatMap((message) => message.recipes ?? []).slice(-5);
+        setRecommendations(activeRecipes);
+        void fetchDetailsForRecipeCards(activeRecipes, activeSession.ingredients, buildConversationProfile(activeSession.childContext));
+        setLikedRecipeIds(localLikedRecipeIds);
       } catch (bootstrapError) {
         setError(bootstrapError instanceof Error ? bootstrapError.message : '初始化失败，请稍后重试。');
       } finally {
@@ -257,34 +479,216 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (selectedProfileId && profiles.some((profile) => profile.id === selectedProfileId)) {
+    if (selectedProfileId === conversationProfileId || profiles.some((profile) => profile.id === selectedProfileId)) {
       return;
     }
 
-    setSelectedProfileId(profiles[0]?.id ?? '');
+    setSelectedProfileId(conversationProfileId);
   }, [profiles, selectedProfileId]);
 
   useEffect(() => {
-    setRecentCooked(recentCookedByProfile[selectedProfileId] ?? []);
-  }, [recentCookedByProfile, selectedProfileId]);
+    setFavoriteRecipes(favoriteRecipesByProfile[selectedProfileId || conversationProfileId] ?? []);
+  }, [favoriteRecipesByProfile, selectedProfileId]);
 
   useEffect(() => {
-    setFavoriteRecipes(favoriteRecipesByProfile[selectedProfileId] ?? []);
-  }, [favoriteRecipesByProfile, selectedProfileId]);
+    if (chatMessages.length > 0) {
+      persistChatMessages(chatMessages);
+    }
+  }, [chatMessages]);
+
+  useEffect(() => {
+    if (isBootstrapping || !activeChatSessionId) {
+      return;
+    }
+
+    setChatSessions((current) => {
+      const updatedAt = new Date().toISOString();
+      const nextSession = createChatSession({
+        id: activeChatSessionId,
+        childContext,
+        ingredients,
+        messages: chatMessages,
+        title: buildSessionTitle(chatMessages, childContext),
+        createdAt: current.find((session) => session.id === activeChatSessionId)?.createdAt,
+        updatedAt,
+      });
+      const next = [
+        nextSession,
+        ...current.filter((session) => session.id !== activeChatSessionId),
+      ].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+      persistChatSessions(next);
+      persistActiveChatSessionId(activeChatSessionId);
+      return next;
+    });
+  }, [activeChatSessionId, chatMessages, childContext, ingredients, isBootstrapping]);
+
+  useEffect(() => {
+    persistLikedRecipeIds(likedRecipeIds);
+  }, [likedRecipeIds]);
+
+  useEffect(() => {
+    persistChildContext(childContext);
+  }, [childContext]);
 
   const appendIngredients = (items: IngredientItem[]) => {
     setIngredients((current) => {
-      const merged = [...current];
+      return mergeIngredientItems(current, items);
+    });
+  };
 
-      for (const item of items) {
-        const exists = merged.some((currentItem) => currentItem.name === item.name);
-        if (!exists) {
-          merged.push(item);
-        }
+  const addChatMessage = (message: Omit<ChatMessage, 'id' | 'createdAt'>) => {
+    const nextMessage: ChatMessage = {
+      ...message,
+      id: `chat_${crypto.randomUUID()}`,
+      createdAt: new Date().toISOString(),
+    };
+    setChatMessages((current) => [...current, nextMessage].slice(-40));
+    return nextMessage;
+  };
+
+  const handleNewConversation = () => {
+    const session = createChatSession();
+    setActiveChatSessionId(session.id);
+    setChildContext('');
+    setIngredients([]);
+    setRecommendations([]);
+    setRecipeDetailsById({});
+    setSelectedRecipe(null);
+    setChatMessages(session.messages);
+    setChatSessions((current) => {
+      const next = [session, ...current.filter((item) => item.id !== session.id)];
+      persistChatSessions(next);
+      persistActiveChatSessionId(session.id);
+      return next;
+    });
+    setIsConversationDrawerOpen(false);
+    setPage('home');
+  };
+
+  const handleSelectConversation = (session: ChatSession) => {
+    const sessionRecipes = session.messages.flatMap((message) => message.recipes ?? []).slice(-5);
+    setActiveChatSessionId(session.id);
+    setChildContext(session.childContext);
+    setIngredients(session.ingredients);
+    setChatMessages(session.messages);
+    setRecommendations(sessionRecipes);
+    setRecipeDetailsById({});
+    setSelectedRecipe(null);
+    void fetchDetailsForRecipeCards(sessionRecipes, session.ingredients, buildConversationProfile(session.childContext));
+    persistActiveChatSessionId(session.id);
+    setIsConversationDrawerOpen(false);
+    setPage('home');
+  };
+
+  const fetchDetailsForRecipeCards = async (
+    recipes: RecipeRecommendation[],
+    nextIngredients: IngredientItem[],
+    profile: ChildProfile = selectedProfile,
+  ) => {
+    if (!profile) {
+      return;
+    }
+
+    setIsFetchingDetail(true);
+    try {
+      const details = await Promise.all(
+        recipes.map((recipe) =>
+          fetchGeneratedRecipeDetail({
+            profileId: profile.id,
+            profile,
+            ingredients: nextIngredients,
+            recipe,
+          }).catch(() => null),
+        ),
+      );
+
+      setRecipeDetailsById((current) => {
+        const next = { ...current };
+        details.forEach((detail, index) => {
+          const recipe = recipes[index];
+          if (detail && recipe) {
+            next[recipe.id] = detail;
+            next[detail.id] = detail;
+          }
+        });
+        return next;
+      });
+    } finally {
+      setIsFetchingDetail(false);
+    }
+  };
+
+  const requestChatRecommendations = async (prompt: string, nextIngredients: IngredientItem[]) => {
+    if (!hasChildContext) {
+      addChatMessage({
+        role: 'assistant',
+        text: '推荐前需要先了解孩子情况。请先描述孩子的年龄、是否有过敏原、饮食偏好和口味偏好。',
+      });
+      return;
+    }
+
+    if (nextIngredients.length === 0) {
+      addChatMessage({
+        role: 'assistant',
+        text: '我还没有识别到可用食材。你可以输入“鸡蛋、番茄、黄瓜”，或直接拍一张食材照片。',
+      });
+      return;
+    }
+
+    const recommendationPrompt = [
+      `儿童情况：${childContext.trim()}`,
+      `用户本轮输入：${prompt}`,
+    ].join('\n');
+    const data = await fetchRecommendations(selectedProfile, nextIngredients, recommendationPrompt);
+    const recipes = data.recipes.slice(0, 5);
+    setRecommendations(recipes);
+    void fetchDetailsForRecipeCards(recipes, nextIngredients);
+    addChatMessage({
+      role: 'assistant',
+      text: `根据${nextIngredients.map((item) => item.name).join('、')}，结合孩子情况推荐了 ${recipes.length} 道菜。`,
+      recipes,
+    });
+    setManualIngredient('');
+    setVoiceTranscript(prompt);
+  };
+
+  const handleChatSubmit = async (text = manualIngredient) => {
+    const prompt = text.trim();
+    if (!prompt || isChatSending) return;
+
+    try {
+      setIsChatSending(true);
+      setError('');
+      addChatMessage({ role: 'user', text: prompt });
+
+      if (!hasChildContext) {
+        setChildContext(prompt);
+        addChatMessage({
+          role: 'assistant',
+          text: '已保存孩子情况。现在可以告诉我家里有什么食材，也可以拍照上传，我会在每次推荐时自动带上这些信息。',
+        });
+        setManualIngredient('');
+        return;
       }
 
-      return merged;
-    });
+      const parsed = await parseIngredientText(prompt);
+      const nextIngredients = mergeIngredientItems(ingredients, parsed.ingredients);
+      setIngredients(nextIngredients);
+      addChatMessage({
+        role: 'assistant',
+        text: parsed.ingredients.length > 0 ? '我识别到了这些食材，可以继续补充，也可以直接生成推荐。' : '我暂时没有识别到明确食材，可以换一种说法再试。',
+        ingredients: parsed.ingredients,
+      });
+      await requestChatRecommendations(prompt, nextIngredients);
+    } catch (chatError) {
+      setError(chatError instanceof Error ? chatError.message : '菜谱推荐失败。');
+      addChatMessage({
+        role: 'assistant',
+        text: chatError instanceof Error ? chatError.message : '菜谱推荐失败，请稍后再试。',
+      });
+    } finally {
+      setIsChatSending(false);
+    }
   };
 
   const handleManualParse = async () => {
@@ -310,9 +714,26 @@ export default function App() {
     try {
       setIsUploadingImage(true);
       setError('');
+      addChatMessage({ role: 'user', text: `上传图片：${file.name}` });
+
+      if (!hasChildContext) {
+        addChatMessage({
+          role: 'assistant',
+          text: '推荐前需要先了解孩子情况。请先用文字描述孩子的年龄、是否有过敏原、饮食偏好和口味偏好，然后再上传或拍摄食材。',
+        });
+        return;
+      }
+
       const data = await uploadIngredientImage(file);
-      appendIngredients(data.ingredients);
+      const nextIngredients = mergeIngredientItems(ingredients, data.ingredients);
+      setIngredients(nextIngredients);
       setLastUploadMessage(`已上传图片 ${data.upload.filename}，识别到 ${data.ingredients.length} 项食材。`);
+      addChatMessage({
+        role: 'assistant',
+        text: data.ingredients.length > 0 ? '我从图片里识别到了这些食材。' : '我暂时没有从图片里识别到明确食材。',
+        ingredients: data.ingredients,
+      });
+      await requestChatRecommendations(file.name, nextIngredients);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : '图片上传失败。');
     } finally {
@@ -417,8 +838,7 @@ export default function App() {
         setLastUploadMessage('语音识别完成，正在解析食材。');
 
         try {
-          const data = await parseIngredientText(transcript);
-          appendIngredients(data.ingredients);
+          await handleChatSubmit(transcript);
           setLastUploadMessage(`语音识别成功：${transcript}`);
         } catch (parseError) {
           setError(parseError instanceof Error ? parseError.message : '语音文本解析失败。');
@@ -461,6 +881,17 @@ export default function App() {
 
   const removeIngredient = (id: string) => {
     setIngredients((current) => current.filter((item) => item.id !== id));
+  };
+
+  const focusChatInput = () => {
+    setManualIngredient('');
+    chatInputRef.current?.focus();
+  };
+
+  const handleSearchWithCurrentIngredients = async (sourceIngredients?: IngredientItem[]) => {
+    const nextIngredients = ingredients.length > 0 ? ingredients : sourceIngredients ?? [];
+    setIngredients((current) => mergeIngredientItems(current, sourceIngredients ?? []));
+    await requestChatRecommendations('请根据当前已识别食材推荐菜谱', nextIngredients);
   };
 
   const fetchRecipeAndOpen = async (recipeOrId: string | RecipeRecommendation) => {
@@ -638,21 +1069,6 @@ export default function App() {
     });
   };
 
-  const clearRecentCookedRecipes = () => {
-    if (!selectedProfileId) {
-      return;
-    }
-
-    setRecentCookedByProfile((current) => {
-      const next = {
-        ...current,
-        [selectedProfileId]: [],
-      };
-      persistRecentCookedRecipes(next);
-      return next;
-    });
-  };
-
   const toggleFavoriteRecipe = (recipe: RecipeRecommendation) => {
     if (!selectedProfileId) {
       setError('请先选择儿童档案后再收藏菜谱。');
@@ -725,11 +1141,11 @@ export default function App() {
 
   if (isBootstrapping) {
     return (
-      <AppShell currentPage="home" onNavigate={setPage}>
+      <AppShell currentPage="home" onNavigate={setPage} onOpenConversations={() => setIsConversationDrawerOpen(true)}>
         <section className="page-grid">
           <div className="panel">
             <p className="eyebrow">初始化中</p>
-            <h2>正在加载儿童档案和最近做过的菜谱…</h2>
+            <h2>正在加载对话和收藏菜谱…</h2>
           </div>
         </section>
       </AppShell>
@@ -737,7 +1153,7 @@ export default function App() {
   }
 
   return (
-    <AppShell currentPage={page} onNavigate={setPage}>
+    <AppShell currentPage={page} onNavigate={setPage} onOpenConversations={() => setIsConversationDrawerOpen(true)}>
       <input
         ref={cameraImageInputRef}
         className="sr-only-input"
@@ -754,6 +1170,48 @@ export default function App() {
         onChange={(event) => void handleImageFileChange(event)}
       />
 
+      {isConversationDrawerOpen ? (
+        <div className="conversation-layer" role="presentation">
+          <button
+            type="button"
+            className="conversation-backdrop"
+            aria-label="关闭历史对话"
+            onClick={() => setIsConversationDrawerOpen(false)}
+          />
+          <aside className="conversation-drawer" aria-label="历史对话">
+            <div className="conversation-drawer-header">
+              <div>
+                <p className="eyebrow">历史对话</p>
+                <h2>Murphy</h2>
+              </div>
+              <button type="button" className="ghost-button" onClick={() => setIsConversationDrawerOpen(false)}>
+                关闭
+              </button>
+            </div>
+            <button type="button" className="new-chat-button" onClick={handleNewConversation}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 5.2a.9.9 0 0 1 .9.9v5h5a.9.9 0 1 1 0 1.8h-5v5a.9.9 0 1 1-1.8 0v-5h-5a.9.9 0 1 1 0-1.8h5v-5a.9.9 0 0 1 .9-.9Z" />
+              </svg>
+              新建对话
+            </button>
+            <div className="conversation-list">
+              <p className="conversation-group-title">最近</p>
+              {chatSessions.map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  className={session.id === activeChatSessionId ? 'conversation-item active' : 'conversation-item'}
+                  onClick={() => handleSelectConversation(session)}
+                >
+                  <strong>{session.title}</strong>
+                  <span>{session.childContext || '等待填写儿童情况'}</span>
+                </button>
+              ))}
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="alert-box error-banner">
           <strong>当前提示</strong>
@@ -762,70 +1220,213 @@ export default function App() {
       ) : null}
 
       {page === 'home' ? (
-        <section className="page-grid">
-          <div className="hero-card">
-            <p className="eyebrow">今日任务</p>
-            <h2>用家里现有食材，给 {selectedProfile?.nickname ?? '孩子'} 做一份安全又好吃的儿童餐。</h2>
-            <p className="muted">
-              图片支持分开拍摄与本地上传，语音优先调用当前设备系统麦克风与语音转文字能力，优先适配手机和平板浏览器。
-            </p>
-            <div className="action-row">
-              <button type="button" className="primary-button" onClick={() => setPage('input')}>
-                开始输入食材
-              </button>
+        <section className="chatbox-page">
+          <div className="chatbox-hero">
+            <div>
+              <p className="eyebrow">Murphy's Cookbook</p>
+              <h2>{hasChildContext ? '告诉我今天有什么食材' : '先描述孩子情况'}</h2>
+              <p className="muted">
+                {hasChildContext
+                  ? '我会把已保存的年龄、过敏原、饮食偏好和口味偏好带入每次菜谱推荐。'
+                  : '请先输入孩子年龄、是否有过敏原、饮食偏好和口味偏好，保存后再开始推荐菜谱。'}
+              </p>
+            </div>
+            <div className="chatbox-profile-pill">
+              <strong>{hasChildContext ? '儿童情况已保存' : '等待儿童情况'}</strong>
+              <span>{hasChildContext ? childContext : '例如：孩子 7 岁，无过敏，少油少盐，不吃辣。'}</span>
             </div>
           </div>
 
-          <div className="info-card">
-            <p className="eyebrow">当前儿童档案</p>
-            {selectedProfile ? (
-              <>
-                <h3>{selectedProfile.nickname} · {selectedProfile.age} 岁</h3>
-                <p>口味偏好：{selectedProfile.tastePreferences.join('、')}</p>
-                <p>过敏原：{selectedProfile.allergens.join('、')}</p>
-                <p>饮食习惯：{selectedProfile.dietaryHabits.join('、')}</p>
-              </>
-            ) : (
-              <p>暂未加载档案。</p>
-            )}
-          </div>
-
-          <div className="info-card">
-            <p className="eyebrow">最近做过</p>
-            <div className="section-header">
-              <div>
-                <h3>{recentCooked.length} 条记录</h3>
-                <p className="muted">当前档案：{selectedProfile?.nickname ?? '未选择'}</p>
-              </div>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={clearRecentCookedRecipes}
-                disabled={recentCooked.length === 0}
-              >
-                清空最近记录
-              </button>
-            </div>
-            <div className="stack-list">
-              {recentCooked.length > 0 ? (
-                recentCooked.map((recipe) => (
-                  <button
-                    key={recipe.id}
-                    type="button"
-                    className="list-button"
-                    onClick={() => void fetchRecipeAndOpen(recipe.id)}
-                  >
-                    <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
-                    <span>{recipe.difficulty} · {recipe.estimatedTimeMinutes} 分钟</span>
-                  </button>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <strong>当前档案还没有最近记录</strong>
-                  <p>完成一道菜后，这里会只展示当前孩子做过的菜谱。</p>
+          <div className="chat-thread" aria-live="polite">
+            {chatMessages.map((message) => (
+              <article key={message.id} className={message.role === 'user' ? 'chat-message user' : 'chat-message assistant'}>
+                <div className="chat-bubble">
+                  <p>{message.text}</p>
                 </div>
-              )}
-            </div>
+                {message.ingredients?.length ? (
+                  <div className="ingredient-card-row" aria-label="识别出的食材">
+                    {message.ingredients.map((ingredient) => (
+                      <article key={`${message.id}_${ingredient.id}`} className="chat-ingredient-card">
+                        <strong>{ingredient.name}</strong>
+                        <span>{ingredient.quantity}</span>
+                        <small>{ingredient.source === 'image' ? '图片识别' : ingredient.source === 'voice' ? '语音识别' : '文字识别'}</small>
+                      </article>
+                    ))}
+                    <div className="ingredient-card-actions">
+                      <button type="button" className="ghost-button" onClick={focusChatInput}>
+                        继续新增
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void handleSearchWithCurrentIngredients(message.ingredients)}
+                        disabled={isChatSending}
+                      >
+                        搜索菜谱
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {message.recipes?.length ? (
+                  <div className="recipe-carousel" aria-label="推荐菜谱">
+                    {message.recipes.map((recipe) => (
+                      <article key={`${message.id}_${recipe.id}`} className="carousel-recipe-card">
+                        <button
+                          type="button"
+                          className="name-audio-button carousel-recipe-name"
+                          onClick={() => speak(recipe.name, 'zh-CN')}
+                          aria-label={`朗读菜名：${recipe.name}`}
+                        >
+                          <RecipeName as="span" name={recipe.name} pinyin={recipe.namePinyin} />
+                          <PlayInlineIcon />
+                        </button>
+                        <button
+                          type="button"
+                          className="name-audio-button carousel-english-name"
+                          onClick={() => speak(recipe.englishName, 'en-US')}
+                          aria-label={`Read recipe name: ${recipe.englishName}`}
+                        >
+                          <span>{recipe.englishName}</span>
+                          <PlayInlineIcon />
+                        </button>
+                        <p className="compact-copy">{recipe.nutritionSummary}</p>
+                        <div className="chip-row compact-chip-row">
+                          <span className="chip">{recipe.difficulty}</span>
+                          <span className="chip">{recipe.estimatedTimeMinutes} 分钟</span>
+                          {recipe.canCookWithCurrentIngredients ? <span className="chip fit-chip">可直接做</span> : null}
+                        </div>
+                        <div className="compact-recipe-section">
+                          <strong>适配原因</strong>
+                          <p>{recipe.fitReasons.slice(0, 2).join('；')}</p>
+                        </div>
+                        {recipe.extraIngredients.length > 0 ? (
+                          <div className="compact-recipe-section">
+                            <strong>还需要</strong>
+                            <p>{recipe.extraIngredients.slice(0, 4).join('、')}</p>
+                          </div>
+                        ) : null}
+                        {recipe.riskAlerts.length > 0 ? (
+                          <div className="compact-recipe-section warning">
+                            <strong>提醒</strong>
+                            <p>{recipe.riskAlerts.slice(0, 2).join('；')}</p>
+                          </div>
+                        ) : null}
+                        <div className="inline-recipe-detail">
+                          {recipeDetailsById[recipe.id] ? (
+                            <>
+                              <div className="inline-detail-meta">
+                                <span>备料 {recipeDetailsById[recipe.id].prepTimeMinutes} 分钟</span>
+                                <span>烹饪 {recipeDetailsById[recipe.id].cookTimeMinutes} 分钟</span>
+                              </div>
+                              <div className="inline-detail-block">
+                                <strong>食材与用量</strong>
+                                <div className="inline-ingredient-list">
+                                  {recipeDetailsById[recipe.id].ingredients.map((ingredient) => (
+                                    <span key={`${recipe.id}_${ingredient.name}`}>
+                                      {ingredient.name}：{ingredient.quantity}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="inline-detail-block">
+                                <strong>做法</strong>
+                                <ol className="inline-step-list">
+                                  {recipeDetailsById[recipe.id].steps.map((step) => (
+                                    <li key={step.id}>
+                                      <b>{step.title}</b>
+                                      <span>{step.childAction || step.description}</span>
+                                    </li>
+                                  ))}
+                                </ol>
+                              </div>
+                            </>
+                          ) : (
+                            <p className="muted compact-copy">{isFetchingDetail ? '正在生成内容...' : '内容加载中...'}</p>
+                          )}
+                        </div>
+                        <div className="carousel-actions single-action">
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => toggleFavoriteRecipe(recipe)}
+                          >
+                            {favoriteRecipes.some((item) => item.id === recipe.id) ? '已收藏' : '收藏'}
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+
+          <div className="chat-suggestions" aria-label="快捷问题">
+            {(hasChildContext
+              ? ['推荐鸡蛋和番茄能做什么', '土豆和胡萝卜适合孩子吗', '今天想做低盐晚餐']
+              : ['孩子 7 岁，无过敏，喜欢软一点，少油少盐，不吃辣', '孩子 5 岁，对花生过敏，喜欢甜口，不爱吃青菜', '孩子 9 岁，乳糖不耐受，想控制油盐，喜欢面食']
+            ).map((item) => (
+              <button key={item} type="button" onClick={() => void handleChatSubmit(item)}>
+                {item}
+              </button>
+            ))}
+          </div>
+
+          <div className="chat-composer">
+            <button
+              type="button"
+              className="composer-icon-button"
+              onClick={() => void handleStartVoiceInput()}
+              disabled={isListeningVoice || isChatSending}
+              aria-label="语音输入"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 14.5a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 0 0-7 0v5a3.5 3.5 0 0 0 3.5 3.5Zm-1.7-8.5a1.7 1.7 0 1 1 3.4 0v5a1.7 1.7 0 1 1-3.4 0V6Z" />
+                <path d="M18.4 10.7a.9.9 0 0 0-1.8 0 4.6 4.6 0 1 1-9.2 0 .9.9 0 0 0-1.8 0 6.4 6.4 0 0 0 5.5 6.33v2.17H8.8a.9.9 0 1 0 0 1.8h6.4a.9.9 0 1 0 0-1.8h-2.3v-2.17a6.4 6.4 0 0 0 5.5-6.33Z" />
+              </svg>
+            </button>
+            <input
+              ref={chatInputRef}
+              value={manualIngredient}
+              onChange={(event) => setManualIngredient(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  void handleChatSubmit();
+                }
+              }}
+              placeholder={hasChildContext ? '发消息或按住说话...' : '先描述孩子年龄、过敏原、饮食和口味偏好'}
+              disabled={isChatSending}
+            />
+            <button
+              type="button"
+              className="composer-icon-button"
+              onClick={() => cameraImageInputRef.current?.click()}
+              disabled={isUploadingImage || isChatSending}
+              aria-label="拍摄食材"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M8.4 5.1 9.7 3.6c.24-.28.59-.44.96-.44h2.68c.37 0 .72.16.96.44l1.3 1.5h2.8A2.6 2.6 0 0 1 21 7.7v9.5a2.6 2.6 0 0 1-2.6 2.6H5.6A2.6 2.6 0 0 1 3 17.2V7.7a2.6 2.6 0 0 1 2.6-2.6h2.8Zm3.6 12a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6Zm0-1.8a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="composer-icon-button"
+              onClick={() => fileImageInputRef.current?.click()}
+              disabled={isUploadingImage || isChatSending}
+              aria-label="上传图片"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M11.1 12.9H6.9a.9.9 0 1 1 0-1.8h4.2V6.9a.9.9 0 1 1 1.8 0v4.2h4.2a.9.9 0 1 1 0 1.8h-4.2v4.2a.9.9 0 1 1-1.8 0v-4.2Z" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="primary-button composer-send-button"
+              onClick={() => void handleChatSubmit()}
+              disabled={!manualIngredient.trim() || isChatSending}
+            >
+              {isChatSending ? '生成中' : '发送'}
+            </button>
           </div>
         </section>
       ) : null}
