@@ -510,6 +510,107 @@ test('getRecipeDetailForRecommendation generates detail on demand from recipe ca
   }
 });
 
+test('getRecipeDetailForRecommendation reuses cached detail for same profile ingredients and recipe name', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const recipeId = `recipe_cache_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const recipeName = `缓存测试软面_${Date.now()}`;
+  let fetchCount = 0;
+
+  global.fetch = (async () => {
+    fetchCount += 1;
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: recipeId,
+              name: recipeName,
+              englishName: 'Cached Soft Noodles',
+              nameLearning: {
+                characters: [{ character: '面', pinyin: 'miàn', strokes: 9, structure: '左右结构', hint: '面条的面。' }],
+              },
+              imageUrl: 'https://example.com/recipe.jpg',
+              ageRange: '7-12 岁',
+              difficulty: 'easy',
+              estimatedTimeMinutes: 18,
+              fitReasons: ['适合清淡饮食'],
+              riskAlerts: ['注意防烫'],
+              nutritionSummary: '搭配均衡。',
+              extraIngredients: [],
+              canCookWithCurrentIngredients: true,
+              prepTimeMinutes: 5,
+              cookTimeMinutes: 13,
+              ingredients: [{ name: '番茄', quantity: '1个' }],
+              steps: [{
+                title: '准备食材',
+                description: '洗净番茄。',
+                tip: '慢慢来。',
+                riskLevel: 'low',
+                requiresParentAssist: false,
+              }],
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const input = {
+    profileId: 'cp_001',
+    ingredients: [
+      {
+        id: 'ing_cache_1',
+        name: '番茄',
+        normalizedName: '番茄',
+        quantity: '1个',
+        source: 'manual' as const,
+      },
+    ],
+    recipe: {
+      id: recipeId,
+      name: recipeName,
+      englishName: 'Cached Soft Noodles',
+      nameLearning: {
+        characters: [{ character: '面', pinyin: 'miàn', strokes: 9, structure: '左右结构', hint: '面条的面。' }],
+      },
+      ageRange: '7-12 岁',
+      difficulty: 'easy' as const,
+      estimatedTimeMinutes: 18,
+      fitReasons: ['适合清淡饮食'],
+      riskAlerts: ['注意防烫'],
+      nutritionSummary: '搭配均衡。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  };
+
+  const first = await getRecipeDetailForRecommendation(input);
+  const second = await getRecipeDetailForRecommendation(input);
+
+  if ('error' in first) {
+    assert.fail(`expected first detail data, got ${first.error.code}`);
+  }
+
+  if ('error' in second) {
+    assert.fail(`expected cached detail data, got ${second.error.code}`);
+  }
+
+  assert.equal(fetchCount, 1);
+  assert.equal(second.data.name, recipeName);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
 test('generateCookingFeedback returns parsed feedback fields', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;

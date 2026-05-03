@@ -22,3 +22,6 @@ apps/*/.env.*
 
 # qianwen
 apps/frontend/qianwen
+
+# card design
+apps/frontend/card

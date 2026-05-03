@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import {
   buildIngredientImageUrl,
   childProfiles,
@@ -26,6 +29,117 @@ export interface RecommendationError {
 export type RecommendationResult =
   | { data: GeneratedRecommendationPayload }
   | { error: RecommendationError };
+
+const recipeDetailCacheFile = resolve(process.cwd(), '.local', 'cache', 'recipe-detail-cache.json');
+const recipeDetailCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
+
+interface RecipeDetailCacheEntry {
+  key: string;
+  createdAt: string;
+  expiresAt: string;
+  request: {
+    profile: ChildProfile;
+    ingredients: Array<{
+      name: string;
+      normalizedName: string;
+      quantity: string;
+      source: IngredientItem['source'];
+    }>;
+    recipeName: string;
+  };
+  response: RecipeDetail;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
+      .join(',')}}`;
+  }
+
+  return JSON.stringify(value);
+}
+
+function normalizeIngredientsForCache(ingredients: IngredientItem[]) {
+  return ingredients
+    .map((ingredient) => ({
+      name: ingredient.name.trim(),
+      normalizedName: normalizeIngredientName(ingredient.normalizedName ?? ingredient.name),
+      quantity: String(ingredient.quantity ?? '').trim() || '1份',
+      source: ingredient.source,
+    }))
+    .sort((left, right) =>
+      `${left.normalizedName}|${left.quantity}|${left.source}`.localeCompare(
+        `${right.normalizedName}|${right.quantity}|${right.source}`,
+      ),
+    );
+}
+
+function buildRecipeDetailCacheKey(input: {
+  profile: ChildProfile;
+  ingredients: IngredientItem[];
+  recipeName: string;
+}) {
+  const payload = {
+    profile: {
+      id: input.profile.id,
+      nickname: input.profile.nickname,
+      age: input.profile.age,
+      tastePreferences: [...input.profile.tastePreferences].sort(),
+      allergens: [...input.profile.allergens].sort(),
+      dietaryHabits: [...input.profile.dietaryHabits].sort(),
+    },
+    ingredients: normalizeIngredientsForCache(input.ingredients),
+    recipeName: input.recipeName.trim(),
+  };
+
+  return createHash('sha256').update(stableStringify(payload)).digest('hex');
+}
+
+function readRecipeDetailCache() {
+  if (!existsSync(recipeDetailCacheFile)) {
+    return [] as RecipeDetailCacheEntry[];
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(recipeDetailCacheFile, 'utf8')) as unknown;
+    return Array.isArray(parsed) ? parsed as RecipeDetailCacheEntry[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function getCachedRecipeDetail(key: string) {
+  const now = Date.now();
+  const entry = readRecipeDetailCache().find((item) => item.key === key);
+
+  if (!entry || Date.parse(entry.expiresAt) <= now) {
+    return null;
+  }
+
+  return entry.response;
+}
+
+function writeRecipeDetailCache(entry: RecipeDetailCacheEntry) {
+  try {
+    mkdirSync(dirname(recipeDetailCacheFile), { recursive: true });
+    const now = Date.now();
+    const next = [
+      entry,
+      ...readRecipeDetailCache().filter((item) =>
+        item.key !== entry.key && Date.parse(item.expiresAt) > now,
+      ),
+    ].slice(0, 200);
+    writeFileSync(recipeDetailCacheFile, JSON.stringify(next, null, 2), 'utf8');
+  } catch {
+    // Cache failures must not affect API responses.
+  }
+}
 
 export function parseTextToIngredients(text: string) {
   const parts = text
@@ -190,6 +304,17 @@ export async function getRecipeDetailForRecommendation(input: {
   }
 
   const { profile } = validation;
+  const cacheKey = buildRecipeDetailCacheKey({
+    profile,
+    ingredients: input.ingredients,
+    recipeName: input.recipe.name,
+  });
+  const cachedRecipe = getCachedRecipeDetail(cacheKey);
+
+  if (cachedRecipe) {
+    return { data: cachedRecipe };
+  }
+
   const fallbackRecipe =
     recipeCatalog.find((item) => item.id === input.recipe.id) ??
     ({
@@ -231,15 +356,50 @@ export async function getRecipeDetailForRecommendation(input: {
       };
     }
 
+    writeRecipeDetailCache({
+      key: cacheKey,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + recipeDetailCacheTtlMs).toISOString(),
+      request: {
+        profile,
+        ingredients: normalizeIngredientsForCache(input.ingredients),
+        recipeName: input.recipe.name,
+      },
+      response: fallbackRecipe,
+    });
     return { data: fallbackRecipe };
   }
 
   try {
+    const recipeDetail = await generateRecipeDetail(profile, input.ingredients, input.recipe);
+    writeRecipeDetailCache({
+      key: cacheKey,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + recipeDetailCacheTtlMs).toISOString(),
+      request: {
+        profile,
+        ingredients: normalizeIngredientsForCache(input.ingredients),
+        recipeName: input.recipe.name,
+      },
+      response: recipeDetail,
+    });
+
     return {
-      data: await generateRecipeDetail(profile, input.ingredients, input.recipe),
+      data: recipeDetail,
     };
   } catch (error) {
     if (!shouldRequireRealModel()) {
+      writeRecipeDetailCache({
+        key: cacheKey,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + recipeDetailCacheTtlMs).toISOString(),
+        request: {
+          profile,
+          ingredients: normalizeIngredientsForCache(input.ingredients),
+          recipeName: input.recipe.name,
+        },
+        response: fallbackRecipe,
+      });
       return { data: fallbackRecipe };
     }
 

@@ -5,7 +5,11 @@ import { RecipeCard } from './components/RecipeCard';
 import { RecipeName } from './components/RecipeName';
 import { StepCard } from './components/StepCard';
 import { ZoomableImage } from './components/ZoomableImage';
+import audioPlayIcon from './assets/audio-play.svg';
+import newChatIcon from './assets/new-chat.svg';
+import sendMessageIcon from './assets/send-message.svg';
 import { quickIngredients } from './data/constants';
+import { defaultIngredientVisual, getIngredientVisual } from './data/ingredientVisuals';
 import {
   createChildProfile,
   fetchGeneratedRecipeDetail,
@@ -39,6 +43,8 @@ const childContextStorageKey = 'murphy-cookbook.child-context.v1';
 const chatSessionsStorageKey = 'murphy-cookbook.chat-sessions.v1';
 const activeChatSessionStorageKey = 'murphy-cookbook.active-chat-session.v1';
 const conversationProfileId = 'chat_context_profile';
+const defaultChildContext =
+  '默认服务对象为小学 1-6 年级学生。推荐原则：低油脂、轻口味、膳食均衡、维生素丰富、主食蛋白质蔬菜搭配均衡，避免高糖、高盐、油炸和过度辛辣。未明确提及重度急性过敏风险时，不主动要求补充儿童年龄、饮食偏好或过敏原。';
 type RecentCookedByProfile = Record<string, RecipeDetail[]>;
 type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
 
@@ -66,8 +72,8 @@ function createWelcomeMessage(childContext = ''): ChatMessage {
     id: `chat_welcome_${crypto.randomUUID()}`,
     role: 'assistant',
     text: childContext
-      ? '你好，我是 Murphy 的儿童菜谱助手。孩子情况已保存，告诉我今天有什么食材，也可以拍照上传。'
-      : '你好，我是 Murphy 的儿童菜谱助手。首次使用前，请先告诉我孩子的年龄、是否有过敏原、饮食偏好和口味偏好。例如：孩子 7 岁，无过敏，喜欢软一点、少油少盐，不吃辣。',
+      ? '我是智能儿童菜谱助手，已记录本次对话的特殊饮食信息，告诉我今天有什么食材，也可以拍照上传。'
+      : '我是智能儿童菜谱助手，请通过文字、语音或拍照上传提供喜欢的食材',
     createdAt: new Date().toISOString(),
   };
 }
@@ -274,15 +280,29 @@ function buildSessionTitle(messages: ChatMessage[], childContext: string) {
 function buildConversationProfile(childContext: string): ChildProfile {
   const ageMatch = childContext.match(/(\d{1,2})\s*岁/);
   const age = ageMatch ? Number(ageMatch[1]) : 8;
+  const context = childContext.trim();
 
   return {
     id: conversationProfileId,
-    nickname: '当前孩子',
+    nickname: '小学阶段学生',
     age: Number.isFinite(age) && age > 0 ? age : 8,
-    tastePreferences: childContext ? [`对话记录：${childContext}`] : [],
-    allergens: childContext.includes('无过敏') || childContext.includes('没有过敏') ? [] : ['见对话记录'],
-    dietaryHabits: childContext ? [`对话记录：${childContext}`] : [],
+    tastePreferences: context ? [`对话记录：${context}`] : ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
+    allergens: context.includes('无过敏') || context.includes('没有过敏') || !context ? [] : ['见对话记录'],
+    dietaryHabits: context ? [`对话记录：${context}`] : ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
   };
+}
+
+function shouldAskAllergyFollowup(text: string) {
+  const normalized = text.trim();
+  if (!normalized) return false;
+
+  const allergyRiskWords = ['严重过敏', '重度过敏', '急性过敏', '过敏性休克', '喉头水肿', '呼吸困难', '诱发过敏', '强过敏'];
+  const riskIngredients = ['花生', '坚果', '腰果', '核桃', '虾', '蟹', '贝类', '海鲜', '牛奶', '乳制品', '鸡蛋'];
+  const mentionsRiskIngredient = riskIngredients.some((word) => normalized.includes(word));
+  const mentionsSevereAllergy = allergyRiskWords.some((word) => normalized.includes(word));
+  const asksAllergy = normalized.includes('过敏') && !normalized.includes('无过敏') && !normalized.includes('没有过敏');
+
+  return mentionsSevereAllergy || (mentionsRiskIngredient && asksAllergy);
 }
 
 function mergeIngredientItems(current: IngredientItem[], nextItems: IngredientItem[]) {
@@ -321,10 +341,14 @@ function parseTagInput(value: string) {
 }
 
 function PlayInlineIcon() {
+  return <img className="inline-play-icon" src={audioPlayIcon} alt="" aria-hidden="true" />;
+}
+
+function TrashInlineIcon() {
   return (
-    <svg className="inline-play-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M8.2 5.6v12.8c0 .75.82 1.21 1.46.82l10.1-6.4a.97.97 0 0 0 0-1.64l-10.1-6.4a.96.96 0 0 0-1.46.82Z" />
-      <path d="M4.8 6.6a.9.9 0 0 1 1.8 0v10.8a.9.9 0 1 1-1.8 0V6.6Z" />
+    <svg className="inline-trash-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 3h6l1 2h4v2H4V5h4l1-2Z" />
+      <path d="M6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
     </svg>
   );
 }
@@ -347,6 +371,8 @@ export default function App() {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeChatSessionId, setActiveChatSessionId] = useState('');
   const [isConversationDrawerOpen, setIsConversationDrawerOpen] = useState(false);
+  const [isFavoriteDrawerOpen, setIsFavoriteDrawerOpen] = useState(false);
+  const [pendingScrollRecipeId, setPendingScrollRecipeId] = useState('');
   const [childContext, setChildContext] = useState('');
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
@@ -378,12 +404,12 @@ export default function App() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isListeningVoice, setIsListeningVoice] = useState(false);
   const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false);
-  const [isChatSending, setIsChatSending] = useState(false);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [error, setError] = useState('');
+  const isRecognizingIngredients = isParsingText || isUploadingImage;
 
   const speakText = (text: string) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -421,7 +447,6 @@ export default function App() {
     speakText(`${recipe.name}。一共${recipe.steps.length}步。${stepTitles}。点击每一步的朗读按钮，可以继续听详细讲解。`);
   };
 
-  const hasChildContext = childContext.trim().length > 0;
   const conversationProfile = buildConversationProfile(childContext);
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? conversationProfile;
   const currentStep = selectedRecipe?.steps[stepIndex] ?? null;
@@ -530,6 +555,26 @@ export default function App() {
     persistChildContext(childContext);
   }, [childContext]);
 
+  useEffect(() => {
+    if (!pendingScrollRecipeId || page !== 'home') {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(`[data-recipe-card-id="${pendingScrollRecipeId}"]`);
+      target?.scrollIntoView({
+        block: 'center',
+        inline: 'center',
+        behavior: 'smooth',
+      });
+      target?.classList.add('recipe-card-highlight');
+      window.setTimeout(() => target?.classList.remove('recipe-card-highlight'), 1400);
+      setPendingScrollRecipeId('');
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [pendingScrollRecipeId, page, chatMessages]);
+
   const appendIngredients = (items: IngredientItem[]) => {
     setIngredients((current) => {
       return mergeIngredientItems(current, items);
@@ -580,6 +625,22 @@ export default function App() {
     setPage('home');
   };
 
+  const handleOpenFavoriteRecipe = (recipe: RecipeRecommendation) => {
+    const matchedSession =
+      chatSessions.find((session) =>
+        session.messages.some((message) => message.recipes?.some((item) => item.id === recipe.id)),
+      ) ?? null;
+
+    if (matchedSession) {
+      handleSelectConversation(matchedSession);
+    } else {
+      setPage('home');
+    }
+
+    setIsFavoriteDrawerOpen(false);
+    setPendingScrollRecipeId(recipe.id);
+  };
+
   const fetchDetailsForRecipeCards = async (
     recipes: RecipeRecommendation[],
     nextIngredients: IngredientItem[],
@@ -619,14 +680,6 @@ export default function App() {
   };
 
   const requestChatRecommendations = async (prompt: string, nextIngredients: IngredientItem[]) => {
-    if (!hasChildContext) {
-      addChatMessage({
-        role: 'assistant',
-        text: '推荐前需要先了解孩子情况。请先描述孩子的年龄、是否有过敏原、饮食偏好和口味偏好。',
-      });
-      return;
-    }
-
     if (nextIngredients.length === 0) {
       addChatMessage({
         role: 'assistant',
@@ -636,16 +689,16 @@ export default function App() {
     }
 
     const recommendationPrompt = [
-      `儿童情况：${childContext.trim()}`,
+      `儿童情况：${childContext.trim() || defaultChildContext}`,
       `用户本轮输入：${prompt}`,
     ].join('\n');
     const data = await fetchRecommendations(selectedProfile, nextIngredients, recommendationPrompt);
-    const recipes = data.recipes.slice(0, 5);
+    const recipes = data.recipes;
     setRecommendations(recipes);
     void fetchDetailsForRecipeCards(recipes, nextIngredients);
     addChatMessage({
       role: 'assistant',
-      text: `根据${nextIngredients.map((item) => item.name).join('、')}，结合孩子情况推荐了 ${recipes.length} 道菜。`,
+      text: `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
       recipes,
     });
     setManualIngredient('');
@@ -654,18 +707,18 @@ export default function App() {
 
   const handleChatSubmit = async (text = manualIngredient) => {
     const prompt = text.trim();
-    if (!prompt || isChatSending) return;
+    if (!prompt || isRecognizingIngredients) return;
 
     try {
-      setIsChatSending(true);
+      setIsParsingText(true);
       setError('');
       addChatMessage({ role: 'user', text: prompt });
 
-      if (!hasChildContext) {
+      if (shouldAskAllergyFollowup(prompt)) {
         setChildContext(prompt);
         addChatMessage({
           role: 'assistant',
-          text: '已保存孩子情况。现在可以告诉我家里有什么食材，也可以拍照上传，我会在每次推荐时自动带上这些信息。',
+          text: '你提到了可能引发严重急性过敏的情况。我已记录这条特殊饮食信息。为了更安全，请补充孩子是否已确诊相关食材过敏、严重程度，以及是否需要完全避开这类食材。',
         });
         setManualIngredient('');
         return;
@@ -673,21 +726,28 @@ export default function App() {
 
       const parsed = await parseIngredientText(prompt);
       const nextIngredients = mergeIngredientItems(ingredients, parsed.ingredients);
+      if (nextIngredients.length > 10) {
+        setError('一次最多支持 10 个食材，请减少食材后再继续添加。');
+        addChatMessage({
+          role: 'assistant',
+          text: '一次最多支持 10 个食材。当前识别后会超过上限，请减少食材或换一组食材。',
+        });
+        return;
+      }
       setIngredients(nextIngredients);
       addChatMessage({
         role: 'assistant',
-        text: parsed.ingredients.length > 0 ? '我识别到了这些食材，可以继续补充，也可以直接生成推荐。' : '我暂时没有识别到明确食材，可以换一种说法再试。',
-        ingredients: parsed.ingredients,
+        text: parsed.ingredients.length > 0 ? '我识别到了这些食材。你可以继续补充食材，也可以直接搜索菜谱。' : '我暂时没有识别到明确食材，可以换一种说法再试。',
+        ingredients: nextIngredients,
       });
-      await requestChatRecommendations(prompt, nextIngredients);
     } catch (chatError) {
-      setError(chatError instanceof Error ? chatError.message : '菜谱推荐失败。');
+      setError(chatError instanceof Error ? chatError.message : '食材识别失败。');
       addChatMessage({
         role: 'assistant',
-        text: chatError instanceof Error ? chatError.message : '菜谱推荐失败，请稍后再试。',
+        text: chatError instanceof Error ? chatError.message : '食材识别失败，请稍后再试。',
       });
     } finally {
-      setIsChatSending(false);
+      setIsParsingText(false);
     }
   };
 
@@ -716,24 +776,23 @@ export default function App() {
       setError('');
       addChatMessage({ role: 'user', text: `上传图片：${file.name}` });
 
-      if (!hasChildContext) {
+      const data = await uploadIngredientImage(file);
+      const nextIngredients = mergeIngredientItems(ingredients, data.ingredients);
+      if (nextIngredients.length > 10) {
+        setError('一次最多支持 10 个食材，请减少食材后再继续添加。');
         addChatMessage({
           role: 'assistant',
-          text: '推荐前需要先了解孩子情况。请先用文字描述孩子的年龄、是否有过敏原、饮食偏好和口味偏好，然后再上传或拍摄食材。',
+          text: '图片识别出的食材加入后会超过 10 个上限，请减少食材后再继续。',
         });
         return;
       }
-
-      const data = await uploadIngredientImage(file);
-      const nextIngredients = mergeIngredientItems(ingredients, data.ingredients);
       setIngredients(nextIngredients);
       setLastUploadMessage(`已上传图片 ${data.upload.filename}，识别到 ${data.ingredients.length} 项食材。`);
       addChatMessage({
         role: 'assistant',
         text: data.ingredients.length > 0 ? '我从图片里识别到了这些食材。' : '我暂时没有从图片里识别到明确食材。',
-        ingredients: data.ingredients,
+        ingredients: nextIngredients,
       });
-      await requestChatRecommendations(file.name, nextIngredients);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : '图片上传失败。');
     } finally {
@@ -883,13 +942,32 @@ export default function App() {
     setIngredients((current) => current.filter((item) => item.id !== id));
   };
 
-  const focusChatInput = () => {
-    setManualIngredient('');
-    chatInputRef.current?.focus();
+  const removeChatIngredient = (id: string) => {
+    stopSpeaking();
+    setIngredients((current) => current.filter((item) => item.id !== id));
+    setChatMessages((current) =>
+      current.map((message) =>
+        message.ingredients
+          ? {
+              ...message,
+              ingredients: message.ingredients.filter((item) => item.id !== id),
+            }
+          : message,
+      ),
+    );
   };
 
   const handleSearchWithCurrentIngredients = async (sourceIngredients?: IngredientItem[]) => {
     const nextIngredients = ingredients.length > 0 ? ingredients : sourceIngredients ?? [];
+    if (nextIngredients.length > 10) {
+      setError('一次最多支持 10 个食材，请减少食材后再获取推荐菜谱。');
+      addChatMessage({
+        role: 'assistant',
+        text: '一次最多支持 10 个食材。请先减少食材数量，再获取推荐菜谱。',
+      });
+      return;
+    }
+
     setIngredients((current) => mergeIngredientItems(current, sourceIngredients ?? []));
     await requestChatRecommendations('请根据当前已识别食材推荐菜谱', nextIngredients);
   };
@@ -1141,7 +1219,12 @@ export default function App() {
 
   if (isBootstrapping) {
     return (
-      <AppShell currentPage="home" onNavigate={setPage} onOpenConversations={() => setIsConversationDrawerOpen(true)}>
+      <AppShell
+        currentPage="home"
+        onNavigate={setPage}
+        onOpenConversations={() => setIsConversationDrawerOpen(true)}
+        onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
+      >
         <section className="page-grid">
           <div className="panel">
             <p className="eyebrow">初始化中</p>
@@ -1153,7 +1236,12 @@ export default function App() {
   }
 
   return (
-    <AppShell currentPage={page} onNavigate={setPage} onOpenConversations={() => setIsConversationDrawerOpen(true)}>
+    <AppShell
+      currentPage={page}
+      onNavigate={setPage}
+      onOpenConversations={() => setIsConversationDrawerOpen(true)}
+      onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
+    >
       <input
         ref={cameraImageInputRef}
         className="sr-only-input"
@@ -1189,9 +1277,7 @@ export default function App() {
               </button>
             </div>
             <button type="button" className="new-chat-button" onClick={handleNewConversation}>
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M12 5.2a.9.9 0 0 1 .9.9v5h5a.9.9 0 1 1 0 1.8h-5v5a.9.9 0 1 1-1.8 0v-5h-5a.9.9 0 1 1 0-1.8h5v-5a.9.9 0 0 1 .9-.9Z" />
-              </svg>
+              <img src={newChatIcon} alt="" aria-hidden="true" />
               新建对话
             </button>
             <div className="conversation-list">
@@ -1204,9 +1290,51 @@ export default function App() {
                   onClick={() => handleSelectConversation(session)}
                 >
                   <strong>{session.title}</strong>
-                  <span>{session.childContext || '等待填写儿童情况'}</span>
+                  <span>{session.childContext || '默认小学阶段健康饮食原则'}</span>
                 </button>
               ))}
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      {isFavoriteDrawerOpen ? (
+        <div className="settings-layer" role="presentation">
+          <button
+            type="button"
+            className="settings-backdrop"
+            aria-label="关闭菜谱收藏"
+            onClick={() => setIsFavoriteDrawerOpen(false)}
+          />
+          <aside className="settings-drawer favorite-drawer" aria-label="菜谱收藏">
+            <div className="drawer-header">
+              <div>
+                <p className="eyebrow">菜谱收藏</p>
+                <h2>已收藏菜谱</h2>
+              </div>
+              <button type="button" className="ghost-button" onClick={() => setIsFavoriteDrawerOpen(false)}>
+                关闭
+              </button>
+            </div>
+            <div className="settings-menu favorite-drawer-list">
+              {favoriteRecipes.length > 0 ? (
+                favoriteRecipes.map((recipe) => (
+                  <button
+                    key={recipe.id}
+                    type="button"
+                    className="settings-menu-item favorite-drawer-item"
+                    onClick={() => handleOpenFavoriteRecipe(recipe)}
+                  >
+                    <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
+                    <span>{recipe.englishName} · {recipe.estimatedTimeMinutes} 分钟</span>
+                  </button>
+                ))
+              ) : (
+                <div className="empty-state">
+                  <strong>还没有收藏菜谱</strong>
+                  <p>在推荐卡片中点击收藏后，会出现在这里。</p>
+                </div>
+              )}
             </div>
           </aside>
         </div>
@@ -1221,56 +1349,99 @@ export default function App() {
 
       {page === 'home' ? (
         <section className="chatbox-page">
-          <div className="chatbox-hero">
-            <div>
-              <p className="eyebrow">Murphy's Cookbook</p>
-              <h2>{hasChildContext ? '告诉我今天有什么食材' : '先描述孩子情况'}</h2>
-              <p className="muted">
-                {hasChildContext
-                  ? '我会把已保存的年龄、过敏原、饮食偏好和口味偏好带入每次菜谱推荐。'
-                  : '请先输入孩子年龄、是否有过敏原、饮食偏好和口味偏好，保存后再开始推荐菜谱。'}
-              </p>
-            </div>
-            <div className="chatbox-profile-pill">
-              <strong>{hasChildContext ? '儿童情况已保存' : '等待儿童情况'}</strong>
-              <span>{hasChildContext ? childContext : '例如：孩子 7 岁，无过敏，少油少盐，不吃辣。'}</span>
-            </div>
-          </div>
-
           <div className="chat-thread" aria-live="polite">
             {chatMessages.map((message) => (
               <article key={message.id} className={message.role === 'user' ? 'chat-message user' : 'chat-message assistant'}>
                 <div className="chat-bubble">
                   <p>{message.text}</p>
+                  {message.role === 'assistant' ? (
+                    <button
+                      type="button"
+                      className="assistant-speech-button"
+                      onClick={() => speak(message.text, 'zh-CN')}
+                      aria-label="朗读助手消息"
+                    >
+                      <PlayInlineIcon />
+                    </button>
+                  ) : null}
                 </div>
                 {message.ingredients?.length ? (
-                  <div className="ingredient-card-row" aria-label="识别出的食材">
-                    {message.ingredients.map((ingredient) => (
-                      <article key={`${message.id}_${ingredient.id}`} className="chat-ingredient-card">
-                        <strong>{ingredient.name}</strong>
-                        <span>{ingredient.quantity}</span>
-                        <small>{ingredient.source === 'image' ? '图片识别' : ingredient.source === 'voice' ? '语音识别' : '文字识别'}</small>
-                      </article>
-                    ))}
-                    <div className="ingredient-card-actions">
-                      <button type="button" className="ghost-button" onClick={focusChatInput}>
-                        继续新增
-                      </button>
+                  <section className="ingredient-list-card" aria-label="当前食材清单">
+                    <div className="ingredient-list-card-header">
+                      <div>
+                        <p>当前食材清单</p>
+                        <strong>确认后我将为你推荐合适的菜谱</strong>
+                      </div>
+                      <span>共 {message.ingredients.length} 项</span>
+                    </div>
+                    <div className="ingredient-card-row">
+                    {message.ingredients.map((ingredient) => {
+                      const visual = getIngredientVisual(ingredient.name);
+                      const isFallback = visual.name === defaultIngredientVisual.name;
+
+                      return (
+                        <article
+                          key={`${message.id}_${ingredient.id}`}
+                          className={isFallback ? 'chat-ingredient-card fallback' : 'chat-ingredient-card'}
+                        >
+                          <span className="ingredient-pinyin">{visual.pinyin}</span>
+                          <strong>{ingredient.name}</strong>
+                          <div className="ingredient-emoji" role="img" aria-label={isFallback ? '默认食材占位' : ingredient.name}>
+                            {visual.emoji}
+                          </div>
+                          <div className="ingredient-card-toolbar">
+                            <button
+                              type="button"
+                              className="ingredient-icon-button speech"
+                              onClick={() => speak(`${ingredient.name}，${visual.pinyin}`, 'zh-CN')}
+                              aria-label={`朗读食材：${ingredient.name}`}
+                            >
+                              <PlayInlineIcon />
+                            </button>
+                            <button
+                              type="button"
+                              className="ingredient-icon-button delete"
+                              onClick={() => removeChatIngredient(ingredient.id)}
+                              aria-label={`删除食材：${ingredient.name}`}
+                            >
+                              <TrashInlineIcon />
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
                       <button
                         type="button"
-                        className="secondary-button"
-                        onClick={() => void handleSearchWithCurrentIngredients(message.ingredients)}
-                        disabled={isChatSending}
+                        className="ingredient-add-card"
+                        onClick={() => fileImageInputRef.current?.click()}
+                        disabled={isRecognizingIngredients}
+                        aria-label="从本地照片继续新增食材"
                       >
-                        搜索菜谱
+                        <span>+</span>
+                        <strong>添加食材</strong>
                       </button>
                     </div>
-                  </div>
+                    <div className="ingredient-card-actions">
+                      <button
+                        type="button"
+                        className="ingredient-recommend-button"
+                        onClick={() => void handleSearchWithCurrentIngredients(message.ingredients)}
+                        disabled={isRecognizingIngredients}
+                      >
+                        <span>推荐菜谱</span>
+                        <small>根据当前食材，AI 为你推荐合适的菜谱</small>
+                      </button>
+                    </div>
+                  </section>
                 ) : null}
                 {message.recipes?.length ? (
                   <div className="recipe-carousel" aria-label="推荐菜谱">
                     {message.recipes.map((recipe) => (
-                      <article key={`${message.id}_${recipe.id}`} className="carousel-recipe-card">
+                      <article
+                        key={`${message.id}_${recipe.id}`}
+                        className="carousel-recipe-card"
+                        data-recipe-card-id={recipe.id}
+                      >
                         <button
                           type="button"
                           className="name-audio-button carousel-recipe-name"
@@ -1362,11 +1533,8 @@ export default function App() {
           </div>
 
           <div className="chat-suggestions" aria-label="快捷问题">
-            {(hasChildContext
-              ? ['推荐鸡蛋和番茄能做什么', '土豆和胡萝卜适合孩子吗', '今天想做低盐晚餐']
-              : ['孩子 7 岁，无过敏，喜欢软一点，少油少盐，不吃辣', '孩子 5 岁，对花生过敏，喜欢甜口，不爱吃青菜', '孩子 9 岁，乳糖不耐受，想控制油盐，喜欢面食']
-            ).map((item) => (
-              <button key={item} type="button" onClick={() => void handleChatSubmit(item)}>
+            {['推荐鸡蛋和番茄能做什么', '土豆和胡萝卜适合孩子吗', '今天想做低盐晚餐'].map((item) => (
+              <button key={item} type="button" onClick={() => void handleChatSubmit(item)} disabled={isRecognizingIngredients}>
                 {item}
               </button>
             ))}
@@ -1377,7 +1545,7 @@ export default function App() {
               type="button"
               className="composer-icon-button"
               onClick={() => void handleStartVoiceInput()}
-              disabled={isListeningVoice || isChatSending}
+              disabled={isListeningVoice || isRecognizingIngredients}
               aria-label="语音输入"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -1394,14 +1562,14 @@ export default function App() {
                   void handleChatSubmit();
                 }
               }}
-              placeholder={hasChildContext ? '发消息或按住说话...' : '先描述孩子年龄、过敏原、饮食和口味偏好'}
-              disabled={isChatSending}
+              placeholder="按住说话或拍照取材"
+              disabled={isRecognizingIngredients}
             />
             <button
               type="button"
               className="composer-icon-button"
               onClick={() => cameraImageInputRef.current?.click()}
-              disabled={isUploadingImage || isChatSending}
+              disabled={isUploadingImage || isRecognizingIngredients}
               aria-label="拍摄食材"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -1412,7 +1580,7 @@ export default function App() {
               type="button"
               className="composer-icon-button"
               onClick={() => fileImageInputRef.current?.click()}
-              disabled={isUploadingImage || isChatSending}
+              disabled={isUploadingImage || isRecognizingIngredients}
               aria-label="上传图片"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -1423,9 +1591,10 @@ export default function App() {
               type="button"
               className="primary-button composer-send-button"
               onClick={() => void handleChatSubmit()}
-              disabled={!manualIngredient.trim() || isChatSending}
+              disabled={!manualIngredient.trim() || isRecognizingIngredients}
+              aria-label="发送信息"
             >
-              {isChatSending ? '生成中' : '发送'}
+              {isRecognizingIngredients ? <span className="loading-spinner" aria-hidden="true" /> : <img src={sendMessageIcon} alt="" aria-hidden="true" />}
             </button>
           </div>
         </section>
