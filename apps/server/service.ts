@@ -33,6 +33,14 @@ export type RecommendationResult =
 const recipeDetailCacheFile = resolve(process.cwd(), '.local', 'cache', 'recipe-detail-cache.json');
 const recipeDetailCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const recipeDetailCacheVersion = 'child-full-steps-v2';
+const defaultRecommendationProfile: ChildProfile = {
+  id: 'chat_context_profile',
+  nickname: '小学阶段学生',
+  age: 8,
+  tastePreferences: ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
+  allergens: [],
+  dietaryHabits: ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
+};
 
 interface RecipeDetailCacheEntry {
   key: string;
@@ -162,19 +170,21 @@ export function resolveProfile(profileId: string, profileInput?: Partial<ChildPr
     return matchedProfile;
   }
 
-  if (!profileInput?.nickname || !profileInput?.age) {
-    return null;
-  }
-
-  const resolvedProfileId = String(profileInput.id ?? normalizedProfileId).trim() || `profile_snapshot_${Date.now()}`;
+  const resolvedProfileId = String(profileInput?.id ?? normalizedProfileId).trim() || defaultRecommendationProfile.id;
 
   return {
-    id: resolvedProfileId,
-    nickname: String(profileInput.nickname),
-    age: Number(profileInput.age),
-    tastePreferences: Array.isArray(profileInput.tastePreferences) ? profileInput.tastePreferences : [],
-    allergens: Array.isArray(profileInput.allergens) ? profileInput.allergens : [],
-    dietaryHabits: Array.isArray(profileInput.dietaryHabits) ? profileInput.dietaryHabits : [],
+    id: resolvedProfileId || defaultRecommendationProfile.id,
+    nickname: profileInput?.nickname ? String(profileInput.nickname) : defaultRecommendationProfile.nickname,
+    age: Number.isFinite(Number(profileInput?.age)) && Number(profileInput?.age) > 0
+      ? Number(profileInput?.age)
+      : defaultRecommendationProfile.age,
+    tastePreferences: Array.isArray(profileInput?.tastePreferences) && profileInput.tastePreferences.length > 0
+      ? profileInput.tastePreferences
+      : defaultRecommendationProfile.tastePreferences,
+    allergens: Array.isArray(profileInput?.allergens) ? profileInput.allergens : defaultRecommendationProfile.allergens,
+    dietaryHabits: Array.isArray(profileInput?.dietaryHabits) && profileInput.dietaryHabits.length > 0
+      ? profileInput.dietaryHabits
+      : defaultRecommendationProfile.dietaryHabits,
   } satisfies ChildProfile;
 }
 
@@ -186,7 +196,7 @@ function validateRecommendationInput(
   const profile = resolveProfile(profileId, profileInput);
   if (!profile) {
     return {
-      error: { code: 'PROFILE_NOT_FOUND', message: '推荐前需要先选择儿童档案。' },
+      error: { code: 'PROFILE_NOT_FOUND', message: '无法生成默认儿童推荐档案。' },
     };
   }
 

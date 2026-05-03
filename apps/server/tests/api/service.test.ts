@@ -173,6 +173,28 @@ test('recommendRecipes uses provided profile snapshot when profileId is not foun
   }
 });
 
+test('recommendRecipes uses default student profile when no child profile is provided', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  delete process.env.SILICONFLOW_API_KEY;
+
+  const result = await recommendRecipes('', [
+    { id: 'ing_1', name: '番茄', normalizedName: '番茄', quantity: '1个', source: 'manual', confidence: 1 },
+    { id: 'ing_2', name: '鸡蛋', normalizedName: '鸡蛋', quantity: '2个', source: 'manual', confidence: 1 },
+  ]);
+
+  if ('error' in result) {
+    assert.fail(`expected default profile recommendation data, got ${result.error.code}`);
+  }
+
+  assert.ok(result.data.recipes.length > 0);
+
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
 test('recommendRecipes falls back to mock data in local development when model call fails', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;

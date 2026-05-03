@@ -24,6 +24,22 @@ function normalizeTextInputValue(value: unknown) {
   return Array.isArray(value) ? value.join(' ').trim() : String(value ?? '').trim();
 }
 
+function parseJsonInput<T>(value: unknown, fallback: T): T {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value !== 'string') {
+    return value as T;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 export function resolveIngredientTextInput(body: unknown, query: unknown = {}) {
   const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
   const queryPayload = query && typeof query === 'object' ? query as Record<string, unknown> : {};
@@ -268,10 +284,12 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/recommendations/recipes', async (req, res) => {
-    const profileId = String(req.body?.profileId ?? '');
-    const ingredients = req.body?.ingredients ?? [];
-    const profile = req.body?.profile ?? null;
-    const userPrompt = String(req.body?.userPrompt ?? '');
+    const profileId = String(req.body?.profileId ?? req.query.profileId ?? '');
+    const ingredients = Array.isArray(req.body?.ingredients)
+      ? req.body.ingredients
+      : parseJsonInput(req.query.ingredients, []);
+    const profile = req.body?.profile ?? parseJsonInput(req.query.profile, null);
+    const userPrompt = String(req.body?.userPrompt ?? req.query.userPrompt ?? '');
     const result = await recommendRecipes(profileId, ingredients, profile, userPrompt);
 
     if ('error' in result) {

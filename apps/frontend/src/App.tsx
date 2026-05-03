@@ -1080,19 +1080,9 @@ export default function App() {
   };
 
   const handleGetRecommendations = async () => {
-    if (!selectedProfileId) {
-      setError('请先选择儿童档案。');
-      return;
-    }
-
     try {
       setIsFetchingRecommendations(true);
       setError('');
-      if (!selectedProfile) {
-        setError('请先选择有效的儿童档案。');
-        return;
-      }
-
       const data = await fetchRecommendations(selectedProfile, ingredients);
       setRecommendations(data.recipes);
       setPage('recipes');

@@ -101,21 +101,29 @@ export function uploadVoiceAudio(file: File) {
 }
 
 export function fetchRecommendations(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
-  return request<RecommendationResponse>('/recommendations/recipes', {
+  const payload = {
+    profileId: profile.id,
+    profile,
+    userPrompt,
+    ingredients: ingredients.map((ingredient) => ({
+      name: ingredient.name,
+      normalizedName: ingredient.normalizedName ?? ingredient.name,
+      quantity: ingredient.quantity,
+      source: ingredient.source,
+    })),
+    sortBy: 'balanced',
+    allowExtraIngredients: true,
+  };
+  const query = new URLSearchParams({
+    profileId: payload.profileId,
+    profile: JSON.stringify(payload.profile),
+    userPrompt,
+    ingredients: JSON.stringify(payload.ingredients),
+  }).toString();
+
+  return request<RecommendationResponse>(`/recommendations/recipes?${query}`, {
     method: 'POST',
-    body: JSON.stringify({
-      profileId: profile.id,
-      profile,
-      userPrompt,
-      ingredients: ingredients.map((ingredient) => ({
-        name: ingredient.name,
-        normalizedName: ingredient.normalizedName ?? ingredient.name,
-        quantity: ingredient.quantity,
-        source: ingredient.source,
-      })),
-      sortBy: 'balanced',
-      allowExtraIngredients: true,
-    }),
+    body: JSON.stringify(payload),
   });
 }
 
