@@ -20,16 +20,26 @@ import {
   understandIngredientsFromText,
 } from './siliconflow.js';
 
-export function resolveIngredientTextInput(body: unknown) {
+function normalizeTextInputValue(value: unknown) {
+  return Array.isArray(value) ? value.join(' ').trim() : String(value ?? '').trim();
+}
+
+export function resolveIngredientTextInput(body: unknown, query: unknown = {}) {
   const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const queryPayload = query && typeof query === 'object' ? query as Record<string, unknown> : {};
   const rawText =
     payload.text ??
     payload.message ??
     payload.prompt ??
     payload.transcript ??
     payload.content ??
+    queryPayload.text ??
+    queryPayload.message ??
+    queryPayload.prompt ??
+    queryPayload.transcript ??
+    queryPayload.content ??
     '';
-  return Array.isArray(rawText) ? rawText.join(' ').trim() : String(rawText).trim();
+  return normalizeTextInputValue(rawText);
 }
 
 export function createApp(): Express {
@@ -99,7 +109,7 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/ingredients/parse-text', async (req, res) => {
-    const text = resolveIngredientTextInput(req.body);
+    const text = resolveIngredientTextInput(req.body, req.query);
 
     if (!text) {
       res.status(400).json({

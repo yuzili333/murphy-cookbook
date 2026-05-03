@@ -71,9 +71,12 @@ export function createChildProfile(payload: CreateChildProfileInput) {
 }
 
 export function parseIngredientText(text: string) {
-  return request<{ ingredients: IngredientItem[] }>('/ingredients/parse-text', {
+  const normalizedText = text.trim();
+  const query = new URLSearchParams({ text: normalizedText }).toString();
+
+  return request<{ ingredients: IngredientItem[] }>(`/ingredients/parse-text?${query}`, {
     method: 'POST',
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text: normalizedText, message: normalizedText }),
   });
 }
 

@@ -8,6 +8,11 @@ test('resolveIngredientTextInput accepts mobile fallback fields', () => {
   assert.equal(resolveIngredientTextInput({ transcript: ['土豆', '牛肉'] }), '土豆 牛肉');
 });
 
+test('resolveIngredientTextInput falls back to query text when body is empty', () => {
+  assert.equal(resolveIngredientTextInput({}, { text: '西红柿 鸡蛋' }), '西红柿 鸡蛋');
+  assert.equal(resolveIngredientTextInput(null, { message: ['青菜', '豆腐'] }), '青菜 豆腐');
+});
+
 test('resolveIngredientTextInput returns empty string for missing text', () => {
   assert.equal(resolveIngredientTextInput({}), '');
   assert.equal(resolveIngredientTextInput(null), '');
