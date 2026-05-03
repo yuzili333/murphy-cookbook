@@ -497,7 +497,7 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
   ].join('\n');
 
   return [
-    '任务: 为儿童生成 5 个推荐菜谱卡片，并输出严格 JSON。',
+    '任务: 为儿童生成 3-5 道推荐菜谱卡片，并输出严格 JSON。',
     '儿童档案:',
     profileLines,
     userPrompt.trim() ? '用户本轮对话描述:' : '',
@@ -505,16 +505,17 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
     '现有食材清单:',
     ingredientLines,
     '生成要求:',
-    '1. 只返回 5 道推荐菜谱，优先使用现有食材，并结合用户本轮对话里的口味、场景、时间和限制条件；缺少食材尽量少。',
-    '2. 菜谱要适合儿童年龄、口味和饮食习惯。',
-    '3. 严格避开过敏原和明显不适宜儿童的做法。',
+    '1. 返回 3-5 道推荐菜谱，数量不要少于 3 道，除非食材明显不足；优先使用现有食材，并结合用户本轮对话里的口味、场景、时间和限制条件；缺少食材尽量少。',
+    '2. 菜谱要适合儿童年龄、口味和饮食习惯，操作者多为小学阶段儿童，优先推荐简单、低门槛、易上手、步骤清楚、营养均衡的菜谱。',
+    '3. 严格避开过敏原和明显不适宜儿童的做法；避免复杂刀工、长时间油炸、重油重辣和需要精准火候的菜谱。',
     '4. 这里只生成推荐卡片摘要，不要生成步骤、配料明细、prepTimeMinutes、cookTimeMinutes。',
     '5. 每道菜都必须包含 namePinyin，使用带声调的汉语拼音，并按词分隔，例如 "fān qié jī dàn miàn"。',
     '6. 每道菜都必须包含 englishName，使用自然英译名，适合儿童听读，不要机械逐字翻译。',
     '7. 每道菜都必须包含 nameLearning.characters，逐字覆盖中文菜名中的汉字；每项包含 character、pinyin、strokes、structure、hint，pinyin 必须使用带调号拼音。',
     '8. 每道菜都必须包含 imageSearchQuery，使用 2-4 个英文单词描述成品图主体，例如 "broccoli egg noodles"；画面必须是这道菜做熟后的成品近景，不能是无关菜品、原料堆或餐厅环境。',
     '9. 不要生成泛化图片词，例如 "food"、"meal"、"dish" 单独出现，必须包含核心主食材和成品形式。',
-    '10. 输出字段必须完整，不要输出任何解释文字。',
+    '10. 如果菜谱会使用明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮写明“需家长全程陪同”，difficulty 不要标为 easy，canCookWithCurrentIngredients 不能掩盖安全风险。',
+    '11. 输出字段必须完整，不要输出任何解释文字。',
   ].join('\n');
 }
 
@@ -562,9 +563,11 @@ function buildRecipeDetailUserPrompt(
     '6. 菜谱必须提供 imageSearchQuery，使用 2-4 个英文单词准确描述成品图主体，例如 "broccoli egg noodles"；必须是做熟后的菜品成品图，不要写模糊词。',
     '7. 每个配料必须提供 imageSearchQuery，使用 1-3 个英文单词准确描述单个原料，例如 "broccoli florets"、"raw egg"；必须是单个食材特写，不要把调料或其他食材混进去。',
     '8. 任何调味料和近似量不要写“适量/少许/微量”，统一改成儿童可理解的勺数，例如1平勺、半平勺、2平勺。',
-    '9. 每一步 steps 除了 title、description、tip、riskLevel、requiresParentAssist，还要尽量补充 childAction、parentAction、expectedResult，帮助识字量少的儿童理解。',
-    '10. 步骤要短、清晰、适合亲子共做，并标注风险等级与是否需要家长协助。',
-    '11. 输出字段必须完整，不要输出任何解释文字。',
+    '9. steps 必须补充全量操作步骤细节，拆成 5-8 个小步骤；不要把“洗切炒煮”合并成一句。每一步都要像教小朋友一样具体：先做什么、用什么工具、放在哪里、等待多久、看到什么状态再进入下一步。',
+    '10. 每一步 steps 除了 title、description、tip、riskLevel、requiresParentAssist，必须补充 childAction、parentAction、expectedResult，帮助识字量少的儿童理解；childAction 用儿童能听懂的短句，parentAction 写清家长何时接手或陪同。',
+    '11. 如果步骤涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskLevel 必须是 medium 或 high，requiresParentAssist 必须是 true，parentAction 必须明确“家长全程陪同/由家长操作”。',
+    '12. 步骤要清晰、适合亲子共做；安全提醒不能只写在总提醒里，相关步骤也必须单独标注。',
+    '13. 输出字段必须完整，不要输出任何解释文字。',
   ].join('\n');
 }
 
@@ -632,7 +635,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 5 个安全、适龄、可执行的儿童菜谱推荐卡片。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true}]}。不要输出额外说明。',
+        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 3-5 个安全、适龄、简单易上手的儿童菜谱推荐卡片。操作者多为小学阶段儿童，优先选择低油、轻口味、步骤清楚、亲子可执行的菜谱；如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮提醒“需家长全程陪同”。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true}]}。不要输出额外说明。',
     },
     {
       role: 'user',
@@ -640,7 +643,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     },
   ], {
     operation: 'generate_recipe_plan',
-    maxTokens: 900,
+    maxTokens: 1200,
     metadata: {
       profileId: profile.id,
       age: profile.age,
@@ -675,7 +678,7 @@ export async function generateRecipeDetail(
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和指定推荐卡片，生成 1 个完整儿童菜谱详情。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺","imageSearchQuery":"1到3个英文单词的单食材检索词"}],"steps":[{"id":"可选","title":"步骤标题","description":"步骤描述","tip":"提示","childAction":"孩子要做什么","parentAction":"家长何时介入","expectedResult":"完成后看到什么","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出额外说明。',
+        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和指定推荐卡片，生成 1 个完整儿童菜谱详情。操作者多为小学阶段儿童，步骤必须拆细、引导性强、上手难度低。如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，必须在 riskAlerts 和对应 step 中高亮提醒需家长全程陪同。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺","imageSearchQuery":"1到3个英文单词的单食材检索词"}],"steps":[{"id":"可选","title":"步骤标题","description":"步骤描述","tip":"提示","childAction":"孩子要做什么","parentAction":"家长何时介入","expectedResult":"完成后看到什么","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出额外说明。',
     },
     {
       role: 'user',
@@ -683,7 +686,7 @@ export async function generateRecipeDetail(
     },
   ], {
     operation: 'generate_recipe_detail',
-    maxTokens: 1800,
+    maxTokens: 2600,
     metadata: {
       profileId: profile.id,
       recipeId: recipe.id,

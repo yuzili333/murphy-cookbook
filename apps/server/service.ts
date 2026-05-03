@@ -32,6 +32,7 @@ export type RecommendationResult =
 
 const recipeDetailCacheFile = resolve(process.cwd(), '.local', 'cache', 'recipe-detail-cache.json');
 const recipeDetailCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
+const recipeDetailCacheVersion = 'child-full-steps-v2';
 
 interface RecipeDetailCacheEntry {
   key: string;
@@ -86,6 +87,7 @@ function buildRecipeDetailCacheKey(input: {
   recipeName: string;
 }) {
   const payload = {
+    version: recipeDetailCacheVersion,
     profile: {
       id: input.profile.id,
       nickname: input.profile.nickname,
@@ -329,18 +331,57 @@ export async function getRecipeDetailForRecommendation(input: {
       steps: [
         {
           id: `step_${input.recipe.id}_1`,
-          title: '准备食材',
-          description: '把食材洗净，摆放整齐，先让家长确认需要切开的部分。',
-          tip: '先准备好小碗和勺子，再开始动手。',
+          title: '摆好食材和工具',
+          description: '把所有食材放到桌面上，准备一个小碗、一把勺子和一块干净的案板。',
+          tip: '先点一遍食材名字，确认没有漏掉。',
+          childAction: '把食材排成一排，告诉家长你看到了哪些食材。',
+          parentAction: '家长检查食材是否新鲜，并确认工具摆放安全。',
+          expectedResult: '桌面整齐，食材和工具都能一眼看到。',
           riskLevel: 'low',
           requiresParentAssist: false,
         },
         {
           id: `step_${input.recipe.id}_2`,
-          title: '开始烹饪',
-          description: '按照推荐菜名完成主要烹饪步骤，涉及明火和热锅时请家长全程陪同。',
-          tip: '每完成一步都停下来检查一下安全和口味。',
+          title: '清洗食材',
+          description: '把蔬菜或可清洗食材放进盆里，用流动清水轻轻冲洗。',
+          tip: '不要把水开太大，避免溅到衣服上。',
+          childAction: '用手轻轻搓一搓表面，再把水倒掉。',
+          parentAction: '家长帮忙处理需要削皮或去根的部分。',
+          expectedResult: '食材表面干净，没有明显泥沙。',
+          riskLevel: 'low',
+          requiresParentAssist: false,
+        },
+        {
+          id: `step_${input.recipe.id}_3`,
+          title: '切配或分装',
+          description: '需要切开的食材由家长处理，孩子负责把切好的食材放进小碗。',
+          tip: '刀具只让家长拿，孩子不要抢着切。',
+          childAction: '把切好的食材按颜色或种类放进不同小碗。',
+          parentAction: '家长使用刀具完成切配，并把刀具放回安全位置。',
+          expectedResult: '每种食材都分装好了，大小比较接近。',
+          riskLevel: 'medium',
+          requiresParentAssist: true,
+        },
+        {
+          id: `step_${input.recipe.id}_4`,
+          title: '家长加热烹饪',
+          description: '如果这道菜需要加热，请由家长打开明火、电磁炉、微波炉或烤箱，孩子站在安全距离外观察。',
+          tip: '看到热锅、热水、热油时，要离远一点。',
+          childAction: '站在家长旁边一臂远的位置，说出你观察到的颜色和气味变化。',
+          parentAction: '家长全程操作加热设备，并提醒孩子不要触碰锅具和电器。',
+          expectedResult: '食材逐渐变软、变香或颜色变深。',
           riskLevel: 'high',
+          requiresParentAssist: true,
+        },
+        {
+          id: `step_${input.recipe.id}_5`,
+          title: '装盘和确认',
+          description: '关火或停止加热后，家长把食物盛到盘子里，稍微放凉再试吃。',
+          tip: '先闻一闻，再小口尝，太烫就继续等。',
+          childAction: '帮忙摆好餐具，小口尝一尝味道。',
+          parentAction: '家长确认温度合适，没有骨刺或硬块后再让孩子食用。',
+          expectedResult: '菜品温热不烫，味道清淡，适合入口。',
+          riskLevel: 'low',
           requiresParentAssist: true,
         },
       ],

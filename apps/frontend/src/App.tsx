@@ -6,6 +6,7 @@ import { RecipeName } from './components/RecipeName';
 import { StepCard } from './components/StepCard';
 import { ZoomableImage } from './components/ZoomableImage';
 import audioPlayIcon from './assets/audio-play.svg';
+import loadingIcon from './assets/loading.svg';
 import newChatIcon from './assets/new-chat.svg';
 import sendMessageIcon from './assets/send-message.svg';
 import { quickIngredients } from './data/constants';
@@ -53,6 +54,7 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   createdAt: string;
+  ingredientsKey?: string;
   ingredients?: IngredientItem[];
   recipes?: RecipeRecommendation[];
 }
@@ -318,6 +320,15 @@ function mergeIngredientItems(current: IngredientItem[], nextItems: IngredientIt
   return merged;
 }
 
+function buildIngredientsKey(items: IngredientItem[]) {
+  return items
+    .map((item) => item.normalizedName || item.name)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
+    .join('|');
+}
+
 function mergeRecentCookedRecipes(nextRecipe: RecipeDetail, currentRecipes: RecipeDetail[]) {
   const deduped = [nextRecipe, ...currentRecipes.filter((recipe) => recipe.id !== nextRecipe.id)];
   return deduped.slice(0, 8);
@@ -408,10 +419,11 @@ export default function App() {
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [isFetchingLogs, setIsFetchingLogs] = useState(false);
+  const [activeSpeechKey, setActiveSpeechKey] = useState('');
   const [error, setError] = useState('');
   const isRecognizingIngredients = isParsingText || isUploadingImage;
 
-  const speakText = (text: string) => {
+  const speakText = (text: string, lang = 'zh-CN', speechKey = '') => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       setError('当前设备浏览器不支持语音朗读功能。');
       return;
@@ -422,11 +434,24 @@ export default function App() {
       return;
     }
 
+    if (speechKey && activeSpeechKey === speechKey && window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setActiveSpeechKey('');
+      return;
+    }
+
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(content);
-    utterance.lang = 'zh-CN';
+    utterance.lang = lang;
     utterance.rate = 0.95;
     utterance.pitch = 1;
+    if (speechKey) {
+      setActiveSpeechKey(speechKey);
+      utterance.onend = () => setActiveSpeechKey((current) => (current === speechKey ? '' : current));
+      utterance.onerror = () => setActiveSpeechKey((current) => (current === speechKey ? '' : current));
+    } else {
+      setActiveSpeechKey('');
+    }
     window.speechSynthesis.speak(utterance);
   };
 
@@ -439,7 +464,7 @@ export default function App() {
         ? step.parentAction || '这一步需要家长陪同完成。'
         : '这一步可以由孩子独立完成。',
       step.expectedResult ? `完成后应该看到：${step.expectedResult}` : '',
-    ].filter(Boolean).join('。'));
+    ].filter(Boolean).join('。'), 'zh-CN', `step_${step.id}`);
   };
 
   const speakRecipeOverview = (recipe: RecipeDetail) => {
@@ -453,6 +478,7 @@ export default function App() {
 
   const closeLearningDrawer = () => {
     stopSpeaking();
+    setActiveSpeechKey('');
     setLearningRecipe(null);
   };
 
@@ -688,30 +714,60 @@ export default function App() {
       return;
     }
 
-    const recommendationPrompt = [
-      `儿童情况：${childContext.trim() || defaultChildContext}`,
-      `用户本轮输入：${prompt}`,
-    ].join('\n');
-    const data = await fetchRecommendations(selectedProfile, nextIngredients, recommendationPrompt);
-    const recipes = data.recipes;
-    setRecommendations(recipes);
-    void fetchDetailsForRecipeCards(recipes, nextIngredients);
-    addChatMessage({
-      role: 'assistant',
-      text: `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
-      recipes,
-    });
-    setManualIngredient('');
-    setVoiceTranscript(prompt);
+    const ingredientsKey = buildIngredientsKey(nextIngredients);
+    setIsFetchingRecommendations(true);
+    setError('');
+
+    try {
+      const recommendationPrompt = [
+        `儿童情况：${childContext.trim() || defaultChildContext}`,
+        `用户本轮输入：${prompt}`,
+      ].join('\n');
+      const data = await fetchRecommendations(selectedProfile, nextIngredients, recommendationPrompt);
+      const recipes = data.recipes;
+      setChatMessages((current) =>
+        current.filter((message) => {
+          if (!message.recipes?.length) {
+            return true;
+          }
+
+          if (message.ingredientsKey) {
+            return message.ingredientsKey !== ingredientsKey;
+          }
+
+          return !nextIngredients.every((item) => message.text.includes(item.name));
+        }),
+      );
+      setRecommendations(recipes);
+      void fetchDetailsForRecipeCards(recipes, nextIngredients);
+      addChatMessage({
+        role: 'assistant',
+        text: `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
+        ingredientsKey,
+        recipes,
+      });
+      setManualIngredient('');
+      setVoiceTranscript(prompt);
+    } catch (recommendationError) {
+      setError(recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。');
+      addChatMessage({
+        role: 'assistant',
+        text: recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。',
+      });
+    } finally {
+      setIsFetchingRecommendations(false);
+    }
   };
 
-  const handleChatSubmit = async (text = manualIngredient) => {
-    const prompt = text.trim();
+  const handleChatSubmit = async (text?: string) => {
+    const rawText = typeof text === 'string' ? text : chatInputRef.current?.value || manualIngredient;
+    const prompt = rawText.trim();
     if (!prompt || isRecognizingIngredients) return;
 
     try {
       setIsParsingText(true);
       setError('');
+      setManualIngredient(prompt);
       addChatMessage({ role: 'user', text: prompt });
 
       if (shouldAskAllergyFollowup(prompt)) {
@@ -944,6 +1000,7 @@ export default function App() {
 
   const removeChatIngredient = (id: string) => {
     stopSpeaking();
+    setActiveSpeechKey('');
     setIngredients((current) => current.filter((item) => item.id !== id));
     setChatMessages((current) =>
       current.map((message) =>
@@ -1426,10 +1483,20 @@ export default function App() {
                         type="button"
                         className="ingredient-recommend-button"
                         onClick={() => void handleSearchWithCurrentIngredients(message.ingredients)}
-                        disabled={isRecognizingIngredients}
+                        disabled={isRecognizingIngredients || isFetchingRecommendations}
                       >
-                        <span>推荐菜谱</span>
-                        <small>根据当前食材，AI 为你推荐合适的菜谱</small>
+                        {isFetchingRecommendations ? (
+                          <>
+                            <img className="loading-icon recommend-loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                            <span>推荐中...</span>
+                            <small>AI 正在根据当前食材生成菜谱</small>
+                          </>
+                        ) : (
+                          <>
+                            <span>推荐菜谱</span>
+                            <small>根据当前食材，AI 为你推荐合适的菜谱</small>
+                          </>
+                        )}
                       </button>
                     </div>
                   </section>
@@ -1504,15 +1571,30 @@ export default function App() {
                                 <ol className="inline-step-list">
                                   {recipeDetailsById[recipe.id].steps.map((step) => (
                                     <li key={step.id}>
-                                      <b>{step.title}</b>
+                                      <div className="inline-step-heading">
+                                        <b>{step.title}</b>
+                                        <button
+                                          type="button"
+                                          className="step-speech-button"
+                                          onClick={() => speakStep(step)}
+                                          aria-label={`${activeSpeechKey === `step_${step.id}` ? '停止朗读' : '朗读'}步骤：${step.title}`}
+                                        >
+                                          <PlayInlineIcon />
+                                          {activeSpeechKey === `step_${step.id}` ? '停止' : '朗读'}
+                                        </button>
+                                      </div>
                                       <span>{step.childAction || step.description}</span>
+                                      {step.requiresParentAssist ? <em>需家长陪同</em> : null}
                                     </li>
                                   ))}
                                 </ol>
                               </div>
                             </>
                           ) : (
-                            <p className="muted compact-copy">{isFetchingDetail ? '正在生成内容...' : '内容加载中...'}</p>
+                            <p className="muted compact-copy inline-loading-copy">
+                              {isFetchingDetail ? <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" /> : null}
+                              {isFetchingDetail ? '正在生成内容...' : '内容加载中...'}
+                            </p>
                           )}
                         </div>
                         <div className="carousel-actions single-action">
@@ -1558,7 +1640,7 @@ export default function App() {
               value={manualIngredient}
               onChange={(event) => setManualIngredient(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter') {
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
                   void handleChatSubmit();
                 }
               }}
@@ -1594,7 +1676,11 @@ export default function App() {
               disabled={!manualIngredient.trim() || isRecognizingIngredients}
               aria-label="发送信息"
             >
-              {isRecognizingIngredients ? <span className="loading-spinner" aria-hidden="true" /> : <img src={sendMessageIcon} alt="" aria-hidden="true" />}
+              {isRecognizingIngredients ? (
+                <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+              ) : (
+                <img src={sendMessageIcon} alt="" aria-hidden="true" />
+              )}
             </button>
           </div>
         </section>
@@ -1675,7 +1761,14 @@ export default function App() {
                 onClick={() => void handleCreateProfile()}
                 disabled={isCreatingProfile}
               >
-                {isCreatingProfile ? '保存中…' : '新增并使用这个档案'}
+                {isCreatingProfile ? (
+                  <>
+                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                    保存中...
+                  </>
+                ) : (
+                  '新增并使用这个档案'
+                )}
               </button>
               <button type="button" className="primary-button" onClick={() => setPage('input')}>
                 确认并继续
@@ -1753,7 +1846,14 @@ export default function App() {
                 onClick={() => cameraImageInputRef.current?.click()}
                 disabled={isUploadingImage}
               >
-                {isUploadingImage ? '上传图片中…' : '拍摄食材图片'}
+                {isUploadingImage ? (
+                  <>
+                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                    上传图片中...
+                  </>
+                ) : (
+                  '拍摄食材图片'
+                )}
               </button>
               <button
                 type="button"
@@ -1761,7 +1861,14 @@ export default function App() {
                 onClick={() => fileImageInputRef.current?.click()}
                 disabled={isUploadingImage}
               >
-                {isUploadingImage ? '上传图片中…' : '选择本地图片'}
+                {isUploadingImage ? (
+                  <>
+                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                    上传图片中...
+                  </>
+                ) : (
+                  '选择本地图片'
+                )}
               </button>
               <button
                 type="button"
@@ -1801,7 +1908,14 @@ export default function App() {
                   onClick={() => void handleManualParse()}
                   disabled={isParsingText}
                 >
-                  {isParsingText ? '解析中…' : '解析'}
+                  {isParsingText ? (
+                    <>
+                      <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                      解析中...
+                    </>
+                  ) : (
+                    '解析'
+                  )}
                 </button>
               </div>
             </div>
@@ -1907,7 +2021,14 @@ export default function App() {
                 onClick={() => void handleGetRecommendations()}
                 disabled={ingredients.length === 0 || isFetchingRecommendations}
               >
-                {isFetchingRecommendations ? '推荐中…' : '开始推荐菜谱'}
+                {isFetchingRecommendations ? (
+                  <>
+                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                    推荐中...
+                  </>
+                ) : (
+                  '开始推荐菜谱'
+                )}
               </button>
             </div>
           </div>
@@ -1949,7 +2070,10 @@ export default function App() {
           <div className="panel hero-detail">
             <p className="eyebrow">菜谱详情</p>
             {isFetchingDetail || !selectedRecipe ? (
-              <h2>正在加载菜谱详情…</h2>
+              <h2 className="loading-heading">
+                <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                正在加载菜谱详情...
+              </h2>
             ) : (
               <>
                 <ZoomableImage className="detail-hero-image" src={selectedRecipe.imageUrl} alt={selectedRecipe.name} />
@@ -2025,7 +2149,7 @@ export default function App() {
                         <p className="muted">{step.expectedResult || '完成后看一看食材颜色和状态有没有变化。'}</p>
                         <div className="action-row compact-list">
                           <button type="button" className="ghost-button" onClick={() => speakStep(step)}>
-                            朗读这一步
+                            {activeSpeechKey === `step_${step.id}` ? '停止朗读' : '朗读这一步'}
                           </button>
                         </div>
                       </li>
@@ -2056,6 +2180,7 @@ export default function App() {
               index={stepIndex}
               total={selectedRecipe.steps.length}
               onSpeak={speakStep}
+              activeSpeechKey={activeSpeechKey}
               embedded
             />
             <p className="eyebrow">烹饪进度</p>
@@ -2131,7 +2256,14 @@ export default function App() {
                 onClick={() => void handleSubmitFeedback()}
                 disabled={isSubmittingFeedback}
               >
-                {isSubmittingFeedback ? '生成点评中…' : '生成 AI 点评'}
+                {isSubmittingFeedback ? (
+                  <>
+                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                    生成点评中...
+                  </>
+                ) : (
+                  '生成 AI 点评'
+                )}
               </button>
             </div>
           </div>
@@ -2202,7 +2334,14 @@ export default function App() {
                 onClick={() => void handleFetchLogs()}
                 disabled={isFetchingLogs}
               >
-                {isFetchingLogs ? '检索中…' : '检索日志'}
+                {isFetchingLogs ? (
+                  <>
+                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                    检索中...
+                  </>
+                ) : (
+                  '检索日志'
+                )}
               </button>
             </div>
             {llmLogFile ? (

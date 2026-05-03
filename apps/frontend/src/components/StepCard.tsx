@@ -5,6 +5,7 @@ interface StepCardProps {
   index: number;
   total: number;
   onSpeak?: (step: CookingStep) => void;
+  activeSpeechKey?: string;
   embedded?: boolean;
 }
 
@@ -28,7 +29,9 @@ function buildExpectedResult(step: CookingStep) {
   return '完成后先停一下，确认安全和口味，再进入下一步。';
 }
 
-export function StepCard({ step, index, total, onSpeak, embedded = false }: StepCardProps) {
+export function StepCard({ step, index, total, onSpeak, activeSpeechKey = '', embedded = false }: StepCardProps) {
+  const isSpeaking = activeSpeechKey === `step_${step.id}`;
+
   return (
     <section className={embedded ? 'step-card embedded-step-card' : 'step-card'}>
       <div className="step-meta">
@@ -43,7 +46,7 @@ export function StepCard({ step, index, total, onSpeak, embedded = false }: Step
         <h3>{step.title}</h3>
         {onSpeak ? (
           <button type="button" className="ghost-button" onClick={() => onSpeak(step)}>
-            朗读这一步
+            {isSpeaking ? '停止朗读' : '朗读这一步'}
           </button>
         ) : null}
       </div>
