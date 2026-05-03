@@ -791,6 +791,10 @@ export default function App() {
         return;
       }
       setIngredients(nextIngredients);
+      setManualIngredient('');
+      if (chatInputRef.current) {
+        chatInputRef.current.value = '';
+      }
       addChatMessage({
         role: 'assistant',
         text: parsed.ingredients.length > 0 ? '我识别到了这些食材。你可以继续补充食材，也可以直接搜索菜谱。' : '我暂时没有识别到明确食材，可以换一种说法再试。',
