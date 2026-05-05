@@ -267,6 +267,26 @@ function parseRecipePlanPayload(content: string) {
   }
 }
 
+function parseSeasonalIngredientSuggestionPayload(content: string) {
+  const normalizedContent = stripMarkdownCodeFence(content);
+
+  try {
+    const parsed = JSON.parse(normalizedContent) as {
+      suggestions?: Array<{ name?: unknown; reason?: unknown }>;
+    };
+
+    return (parsed.suggestions ?? [])
+      .map((item) => ({
+        name: String(item.name ?? '').trim(),
+        reason: String(item.reason ?? '').trim(),
+      }))
+      .filter((item) => item.name)
+      .slice(0, 8);
+  } catch {
+    throw new Error('季节食材推荐模型返回内容无法解析为有效 JSON。');
+  }
+}
+
 function toDataUrl(file: { buffer: Buffer; mimetype: string }) {
   return `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
 }
@@ -628,6 +648,66 @@ export async function understandIngredientsFromImage(file: {
   });
 
   return content;
+}
+
+function getSeasonHint(month: number) {
+  if (month === 1 || month === 2) {
+    return '冬季与春节前后，偏暖体温热、清淡年节蔬果、少油少糖';
+  }
+
+  if (month >= 3 && month <= 5) {
+    return '春季，偏新鲜青菜、应季瓜果、维生素丰富、轻口味';
+  }
+
+  if (month >= 6 && month <= 8) {
+    return '夏季，偏祛暑补水、牛油果、西瓜、黄瓜、清爽冰沙或酸奶类食材';
+  }
+
+  if (month >= 9 && month <= 11) {
+    return '秋季，偏润燥、祛湿、温和滋养、梨、山药、南瓜、莲藕等食材';
+  }
+
+  return '冬季，偏暖体、温热、易消化、汤羹粥类适配食材';
+}
+
+export async function generateSeasonalIngredientSuggestions(input: {
+  month: number;
+  childContext: string;
+}) {
+  const month = Number.isFinite(input.month) && input.month >= 1 && input.month <= 12
+    ? Math.trunc(input.month)
+    : new Date().getMonth() + 1;
+  const seasonHint = getSeasonHint(month);
+
+  const content = await callSiliconFlow([
+    {
+      role: 'system',
+      content:
+        '你是儿童食材推荐助手。请根据当前月份、季节/节令和默认小学生健康饮食原则，推荐儿童可能感兴趣且适合做儿童菜谱的食材。输出严格 JSON：{"suggestions":[{"name":"食材名","reason":"12字以内理由"}]}。只推荐食材或适合解析为食材的短词，不要推荐完整菜名，不要输出解释文字。',
+    },
+    {
+      role: 'user',
+      content: [
+        `当前月份: ${month} 月`,
+        `季节/节令提示: ${seasonHint}`,
+        `儿童默认原则: ${input.childContext || '小学1-6年级学生，低油脂、轻口味、膳食均衡、维生素丰富、搭配均衡'}`,
+        '生成要求:',
+        '1. 返回 5-8 个食材建议。',
+        '2. 春节/冬季偏青菜瓜果、温热暖体、清淡少油；夏季偏牛油果、西瓜、黄瓜、清爽冰沙/酸奶可用食材；秋季偏润燥祛湿；春季偏新鲜青菜和维生素丰富食材。',
+        '3. 食材名要短，便于用户点击后直接识别为食材。',
+        '4. 不要包含过度辛辣、高糖、高油或明显不适合儿童的食材。',
+      ].join('\n'),
+    },
+  ], {
+    operation: 'generate_seasonal_ingredient_suggestions',
+    maxTokens: 500,
+    metadata: {
+      month,
+      seasonHint,
+    },
+  });
+
+  return parseSeasonalIngredientSuggestionPayload(content);
 }
 
 export async function generateRecipePlan(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {

@@ -14,6 +14,7 @@ import {
 } from './service.js';
 import {
   generateCookingFeedback,
+  generateSeasonalIngredientSuggestions,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
   understandIngredientsFromImage,
@@ -157,6 +158,26 @@ export function createApp(): Express {
           message: error instanceof Error ? error.message : '文本理解失败。',
         },
       });
+    }
+  });
+
+  app.get('/api/v1/ingredients/seasonal-suggestions', async (req, res) => {
+    if (!isSiliconFlowConfigured()) {
+      res.json({ data: { suggestions: [] } });
+      return;
+    }
+
+    try {
+      const month = Number(req.query.month ?? new Date().getMonth() + 1);
+      const childContext = String(req.query.childContext ?? '');
+      const suggestions = await generateSeasonalIngredientSuggestions({
+        month,
+        childContext,
+      });
+
+      res.json({ data: { suggestions } });
+    } catch {
+      res.json({ data: { suggestions: [] } });
     }
   });
 

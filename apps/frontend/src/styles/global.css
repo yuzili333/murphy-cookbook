@@ -620,9 +620,12 @@ button {
   flex-wrap: nowrap;
   gap: 10px;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding: 2px 2px 10px;
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
+  touch-action: pan-y pinch-zoom;
+  -webkit-overflow-scrolling: touch;
 }
 
 .ingredient-card-row::-webkit-scrollbar {

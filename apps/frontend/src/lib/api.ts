@@ -8,6 +8,7 @@ import type {
   RecipeDetail,
   RecipeRecommendation,
   RecommendationResponse,
+  SeasonalIngredientSuggestion,
   VoiceParseResponse,
 } from '../types';
 
@@ -98,6 +99,15 @@ export function uploadVoiceAudio(file: File) {
     method: 'POST',
     body: form,
   });
+}
+
+export function fetchSeasonalIngredientSuggestions(month: number, childContext: string) {
+  const query = new URLSearchParams({
+    month: String(month),
+    childContext,
+  }).toString();
+
+  return request<{ suggestions: SeasonalIngredientSuggestion[] }>(`/ingredients/seasonal-suggestions?${query}`);
 }
 
 export function fetchRecommendations(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {

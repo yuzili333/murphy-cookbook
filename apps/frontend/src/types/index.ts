@@ -86,6 +86,11 @@ export interface RecommendationResponse {
   sortBy: string;
 }
 
+export interface SeasonalIngredientSuggestion {
+  name: string;
+  reason: string;
+}
+
 export interface FeedbackResponse {
   praise: string;
   improvement: string;

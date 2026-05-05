@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type TouchEvent } from 'react';
 import { AppShell } from './components/AppShell';
 import { IngredientThumb } from './components/IngredientThumb';
 import { RecipeCard } from './components/RecipeCard';
@@ -17,6 +17,7 @@ import {
   fetchLlmLogs,
   fetchRecipeDetail,
   fetchRecommendations,
+  fetchSeasonalIngredientSuggestions,
   parseIngredientText,
   submitCookingFeedback,
   uploadIngredientImage,
@@ -31,6 +32,7 @@ import type {
   PageId,
   RecipeDetail,
   RecipeRecommendation,
+  SeasonalIngredientSuggestion,
 } from './types';
 
 const defaultTasteFeedback = '很好吃，番茄酸酸甜甜的。';
@@ -368,6 +370,12 @@ export default function App() {
   const cameraImageInputRef = useRef<HTMLInputElement>(null);
   const fileImageInputRef = useRef<HTMLInputElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const ingredientSwipeRef = useRef({
+    startX: 0,
+    startY: 0,
+    scrollLeft: 0,
+    isHorizontal: false,
+  });
 
   const [page, setPage] = useState<PageId>('home');
   const [profiles, setProfiles] = useState<ChildProfile[]>([]);
@@ -378,6 +386,7 @@ export default function App() {
   const [favoriteRecipesByProfile, setFavoriteRecipesByProfile] = useState<FavoriteRecipesByProfile>({});
   const [favoriteRecipes, setFavoriteRecipes] = useState<RecipeRecommendation[]>([]);
   const [likedRecipeIds, setLikedRecipeIds] = useState<string[]>([]);
+  const [seasonalIngredientSuggestions, setSeasonalIngredientSuggestions] = useState<SeasonalIngredientSuggestion[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeChatSessionId, setActiveChatSessionId] = useState('');
@@ -482,6 +491,38 @@ export default function App() {
     setLearningRecipe(null);
   };
 
+  const handleIngredientTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    ingredientSwipeRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      scrollLeft: event.currentTarget.scrollLeft,
+      isHorizontal: false,
+    };
+  };
+
+  const handleIngredientTouchMove = (event: TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    const deltaX = touch.clientX - ingredientSwipeRef.current.startX;
+    const deltaY = touch.clientY - ingredientSwipeRef.current.startY;
+    const isHorizontalSwipe = Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
+
+    if (isHorizontalSwipe || ingredientSwipeRef.current.isHorizontal) {
+      ingredientSwipeRef.current.isHorizontal = true;
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.scrollLeft = ingredientSwipeRef.current.scrollLeft - deltaX;
+    }
+  };
+
+  const handleIngredientTouchEnd = () => {
+    ingredientSwipeRef.current.isHorizontal = false;
+  };
+
   useEffect(() => {
     async function bootstrap() {
       try {
@@ -536,6 +577,29 @@ export default function App() {
 
     setSelectedProfileId(conversationProfileId);
   }, [profiles, selectedProfileId]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadSeasonalIngredientSuggestions() {
+      try {
+        const data = await fetchSeasonalIngredientSuggestions(new Date().getMonth() + 1, childContext.trim() || defaultChildContext);
+        if (!isCancelled) {
+          setSeasonalIngredientSuggestions(data.suggestions.filter((item) => item.name).slice(0, 8));
+        }
+      } catch {
+        if (!isCancelled) {
+          setSeasonalIngredientSuggestions([]);
+        }
+      }
+    }
+
+    void loadSeasonalIngredientSuggestions();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [childContext]);
 
   useEffect(() => {
     setFavoriteRecipes(favoriteRecipesByProfile[selectedProfileId || conversationProfileId] ?? []);
@@ -1321,7 +1385,6 @@ export default function App() {
             <div className="conversation-drawer-header">
               <div>
                 <p className="eyebrow">历史对话</p>
-                <h2>Murphy</h2>
               </div>
               <button type="button" className="ghost-button" onClick={() => setIsConversationDrawerOpen(false)}>
                 关闭
@@ -1425,7 +1488,13 @@ export default function App() {
                       </div>
                       <span>共 {message.ingredients.length} 项</span>
                     </div>
-                    <div className="ingredient-card-row">
+                    <div
+                      className="ingredient-card-row"
+                      onTouchStart={handleIngredientTouchStart}
+                      onTouchMove={handleIngredientTouchMove}
+                      onTouchEnd={handleIngredientTouchEnd}
+                      onTouchCancel={handleIngredientTouchEnd}
+                    >
                     {message.ingredients.map((ingredient) => {
                       const visual = getIngredientVisual(ingredient.name);
                       const isFallback = visual.name === defaultIngredientVisual.name;
@@ -1608,13 +1677,21 @@ export default function App() {
             ))}
           </div>
 
-          <div className="chat-suggestions" aria-label="快捷问题">
-            {['推荐鸡蛋和番茄能做什么', '土豆和胡萝卜适合孩子吗', '今天想做低盐晚餐'].map((item) => (
-              <button key={item} type="button" onClick={() => void handleChatSubmit(item)} disabled={isRecognizingIngredients}>
-                {item}
-              </button>
-            ))}
-          </div>
+          {seasonalIngredientSuggestions.length > 0 ? (
+            <div className="chat-suggestions" aria-label="季节食材推荐">
+              {seasonalIngredientSuggestions.map((item) => (
+                <button
+                  key={`${item.name}_${item.reason}`}
+                  type="button"
+                  onClick={() => void handleChatSubmit(item.name)}
+                  disabled={isRecognizingIngredients}
+                  title={item.reason}
+                >
+                  {item.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div className="chat-composer">
             <button
