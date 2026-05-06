@@ -370,6 +370,7 @@ export default function App() {
   const cameraImageInputRef = useRef<HTMLInputElement>(null);
   const fileImageInputRef = useRef<HTMLInputElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatThreadEndRef = useRef<HTMLDivElement>(null);
   const ingredientSwipeRef = useRef({
     startX: 0,
     startY: 0,
@@ -395,6 +396,8 @@ export default function App() {
   const [pendingScrollRecipeId, setPendingScrollRecipeId] = useState('');
   const [childContext, setChildContext] = useState('');
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
+  const [recipeDetailLoadingById, setRecipeDetailLoadingById] = useState<Record<string, boolean>>({});
+  const [recipeDetailErrorsById, setRecipeDetailErrorsById] = useState<Record<string, string>>({});
   const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
   const [learningRecipe, setLearningRecipe] = useState<RecipeRecommendation | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -430,6 +433,7 @@ export default function App() {
   const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [activeSpeechKey, setActiveSpeechKey] = useState('');
   const [error, setError] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
   const isRecognizingIngredients = isParsingText || isUploadingImage;
 
   const speakText = (text: string, lang = 'zh-CN', speechKey = '') => {
@@ -484,6 +488,8 @@ export default function App() {
   const conversationProfile = buildConversationProfile(childContext);
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? conversationProfile;
   const currentStep = selectedRecipe?.steps[stepIndex] ?? null;
+  const recipeDetailCount = Object.keys(recipeDetailsById).length;
+  const recipeDetailLoadingKey = Object.entries(recipeDetailLoadingById).filter(([, value]) => value).map(([key]) => key).join('|');
 
   const closeLearningDrawer = () => {
     stopSpeaking();
@@ -612,6 +618,21 @@ export default function App() {
   }, [chatMessages]);
 
   useEffect(() => {
+    if (page !== 'home' || isBootstrapping) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      chatThreadEndRef.current?.scrollIntoView({
+        block: 'end',
+        behavior: 'smooth',
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [page, isBootstrapping, chatMessages, recipeDetailCount, recipeDetailLoadingKey, isFetchingRecommendations, isFetchingDetail]);
+
+  useEffect(() => {
     if (isBootstrapping || !activeChatSessionId) {
       return;
     }
@@ -644,6 +665,15 @@ export default function App() {
   useEffect(() => {
     persistChildContext(childContext);
   }, [childContext]);
+
+  useEffect(() => {
+    if (!toastMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setToastMessage(''), 3600);
+    return () => window.clearTimeout(timeoutId);
+  }, [toastMessage]);
 
   useEffect(() => {
     if (!pendingScrollRecipeId || page !== 'home') {
@@ -688,6 +718,8 @@ export default function App() {
     setIngredients([]);
     setRecommendations([]);
     setRecipeDetailsById({});
+    setRecipeDetailLoadingById({});
+    setRecipeDetailErrorsById({});
     setSelectedRecipe(null);
     setChatMessages(session.messages);
     setChatSessions((current) => {
@@ -708,6 +740,8 @@ export default function App() {
     setChatMessages(session.messages);
     setRecommendations(sessionRecipes);
     setRecipeDetailsById({});
+    setRecipeDetailLoadingById({});
+    setRecipeDetailErrorsById({});
     setSelectedRecipe(null);
     void fetchDetailsForRecipeCards(sessionRecipes, session.ingredients, buildConversationProfile(session.childContext));
     persistActiveChatSessionId(session.id);
@@ -742,30 +776,45 @@ export default function App() {
 
     setIsFetchingDetail(true);
     try {
-      const details = await Promise.all(
-        recipes.map((recipe) =>
-          fetchGeneratedRecipeDetail({
-            profileId: profile.id,
-            profile,
-            ingredients: nextIngredients,
-            recipe,
-          }).catch(() => null),
-        ),
-      );
-
-      setRecipeDetailsById((current) => {
-        const next = { ...current };
-        details.forEach((detail, index) => {
-          const recipe = recipes[index];
-          if (detail && recipe) {
-            next[recipe.id] = detail;
-            next[detail.id] = detail;
-          }
-        });
-        return next;
-      });
+      await Promise.all(recipes.map((recipe) => fetchRecipeDetailForCard(recipe, nextIngredients, profile, true)));
     } finally {
       setIsFetchingDetail(false);
+    }
+  };
+
+  const fetchRecipeDetailForCard = async (
+    recipe: RecipeRecommendation,
+    nextIngredients: IngredientItem[] = ingredients,
+    profile: ChildProfile = selectedProfile,
+    showToast = true,
+  ) => {
+    setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: true }));
+    setRecipeDetailErrorsById((current) => {
+      const next = { ...current };
+      delete next[recipe.id];
+      return next;
+    });
+
+    try {
+      const detail = await fetchGeneratedRecipeDetail({
+        profileId: profile.id,
+        profile,
+        ingredients: nextIngredients,
+        recipe,
+      });
+      setRecipeDetailsById((current) => ({
+        ...current,
+        [recipe.id]: detail,
+        [detail.id]: detail,
+      }));
+    } catch (detailError) {
+      const message = detailError instanceof Error ? detailError.message : '菜谱详情获取失败。';
+      setRecipeDetailErrorsById((current) => ({ ...current, [recipe.id]: message }));
+      if (showToast) {
+        setToastMessage(`${recipe.name} 详情获取失败，请稍后重试。`);
+      }
+    } finally {
+      setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: false }));
     }
   };
 
@@ -803,6 +852,9 @@ export default function App() {
         }),
       );
       setRecommendations(recipes);
+      setRecipeDetailsById({});
+      setRecipeDetailLoadingById({});
+      setRecipeDetailErrorsById({});
       void fetchDetailsForRecipeCards(recipes, nextIngredients);
       addChatMessage({
         role: 'assistant',
@@ -1461,6 +1513,12 @@ export default function App() {
         </div>
       ) : null}
 
+      {toastMessage ? (
+        <div className="toast-banner" role="status" aria-live="polite">
+          {toastMessage}
+        </div>
+      ) : null}
+
       {page === 'home' ? (
         <section className="chatbox-page">
           <div className="chat-thread" aria-live="polite">
@@ -1653,10 +1711,30 @@ export default function App() {
                                 </ol>
                               </div>
                             </>
+                          ) : recipeDetailErrorsById[recipe.id] ? (
+                            <div className="detail-error-block">
+                              <strong>详情获取失败</strong>
+                              <p>{recipeDetailErrorsById[recipe.id]}</p>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => void fetchRecipeDetailForCard(recipe)}
+                                disabled={recipeDetailLoadingById[recipe.id]}
+                              >
+                                {recipeDetailLoadingById[recipe.id] ? (
+                                  <>
+                                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                                    正在重新获取...
+                                  </>
+                                ) : (
+                                  '再次获取'
+                                )}
+                              </button>
+                            </div>
                           ) : (
                             <p className="muted compact-copy inline-loading-copy">
-                              {isFetchingDetail ? <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" /> : null}
-                              {isFetchingDetail ? '正在生成内容...' : '内容加载中...'}
+                              {recipeDetailLoadingById[recipe.id] || isFetchingDetail ? <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" /> : null}
+                              {recipeDetailLoadingById[recipe.id] || isFetchingDetail ? '正在生成内容...' : '内容加载中...'}
                             </p>
                           )}
                         </div>
@@ -1675,6 +1753,7 @@ export default function App() {
                 ) : null}
               </article>
             ))}
+            <div ref={chatThreadEndRef} className="chat-thread-end" aria-hidden="true" />
           </div>
 
           {seasonalIngredientSuggestions.length > 0 ? (

@@ -347,10 +347,12 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/recipes/detail', async (req, res) => {
-    const profileId = String(req.body?.profileId ?? '');
-    const ingredients = Array.isArray(req.body?.ingredients) ? req.body.ingredients : [];
-    const profile = req.body?.profile ?? null;
-    const recipe = req.body?.recipe ?? null;
+    const profileId = String(req.body?.profileId ?? req.query.profileId ?? '');
+    const ingredients = Array.isArray(req.body?.ingredients)
+      ? req.body.ingredients
+      : parseJsonInput(req.query.ingredients, []);
+    const profile = req.body?.profile ?? parseJsonInput(req.query.profile, null);
+    const recipe = req.body?.recipe ?? parseJsonInput(req.query.recipe, null);
 
     if (!recipe?.id || !recipe?.name) {
       res.status(400).json({

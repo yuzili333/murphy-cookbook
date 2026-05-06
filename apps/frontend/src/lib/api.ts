@@ -147,19 +147,27 @@ export function fetchGeneratedRecipeDetail(payload: {
   ingredients: IngredientItem[];
   recipe: RecipeDetail | RecipeRecommendation;
 }) {
-  return request<RecipeDetail>('/recipes/detail', {
+  const requestPayload = {
+    profileId: payload.profileId,
+    profile: payload.profile,
+    ingredients: payload.ingredients.map((ingredient) => ({
+      name: ingredient.name,
+      normalizedName: ingredient.normalizedName ?? ingredient.name,
+      quantity: ingredient.quantity,
+      source: ingredient.source,
+    })),
+    recipe: payload.recipe,
+  };
+  const query = new URLSearchParams({
+    profileId: requestPayload.profileId,
+    profile: JSON.stringify(requestPayload.profile),
+    ingredients: JSON.stringify(requestPayload.ingredients),
+    recipe: JSON.stringify(requestPayload.recipe),
+  }).toString();
+
+  return request<RecipeDetail>(`/recipes/detail?${query}`, {
     method: 'POST',
-    body: JSON.stringify({
-      profileId: payload.profileId,
-      profile: payload.profile,
-      ingredients: payload.ingredients.map((ingredient) => ({
-        name: ingredient.name,
-        normalizedName: ingredient.normalizedName ?? ingredient.name,
-        quantity: ingredient.quantity,
-        source: ingredient.source,
-      })),
-      recipe: payload.recipe,
-    }),
+    body: JSON.stringify(requestPayload),
   });
 }
 

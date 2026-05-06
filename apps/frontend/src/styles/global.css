@@ -308,6 +308,11 @@ button {
   gap: 7px;
 }
 
+.chat-thread-end {
+  width: 100%;
+  height: 1px;
+}
+
 .chat-message.user {
   justify-items: end;
 }
@@ -476,6 +481,34 @@ button {
 .inline-detail-block {
   display: grid;
   gap: 5px;
+}
+
+.detail-error-block {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(214, 99, 57, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 240, 239, 0.82);
+}
+
+.detail-error-block strong {
+  color: #b74427;
+  font-size: 0.82rem;
+}
+
+.detail-error-block p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.detail-error-block .secondary-button {
+  width: fit-content;
+  min-height: 34px;
+  padding: 7px 11px;
+  font-size: 0.78rem;
 }
 
 .inline-ingredient-list {
@@ -1545,6 +1578,25 @@ button {
   background: var(--error);
   border-color: rgba(214, 99, 57, 0.25);
   margin-bottom: 16px;
+}
+
+.toast-banner {
+  position: fixed;
+  top: 82px;
+  left: 50%;
+  z-index: 40;
+  max-width: min(420px, calc(100% - 28px));
+  padding: 11px 14px;
+  border: 1px solid rgba(214, 99, 57, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 250, 246, 0.96);
+  color: #9f4324;
+  box-shadow: 0 14px 34px rgba(43, 84, 76, 0.16);
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-align: center;
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
 }
 
 .tip-card {
