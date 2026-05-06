@@ -388,6 +388,12 @@ export default function App() {
     scrollLeft: 0,
     isHorizontal: false,
   });
+  const recipeSwipeRef = useRef({
+    startX: 0,
+    startY: 0,
+    scrollLeft: 0,
+    isHorizontal: false,
+  });
 
   const [page, setPage] = useState<PageId>('home');
   const [profiles, setProfiles] = useState<ChildProfile[]>([]);
@@ -499,8 +505,7 @@ export default function App() {
   const conversationProfile = buildConversationProfile(childContext);
   const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? conversationProfile;
   const currentStep = selectedRecipe?.steps[stepIndex] ?? null;
-  const recipeDetailCount = Object.keys(recipeDetailsById).length;
-  const recipeDetailLoadingKey = Object.entries(recipeDetailLoadingById).filter(([, value]) => value).map(([key]) => key).join('|');
+  const lastChatMessageId = chatMessages.at(-1)?.id ?? '';
 
   const closeLearningDrawer = () => {
     stopSpeaking();
@@ -508,11 +513,14 @@ export default function App() {
     setLearningRecipe(null);
   };
 
-  const handleIngredientTouchStart = (event: TouchEvent<HTMLDivElement>) => {
+  const handleHorizontalTouchStart = (
+    event: TouchEvent<HTMLDivElement>,
+    swipeRef: typeof ingredientSwipeRef,
+  ) => {
     const touch = event.touches[0];
     if (!touch) return;
 
-    ingredientSwipeRef.current = {
+    swipeRef.current = {
       startX: touch.clientX,
       startY: touch.clientY,
       scrollLeft: event.currentTarget.scrollLeft,
@@ -520,25 +528,39 @@ export default function App() {
     };
   };
 
-  const handleIngredientTouchMove = (event: TouchEvent<HTMLDivElement>) => {
+  const handleHorizontalTouchMove = (
+    event: TouchEvent<HTMLDivElement>,
+    swipeRef: typeof ingredientSwipeRef,
+  ) => {
     const touch = event.touches[0];
     if (!touch) return;
 
-    const deltaX = touch.clientX - ingredientSwipeRef.current.startX;
-    const deltaY = touch.clientY - ingredientSwipeRef.current.startY;
+    const deltaX = touch.clientX - swipeRef.current.startX;
+    const deltaY = touch.clientY - swipeRef.current.startY;
     const isHorizontalSwipe = Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY) * 1.15;
 
-    if (isHorizontalSwipe || ingredientSwipeRef.current.isHorizontal) {
-      ingredientSwipeRef.current.isHorizontal = true;
+    if (isHorizontalSwipe || swipeRef.current.isHorizontal) {
+      swipeRef.current.isHorizontal = true;
       event.preventDefault();
       event.stopPropagation();
-      event.currentTarget.scrollLeft = ingredientSwipeRef.current.scrollLeft - deltaX;
+      event.currentTarget.scrollLeft = swipeRef.current.scrollLeft - deltaX;
     }
   };
 
-  const handleIngredientTouchEnd = () => {
-    ingredientSwipeRef.current.isHorizontal = false;
+  const handleHorizontalTouchEnd = (swipeRef: typeof ingredientSwipeRef) => {
+    swipeRef.current.isHorizontal = false;
   };
+
+  const handleIngredientTouchStart = (event: TouchEvent<HTMLDivElement>) =>
+    handleHorizontalTouchStart(event, ingredientSwipeRef);
+  const handleIngredientTouchMove = (event: TouchEvent<HTMLDivElement>) =>
+    handleHorizontalTouchMove(event, ingredientSwipeRef);
+  const handleIngredientTouchEnd = () => handleHorizontalTouchEnd(ingredientSwipeRef);
+  const handleRecipeTouchStart = (event: TouchEvent<HTMLDivElement>) =>
+    handleHorizontalTouchStart(event, recipeSwipeRef);
+  const handleRecipeTouchMove = (event: TouchEvent<HTMLDivElement>) =>
+    handleHorizontalTouchMove(event, recipeSwipeRef);
+  const handleRecipeTouchEnd = () => handleHorizontalTouchEnd(recipeSwipeRef);
 
   useEffect(() => {
     async function bootstrap() {
@@ -641,7 +663,7 @@ export default function App() {
     }, 80);
 
     return () => window.clearTimeout(timeoutId);
-  }, [page, isBootstrapping, chatMessages, recipeDetailCount, recipeDetailLoadingKey, isFetchingRecommendations, isFetchingDetail]);
+  }, [page, isBootstrapping, lastChatMessageId]);
 
   useEffect(() => {
     if (isBootstrapping || !activeChatSessionId) {
@@ -1551,7 +1573,14 @@ export default function App() {
             </div>
           </div>
           <div className="chat-thread" aria-live="polite">
-            {chatMessages.map((message) => (
+            {chatMessages.map((message) => {
+              const messageIngredientsKey = message.ingredients?.length ? buildIngredientsKey(message.ingredients) : '';
+              const hasRecommendedForMessageIngredients = Boolean(
+                messageIngredientsKey &&
+                  chatMessages.some((item) => item.recipes?.length && item.ingredientsKey === messageIngredientsKey),
+              );
+
+              return (
               <article key={message.id} className={message.role === 'user' ? 'chat-message user' : 'chat-message assistant'}>
                 <div className="chat-bubble">
                   <div className="chat-bubble-content">
@@ -1638,7 +1667,11 @@ export default function App() {
                     <div className="ingredient-card-actions">
                       <button
                         type="button"
-                        className="ingredient-recommend-button"
+                        className={
+                          hasRecommendedForMessageIngredients
+                            ? 'ingredient-recommend-button recommended'
+                            : 'ingredient-recommend-button attention'
+                        }
                         onClick={() => void handleSearchWithCurrentIngredients(message.ingredients)}
                         disabled={isRecognizingIngredients || isFetchingRecommendations}
                       >
@@ -1659,7 +1692,14 @@ export default function App() {
                   </section>
                 ) : null}
                 {message.recipes?.length ? (
-                  <div className="recipe-carousel" aria-label="推荐菜谱">
+                  <div
+                    className="recipe-carousel"
+                    aria-label="推荐菜谱"
+                    onTouchStart={handleRecipeTouchStart}
+                    onTouchMove={handleRecipeTouchMove}
+                    onTouchEnd={handleRecipeTouchEnd}
+                    onTouchCancel={handleRecipeTouchEnd}
+                  >
                     {message.recipes.map((recipe) => {
                       const recipeDetail = recipeDetailsById[recipe.id];
                       const fitReasonText = recipe.fitReasons.slice(0, 2).join('；');
@@ -1896,7 +1936,8 @@ export default function App() {
                   </div>
                 ) : null}
               </article>
-            ))}
+              );
+            })}
             <div ref={chatThreadEndRef} className="chat-thread-end" aria-hidden="true" />
           </div>
 

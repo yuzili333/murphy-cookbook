@@ -30,9 +30,16 @@ export type RecommendationResult =
   | { data: GeneratedRecommendationPayload }
   | { error: RecommendationError };
 
-const recipeDetailCacheFile = resolve(process.cwd(), '.local', 'cache', 'recipe-detail-cache.json');
+const recipeDetailCacheFile = process.env.RECIPE_DETAIL_CACHE_FILE
+  ? resolve(process.env.RECIPE_DETAIL_CACHE_FILE)
+  : process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME
+    ? '/tmp/murphy-cookbook-recipe-detail-cache.json'
+    : resolve(process.cwd(), '.local', 'cache', 'recipe-detail-cache.json');
 const recipeDetailCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const recipeDetailCacheVersion = 'child-full-steps-v2';
+const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 15000);
+const recipeDetailMemoryCache = new Map<string, RecipeDetailCacheEntry>();
+const pendingRecipeDetailRequests = new Map<string, Promise<{ data: RecipeDetail } | { error: RecommendationError }>>();
 const defaultRecommendationProfile: ChildProfile = {
   id: 'chat_context_profile',
   nickname: '小学阶段学生',
@@ -112,30 +119,44 @@ function buildRecipeDetailCacheKey(input: {
 }
 
 function readRecipeDetailCache() {
+  const memoryEntries = Array.from(recipeDetailMemoryCache.values());
   if (!existsSync(recipeDetailCacheFile)) {
-    return [] as RecipeDetailCacheEntry[];
+    return memoryEntries;
   }
 
   try {
     const parsed = JSON.parse(readFileSync(recipeDetailCacheFile, 'utf8')) as unknown;
-    return Array.isArray(parsed) ? parsed as RecipeDetailCacheEntry[] : [];
+    const fileEntries = Array.isArray(parsed) ? parsed as RecipeDetailCacheEntry[] : [];
+    for (const entry of fileEntries) {
+      recipeDetailMemoryCache.set(entry.key, entry);
+    }
+    return Array.from(new Map([...memoryEntries, ...fileEntries].map((entry) => [entry.key, entry])).values());
   } catch {
-    return [];
+    return memoryEntries;
   }
 }
 
 function getCachedRecipeDetail(key: string) {
   const now = Date.now();
+  const memoryEntry = recipeDetailMemoryCache.get(key);
+  if (memoryEntry && Date.parse(memoryEntry.expiresAt) > now) {
+    return memoryEntry.response;
+  }
+
   const entry = readRecipeDetailCache().find((item) => item.key === key);
 
   if (!entry || Date.parse(entry.expiresAt) <= now) {
+    recipeDetailMemoryCache.delete(key);
     return null;
   }
 
+  recipeDetailMemoryCache.set(key, entry);
   return entry.response;
 }
 
 function writeRecipeDetailCache(entry: RecipeDetailCacheEntry) {
+  recipeDetailMemoryCache.set(entry.key, entry);
+
   try {
     mkdirSync(dirname(recipeDetailCacheFile), { recursive: true });
     const now = Date.now();
@@ -149,6 +170,52 @@ function writeRecipeDetailCache(entry: RecipeDetailCacheEntry) {
   } catch {
     // Cache failures must not affect API responses.
   }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise;
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise
+      .then(resolve)
+      .catch(reject)
+      .finally(() => clearTimeout(timeoutId));
+  });
+}
+
+function toRecipeDetailCacheEntry(input: {
+  key: string;
+  profile: ChildProfile;
+  ingredients: IngredientItem[];
+  recipeName: string;
+  response: RecipeDetail;
+}): RecipeDetailCacheEntry {
+  return {
+    key: input.key,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + recipeDetailCacheTtlMs).toISOString(),
+    request: {
+      profile: input.profile,
+      ingredients: normalizeIngredientsForCache(input.ingredients),
+      recipeName: input.recipeName,
+    },
+    response: input.response,
+  };
+}
+
+function isRecipeDetailPayload(recipe: RecipeRecommendation): recipe is RecipeDetail {
+  const candidate = recipe as Partial<RecipeDetail>;
+  return (
+    Array.isArray(candidate.ingredients) &&
+    candidate.ingredients.length > 0 &&
+    Array.isArray(candidate.steps) &&
+    candidate.steps.length > 0 &&
+    Number.isFinite(Number(candidate.prepTimeMinutes)) &&
+    Number.isFinite(Number(candidate.cookTimeMinutes))
+  );
 }
 
 export function parseTextToIngredients(text: string) {
@@ -327,20 +394,50 @@ export async function getRecipeDetailForRecommendation(input: {
     return { data: cachedRecipe };
   }
 
+  const pendingRequest = pendingRecipeDetailRequests.get(cacheKey);
+  if (pendingRequest) {
+    return pendingRequest;
+  }
+
+  const requestPromise = generateRecipeDetailWithCache({
+    cacheKey,
+    profile,
+    input,
+  }).finally(() => {
+    pendingRecipeDetailRequests.delete(cacheKey);
+  });
+
+  pendingRecipeDetailRequests.set(cacheKey, requestPromise);
+  return requestPromise;
+}
+
+async function generateRecipeDetailWithCache(input: {
+  cacheKey: string;
+  profile: ChildProfile;
+  input: {
+    profileId: string;
+    ingredients: IngredientItem[];
+    recipe: RecipeRecommendation;
+    profileInput?: Partial<ChildProfile> | null;
+  };
+}): Promise<{ data: RecipeDetail } | { error: RecommendationError }> {
+  const { cacheKey, profile } = input;
+  const detailInput = input.input;
+
   const fallbackRecipe =
-    recipeCatalog.find((item) => item.id === input.recipe.id) ??
+    recipeCatalog.find((item) => item.id === detailInput.recipe.id) ??
     ({
-      ...input.recipe,
-      prepTimeMinutes: Math.max(1, Math.round(input.recipe.estimatedTimeMinutes * 0.3)),
-      cookTimeMinutes: Math.max(1, input.recipe.estimatedTimeMinutes - Math.max(1, Math.round(input.recipe.estimatedTimeMinutes * 0.3))),
-      ingredients: input.ingredients.map((ingredient) => ({
+      ...detailInput.recipe,
+      prepTimeMinutes: Math.max(1, Math.round(detailInput.recipe.estimatedTimeMinutes * 0.3)),
+      cookTimeMinutes: Math.max(1, detailInput.recipe.estimatedTimeMinutes - Math.max(1, Math.round(detailInput.recipe.estimatedTimeMinutes * 0.3))),
+      ingredients: detailInput.ingredients.map((ingredient) => ({
         name: ingredient.name,
         quantity: ingredient.quantity,
         imageUrl: buildIngredientImageUrl(ingredient.name),
       })),
       steps: [
         {
-          id: `step_${input.recipe.id}_1`,
+          id: `step_${detailInput.recipe.id}_1`,
           title: '摆好食材和工具',
           description: '把所有食材放到桌面上，准备一个小碗、一把勺子和一块干净的案板。',
           tip: '先点一遍食材名字，确认没有漏掉。',
@@ -351,7 +448,7 @@ export async function getRecipeDetailForRecommendation(input: {
           requiresParentAssist: false,
         },
         {
-          id: `step_${input.recipe.id}_2`,
+          id: `step_${detailInput.recipe.id}_2`,
           title: '清洗食材',
           description: '把蔬菜或可清洗食材放进盆里，用流动清水轻轻冲洗。',
           tip: '不要把水开太大，避免溅到衣服上。',
@@ -362,7 +459,7 @@ export async function getRecipeDetailForRecommendation(input: {
           requiresParentAssist: false,
         },
         {
-          id: `step_${input.recipe.id}_3`,
+          id: `step_${detailInput.recipe.id}_3`,
           title: '切配或分装',
           description: '需要切开的食材由家长处理，孩子负责把切好的食材放进小碗。',
           tip: '刀具只让家长拿，孩子不要抢着切。',
@@ -373,7 +470,7 @@ export async function getRecipeDetailForRecommendation(input: {
           requiresParentAssist: true,
         },
         {
-          id: `step_${input.recipe.id}_4`,
+          id: `step_${detailInput.recipe.id}_4`,
           title: '家长加热烹饪',
           description: '如果这道菜需要加热，请由家长打开明火、电磁炉、微波炉或烤箱，孩子站在安全距离外观察。',
           tip: '看到热锅、热水、热油时，要离远一点。',
@@ -384,7 +481,7 @@ export async function getRecipeDetailForRecommendation(input: {
           requiresParentAssist: true,
         },
         {
-          id: `step_${input.recipe.id}_5`,
+          id: `step_${detailInput.recipe.id}_5`,
           title: '装盘和确认',
           description: '关火或停止加热后，家长把食物盛到盘子里，稍微放凉再试吃。',
           tip: '先闻一闻，再小口尝，太烫就继续等。',
@@ -397,6 +494,21 @@ export async function getRecipeDetailForRecommendation(input: {
       ],
     } satisfies RecipeDetail);
 
+  const persistDetail = (response: RecipeDetail) => {
+    writeRecipeDetailCache(toRecipeDetailCacheEntry({
+      key: cacheKey,
+      profile,
+      ingredients: detailInput.ingredients,
+      recipeName: detailInput.recipe.name,
+      response,
+    }));
+  };
+
+  if (isRecipeDetailPayload(detailInput.recipe)) {
+    persistDetail(detailInput.recipe);
+    return { data: detailInput.recipe };
+  }
+
   if (!isSiliconFlowConfigured()) {
     if (shouldRequireRealModel()) {
       return {
@@ -407,50 +519,26 @@ export async function getRecipeDetailForRecommendation(input: {
       };
     }
 
-    writeRecipeDetailCache({
-      key: cacheKey,
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + recipeDetailCacheTtlMs).toISOString(),
-      request: {
-        profile,
-        ingredients: normalizeIngredientsForCache(input.ingredients),
-        recipeName: input.recipe.name,
-      },
-      response: fallbackRecipe,
-    });
+    persistDetail(fallbackRecipe);
     return { data: fallbackRecipe };
   }
 
   try {
-    const recipeDetail = await generateRecipeDetail(profile, input.ingredients, input.recipe);
-    writeRecipeDetailCache({
-      key: cacheKey,
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + recipeDetailCacheTtlMs).toISOString(),
-      request: {
-        profile,
-        ingredients: normalizeIngredientsForCache(input.ingredients),
-        recipeName: input.recipe.name,
-      },
-      response: recipeDetail,
-    });
+    const recipeDetail = await withTimeout(
+      generateRecipeDetail(profile, detailInput.ingredients, detailInput.recipe),
+      recipeDetailModelTimeoutMs,
+      '菜谱详情生成超时，已返回快速生成版本。',
+    );
+    persistDetail(recipeDetail);
 
     return {
       data: recipeDetail,
     };
   } catch (error) {
-    if (!shouldRequireRealModel()) {
-      writeRecipeDetailCache({
-        key: cacheKey,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + recipeDetailCacheTtlMs).toISOString(),
-        request: {
-          profile,
-          ingredients: normalizeIngredientsForCache(input.ingredients),
-          recipeName: input.recipe.name,
-        },
-        response: fallbackRecipe,
-      });
+    const isTimeout = error instanceof Error && error.message.includes('超时');
+
+    if (isTimeout || !shouldRequireRealModel()) {
+      persistDetail(fallbackRecipe);
       return { data: fallbackRecipe };
     }
 

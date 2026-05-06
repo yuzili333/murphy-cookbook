@@ -633,6 +633,113 @@ test('getRecipeDetailForRecommendation reuses cached detail for same profile ing
   }
 });
 
+test('getRecipeDetailForRecommendation coalesces concurrent requests for same detail key', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const recipeId = `recipe_pending_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const recipeName = `并发缓存测试_${Date.now()}`;
+  let fetchCount = 0;
+  let resolveFetch: ((response: Response) => void) | null = null;
+
+  global.fetch = (async () => {
+    fetchCount += 1;
+    return new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+  }) as typeof fetch;
+
+  const input = {
+    profileId: 'cp_001',
+    ingredients: [
+      {
+        id: 'ing_pending_1',
+        name: '鸡蛋',
+        normalizedName: '鸡蛋',
+        quantity: '1个',
+        source: 'manual' as const,
+      },
+    ],
+    recipe: {
+      id: recipeId,
+      name: recipeName,
+      englishName: 'Pending Egg Bowl',
+      nameLearning: {
+        characters: [{ character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '鸡蛋的蛋。' }],
+      },
+      ageRange: '7-12 岁',
+      difficulty: 'easy' as const,
+      estimatedTimeMinutes: 12,
+      fitReasons: ['简单易做'],
+      riskAlerts: ['加热需家长陪同'],
+      nutritionSummary: '补充蛋白质。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  };
+
+  const first = getRecipeDetailForRecommendation(input);
+  const second = getRecipeDetailForRecommendation(input);
+
+  assert.equal(fetchCount, 1);
+  assert.ok(resolveFetch);
+  resolveFetch(new Response(JSON.stringify({
+    choices: [{
+      message: {
+        content: JSON.stringify({
+          recipes: [{
+            id: recipeId,
+            name: recipeName,
+            englishName: 'Pending Egg Bowl',
+            nameLearning: {
+              characters: [{ character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '鸡蛋的蛋。' }],
+            },
+            ageRange: '7-12 岁',
+            difficulty: 'easy',
+            estimatedTimeMinutes: 12,
+            fitReasons: ['简单易做'],
+            riskAlerts: ['加热需家长陪同'],
+            nutritionSummary: '补充蛋白质。',
+            extraIngredients: [],
+            canCookWithCurrentIngredients: true,
+            prepTimeMinutes: 3,
+            cookTimeMinutes: 9,
+            ingredients: [{ name: '鸡蛋', quantity: '1个' }],
+            steps: [{
+              title: '准备鸡蛋',
+              description: '把鸡蛋打入碗中。',
+              tip: '慢慢敲开。',
+              riskLevel: 'low',
+              requiresParentAssist: false,
+            }],
+          }],
+        }),
+      },
+    }],
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  }));
+
+  const [firstResult, secondResult] = await Promise.all([first, second]);
+  if ('error' in firstResult) {
+    assert.fail(`expected first detail data, got ${firstResult.error.code}`);
+  }
+  if ('error' in secondResult) {
+    assert.fail(`expected second detail data, got ${secondResult.error.code}`);
+  }
+  assert.equal(fetchCount, 1);
+  assert.equal(firstResult.data.name, recipeName);
+  assert.equal(secondResult.data.name, recipeName);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
 test('generateCookingFeedback returns parsed feedback fields', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;

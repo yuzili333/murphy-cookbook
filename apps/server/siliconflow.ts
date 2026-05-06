@@ -766,7 +766,7 @@ export async function generateRecipeDetail(
     },
   ], {
     operation: 'generate_recipe_detail',
-    maxTokens: 2600,
+    maxTokens: 1900,
     metadata: {
       profileId: profile.id,
       recipeId: recipe.id,
