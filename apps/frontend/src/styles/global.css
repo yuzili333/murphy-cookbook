@@ -1237,6 +1237,9 @@ button {
 
 .chat-suggestions button {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 10px 14px;
   border: 1px solid rgba(140, 255, 0, 0.32);
   border-radius: 999px;
@@ -1245,6 +1248,17 @@ button {
   box-shadow: 0 10px 26px rgba(48, 217, 67, 0.16);
   backdrop-filter: blur(14px);
   animation: suggestion-bounce 2.4s ease-in-out infinite;
+}
+
+.suggestion-emoji {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 228, 77, 0.32);
+  font-size: 1.05rem;
+  line-height: 1;
 }
 
 .chat-suggestions button:disabled,

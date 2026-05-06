@@ -640,12 +640,12 @@ test('getRecipeDetailForRecommendation coalesces concurrent requests for same de
   const recipeId = `recipe_pending_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const recipeName = `并发缓存测试_${Date.now()}`;
   let fetchCount = 0;
-  let resolveFetch: ((response: Response) => void) | null = null;
+  const pendingFetchResolvers: Array<(response: Response) => void> = [];
 
   global.fetch = (async () => {
     fetchCount += 1;
     return new Promise<Response>((resolve) => {
-      resolveFetch = resolve;
+      pendingFetchResolvers.push(resolve);
     });
   }) as typeof fetch;
 
@@ -682,8 +682,9 @@ test('getRecipeDetailForRecommendation coalesces concurrent requests for same de
   const second = getRecipeDetailForRecommendation(input);
 
   assert.equal(fetchCount, 1);
-  assert.ok(resolveFetch);
-  resolveFetch(new Response(JSON.stringify({
+  const resolvePendingFetch = pendingFetchResolvers[0];
+  assert.equal(typeof resolvePendingFetch, 'function');
+  resolvePendingFetch(new Response(JSON.stringify({
     choices: [{
       message: {
         content: JSON.stringify({

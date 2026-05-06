@@ -1943,17 +1943,27 @@ export default function App() {
 
           {seasonalIngredientSuggestions.length > 0 ? (
             <div className="chat-suggestions" aria-label="季节食材推荐">
-              {seasonalIngredientSuggestions.map((item) => (
-                <button
-                  key={`${item.name}_${item.reason}`}
-                  type="button"
-                  onClick={() => void handleChatSubmit(item.name)}
-                  disabled={isRecognizingIngredients}
-                  title={item.reason}
-                >
-                  {item.name}
-                </button>
-              ))}
+              {seasonalIngredientSuggestions.map((item) => {
+                const visual = getIngredientVisual(item.name);
+                const shouldShowEmoji = visual.name !== defaultIngredientVisual.name;
+
+                return (
+                  <button
+                    key={`${item.name}_${item.reason}`}
+                    type="button"
+                    onClick={() => void handleChatSubmit(item.name)}
+                    disabled={isRecognizingIngredients}
+                    title={item.reason}
+                  >
+                    {shouldShowEmoji ? (
+                      <span className="suggestion-emoji" role="img" aria-label={item.name}>
+                        {visual.emoji}
+                      </span>
+                    ) : null}
+                    <span>{item.name}</span>
+                  </button>
+                );
+              })}
             </div>
           ) : null}
 
