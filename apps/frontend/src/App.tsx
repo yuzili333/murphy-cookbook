@@ -56,6 +56,8 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   createdAt: string;
+  imageDataUrl?: string;
+  imageAlt?: string;
   ingredientsKey?: string;
   ingredients?: IngredientItem[];
   recipes?: RecipeRecommendation[];
@@ -364,6 +366,15 @@ function TrashInlineIcon() {
       <path d="M6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
     </svg>
   );
+}
+
+function readImageAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error('图片读取失败，请重新选择图片。'));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function App() {
@@ -950,7 +961,13 @@ export default function App() {
     try {
       setIsUploadingImage(true);
       setError('');
-      addChatMessage({ role: 'user', text: `上传图片：${file.name}` });
+      const imageDataUrl = await readImageAsDataUrl(file);
+      addChatMessage({
+        role: 'user',
+        text: '我上传了一张食材图片',
+        imageDataUrl,
+        imageAlt: file.name ? `用户上传的食材图片：${file.name}` : '用户上传的食材图片',
+      });
 
       const data = await uploadIngredientImage(file);
       const nextIngredients = mergeIngredientItems(ingredients, data.ingredients);
@@ -1521,21 +1538,40 @@ export default function App() {
 
       {page === 'home' ? (
         <section className="chatbox-page">
+          <div className="kids-chat-hero" aria-label="儿童烹饪助手">
+            <div className="mascot-badge" aria-hidden="true">
+              <span className="mascot-chef-hat">▴</span>
+              <span className="mascot-face">😊</span>
+              <span className="mascot-spoon">🥄</span>
+            </div>
+            <div>
+              <p className="eyebrow">KIDS COOKING BOT</p>
+              <h2>今天想把哪些食材变成好吃的？</h2>
+              <p>可以说出来、拍下来，或直接打字告诉我。</p>
+            </div>
+          </div>
           <div className="chat-thread" aria-live="polite">
             {chatMessages.map((message) => (
               <article key={message.id} className={message.role === 'user' ? 'chat-message user' : 'chat-message assistant'}>
                 <div className="chat-bubble">
-                  <p>{message.text}</p>
-                  {message.role === 'assistant' ? (
-                    <button
-                      type="button"
-                      className="assistant-speech-button"
-                      onClick={() => speak(message.text, 'zh-CN')}
-                      aria-label="朗读助手消息"
-                    >
-                      <PlayInlineIcon />
-                    </button>
-                  ) : null}
+                  <div className="chat-bubble-content">
+                    <p>{message.text}</p>
+                    {message.imageDataUrl ? (
+                      <img
+                        className="chat-image-preview"
+                        src={message.imageDataUrl}
+                        alt={message.imageAlt || '用户上传的食材图片'}
+                      />
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="assistant-speech-button"
+                    onClick={() => speak(message.text, 'zh-CN')}
+                    aria-label={message.role === 'user' ? '朗读用户消息' : '朗读助手消息'}
+                  >
+                    <PlayInlineIcon />
+                  </button>
                 </div>
                 {message.ingredients?.length ? (
                   <section className="ingredient-list-card" aria-label="当前食材清单">
@@ -1624,88 +1660,195 @@ export default function App() {
                 ) : null}
                 {message.recipes?.length ? (
                   <div className="recipe-carousel" aria-label="推荐菜谱">
-                    {message.recipes.map((recipe) => (
-                      <article
-                        key={`${message.id}_${recipe.id}`}
-                        className="carousel-recipe-card"
-                        data-recipe-card-id={recipe.id}
-                      >
-                        <button
-                          type="button"
-                          className="name-audio-button carousel-recipe-name"
-                          onClick={() => speak(recipe.name, 'zh-CN')}
-                          aria-label={`朗读菜名：${recipe.name}`}
+                    {message.recipes.map((recipe) => {
+                      const recipeDetail = recipeDetailsById[recipe.id];
+                      const fitReasonText = recipe.fitReasons.slice(0, 2).join('；');
+                      const extraIngredientText = recipe.extraIngredients.slice(0, 4).join('、');
+                      const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
+
+                      return (
+                        <article
+                          key={`${message.id}_${recipe.id}`}
+                          className="carousel-recipe-card"
+                          data-recipe-card-id={recipe.id}
                         >
-                          <RecipeName as="span" name={recipe.name} pinyin={recipe.namePinyin} />
-                          <PlayInlineIcon />
-                        </button>
-                        <button
-                          type="button"
-                          className="name-audio-button carousel-english-name"
-                          onClick={() => speak(recipe.englishName, 'en-US')}
-                          aria-label={`Read recipe name: ${recipe.englishName}`}
-                        >
-                          <span>{recipe.englishName}</span>
-                          <PlayInlineIcon />
-                        </button>
-                        <p className="compact-copy">{recipe.nutritionSummary}</p>
-                        <div className="chip-row compact-chip-row">
-                          <span className="chip">{recipe.difficulty}</span>
-                          <span className="chip">{recipe.estimatedTimeMinutes} 分钟</span>
-                          {recipe.canCookWithCurrentIngredients ? <span className="chip fit-chip">可直接做</span> : null}
+                        <div className="recipe-card-kicker">
+                          <span>儿童友好食谱</span>
+                          {recipe.canCookWithCurrentIngredients ? <span className="fit-chip">现有食材可做</span> : null}
                         </div>
-                        <div className="compact-recipe-section">
-                          <strong>适配原因</strong>
-                          <p>{recipe.fitReasons.slice(0, 2).join('；')}</p>
+                        <div className="recipe-card-name-stack">
+                          <button
+                            type="button"
+                            className="name-audio-button carousel-recipe-name"
+                            onClick={() => speak(recipe.name, 'zh-CN')}
+                            aria-label={`朗读菜名：${recipe.name}`}
+                          >
+                            <RecipeName as="span" name={recipe.name} pinyin={recipe.namePinyin} />
+                            <PlayInlineIcon />
+                          </button>
+                          <button
+                            type="button"
+                            className="name-audio-button carousel-english-name"
+                            onClick={() => speak(recipe.englishName, 'en-US')}
+                            aria-label={`Read recipe name: ${recipe.englishName}`}
+                          >
+                            <span>{recipe.englishName}</span>
+                            <PlayInlineIcon />
+                          </button>
                         </div>
-                        {recipe.extraIngredients.length > 0 ? (
-                          <div className="compact-recipe-section">
-                            <strong>还需要</strong>
-                            <p>{recipe.extraIngredients.slice(0, 4).join('、')}</p>
-                          </div>
-                        ) : null}
-                        {recipe.riskAlerts.length > 0 ? (
-                          <div className="compact-recipe-section warning">
-                            <strong>提醒</strong>
-                            <p>{recipe.riskAlerts.slice(0, 2).join('；')}</p>
-                          </div>
-                        ) : null}
-                        <div className="inline-recipe-detail">
-                          {recipeDetailsById[recipe.id] ? (
+                        <div className="recipe-summary-row">
+                          <p className="compact-copy recipe-summary">{recipe.nutritionSummary}</p>
+                          <button
+                            type="button"
+                            className="mini-speech-button"
+                            onClick={() => speak(recipe.nutritionSummary, 'zh-CN')}
+                            aria-label="朗读营养摘要"
+                          >
+                            <PlayInlineIcon />
+                          </button>
+                        </div>
+                        <div className="recipe-card-meta-grid">
+                          <span>
+                            <b>{recipe.estimatedTimeMinutes}</b>
+                            <small>分钟</small>
+                          </span>
+                          <span>
+                            <b>{recipe.difficulty}</b>
+                            <small>难度</small>
+                          </span>
+                          <span>
+                            <b>{recipe.ageRange}</b>
+                            <small>适合年龄</small>
+                          </span>
+                        </div>
+                        <div className="recipe-note-grid">
+                          <section className="recipe-note-panel">
+                            <div className="note-panel-heading">
+                              <strong>适配原因</strong>
+                              <button
+                                type="button"
+                                className="mini-speech-button"
+                                onClick={() => speak(`适配原因：${fitReasonText}`, 'zh-CN')}
+                                aria-label="朗读适配原因"
+                              >
+                                <PlayInlineIcon />
+                              </button>
+                            </div>
+                            <p>{fitReasonText}</p>
+                          </section>
+                          {recipe.extraIngredients.length > 0 ? (
+                            <section className="recipe-note-panel">
+                              <div className="note-panel-heading">
+                                <strong>补充食材</strong>
+                                <button
+                                  type="button"
+                                  className="mini-speech-button"
+                                  onClick={() => speak(`补充食材：${extraIngredientText}`, 'zh-CN')}
+                                  aria-label="朗读补充食材"
+                                >
+                                  <PlayInlineIcon />
+                                </button>
+                              </div>
+                              <p>{extraIngredientText}</p>
+                            </section>
+                          ) : null}
+                          {recipe.riskAlerts.length > 0 ? (
+                            <section className="recipe-note-panel warning">
+                              <div className="note-panel-heading">
+                                <strong>烹饪注意</strong>
+                                <button
+                                  type="button"
+                                  className="mini-speech-button"
+                                  onClick={() => speak(`烹饪注意：${riskAlertText}`, 'zh-CN')}
+                                  aria-label="朗读烹饪注意"
+                                >
+                                  <PlayInlineIcon />
+                                </button>
+                              </div>
+                              <p>{riskAlertText}</p>
+                            </section>
+                          ) : null}
+                        </div>
+                        <div className="inline-recipe-detail recipe-dossier">
+                          {recipeDetail ? (
                             <>
                               <div className="inline-detail-meta">
-                                <span>备料 {recipeDetailsById[recipe.id].prepTimeMinutes} 分钟</span>
-                                <span>烹饪 {recipeDetailsById[recipe.id].cookTimeMinutes} 分钟</span>
+                                <span>
+                                  <b>{recipeDetail.prepTimeMinutes}</b>
+                                  备料分钟
+                                </span>
+                                <span>
+                                  <b>{recipeDetail.cookTimeMinutes}</b>
+                                  烹饪分钟
+                                </span>
                               </div>
                               <div className="inline-detail-block">
-                                <strong>食材与用量</strong>
-                                <div className="inline-ingredient-list">
-                                  {recipeDetailsById[recipe.id].ingredients.map((ingredient) => (
-                                    <span key={`${recipe.id}_${ingredient.name}`}>
-                                      {ingredient.name}：{ingredient.quantity}
-                                    </span>
+                                <div className="detail-block-heading">
+                                  <strong>食材配料清单</strong>
+                                  <span>名称 / 用量</span>
+                                </div>
+                                <div className="ingredient-table" role="list">
+                                  {recipeDetail.ingredients.map((ingredient) => (
+                                    <div className="ingredient-row" key={`${recipe.id}_${ingredient.name}`} role="listitem">
+                                      <span className="ingredient-name">{ingredient.name}</span>
+                                      <span className="ingredient-quantity">{ingredient.quantity}</span>
+                                      <button
+                                        type="button"
+                                        className="mini-speech-button ingredient-row-speech"
+                                        onClick={() => speak(`${ingredient.name}，用量 ${ingredient.quantity}`, 'zh-CN')}
+                                        aria-label={`朗读食材用量：${ingredient.name}`}
+                                      >
+                                        <PlayInlineIcon />
+                                      </button>
+                                    </div>
                                   ))}
                                 </div>
                               </div>
                               <div className="inline-detail-block">
-                                <strong>做法</strong>
-                                <ol className="inline-step-list">
-                                  {recipeDetailsById[recipe.id].steps.map((step) => (
-                                    <li key={step.id}>
-                                      <div className="inline-step-heading">
-                                        <b>{step.title}</b>
-                                        <button
-                                          type="button"
-                                          className="step-speech-button"
-                                          onClick={() => speakStep(step)}
-                                          aria-label={`${activeSpeechKey === `step_${step.id}` ? '停止朗读' : '朗读'}步骤：${step.title}`}
-                                        >
-                                          <PlayInlineIcon />
-                                          {activeSpeechKey === `step_${step.id}` ? '停止' : '朗读'}
-                                        </button>
+                                <div className="detail-block-heading">
+                                  <strong>详尽烹饪步骤</strong>
+                                  <span>逐步执行</span>
+                                </div>
+                                <ol className="recipe-step-timeline">
+                                  {recipeDetail.steps.map((step, index) => (
+                                    <li
+                                      key={step.id}
+                                      className={step.requiresParentAssist ? 'recipe-step-item needs-assist' : 'recipe-step-item'}
+                                    >
+                                      <span className="step-index">{index + 1}</span>
+                                      <div className="step-body">
+                                        <div className="inline-step-heading">
+                                          <b>{step.title}</b>
+                                          <button
+                                            type="button"
+                                            className="step-speech-button"
+                                            onClick={() => speakStep(step)}
+                                            aria-label={`${activeSpeechKey === `step_${step.id}` ? '停止朗读' : '朗读'}步骤：${step.title}`}
+                                          >
+                                            <PlayInlineIcon />
+                                            {activeSpeechKey === `step_${step.id}` ? '停止' : '朗读'}
+                                          </button>
+                                        </div>
+                                        <p>{step.childAction || step.description}</p>
+                                        {step.expectedResult ? (
+                                          <p className="step-result">
+                                            <b>完成状态</b>
+                                            {step.expectedResult}
+                                          </p>
+                                        ) : null}
+                                        {step.tip ? (
+                                          <p className="step-note">
+                                            <b>小贴士</b>
+                                            {step.tip}
+                                          </p>
+                                        ) : null}
+                                        {step.requiresParentAssist ? (
+                                          <p className="step-safety">
+                                            <b>注意事项</b>
+                                            {step.parentAction || '这一步需要家长陪同完成。'}
+                                          </p>
+                                        ) : null}
                                       </div>
-                                      <span>{step.childAction || step.description}</span>
-                                      {step.requiresParentAssist ? <em>需家长陪同</em> : null}
                                     </li>
                                   ))}
                                 </ol>
@@ -1748,7 +1891,8 @@ export default function App() {
                           </button>
                         </div>
                       </article>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : null}
               </article>
