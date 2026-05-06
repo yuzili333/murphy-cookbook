@@ -481,6 +481,7 @@ button {
   overflow-x: auto;
   overscroll-behavior-x: contain;
   padding: 2px 2px 12px;
+  scroll-margin-top: 88px;
   scroll-snap-type: x mandatory;
   scrollbar-width: thin;
   touch-action: pan-y pinch-zoom;

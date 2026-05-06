@@ -382,6 +382,7 @@ export default function App() {
   const fileImageInputRef = useRef<HTMLInputElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const chatThreadEndRef = useRef<HTMLDivElement>(null);
+  const skipNextChatAutoScrollRef = useRef(false);
   const ingredientSwipeRef = useRef({
     startX: 0,
     startY: 0,
@@ -411,6 +412,7 @@ export default function App() {
   const [isConversationDrawerOpen, setIsConversationDrawerOpen] = useState(false);
   const [isFavoriteDrawerOpen, setIsFavoriteDrawerOpen] = useState(false);
   const [pendingScrollRecipeId, setPendingScrollRecipeId] = useState('');
+  const [pendingRecipeMessageId, setPendingRecipeMessageId] = useState('');
   const [childContext, setChildContext] = useState('');
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [recipeDetailLoadingById, setRecipeDetailLoadingById] = useState<Record<string, boolean>>({});
@@ -655,6 +657,11 @@ export default function App() {
       return;
     }
 
+    if (skipNextChatAutoScrollRef.current) {
+      skipNextChatAutoScrollRef.current = false;
+      return;
+    }
+
     const timeoutId = window.setTimeout(() => {
       chatThreadEndRef.current?.scrollIntoView({
         block: 'end',
@@ -664,6 +671,26 @@ export default function App() {
 
     return () => window.clearTimeout(timeoutId);
   }, [page, isBootstrapping, lastChatMessageId]);
+
+  useEffect(() => {
+    if (page !== 'home' || !pendingRecipeMessageId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-chat-message-id="${pendingRecipeMessageId}"] .recipe-carousel`,
+      );
+      target?.scrollIntoView({
+        block: 'start',
+        inline: 'nearest',
+        behavior: 'smooth',
+      });
+      setPendingRecipeMessageId('');
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [page, pendingRecipeMessageId, lastChatMessageId]);
 
   useEffect(() => {
     if (isBootstrapping || !activeChatSessionId) {
@@ -889,12 +916,14 @@ export default function App() {
       setRecipeDetailLoadingById({});
       setRecipeDetailErrorsById({});
       void fetchDetailsForRecipeCards(recipes, nextIngredients);
-      addChatMessage({
+      skipNextChatAutoScrollRef.current = true;
+      const recipeMessage = addChatMessage({
         role: 'assistant',
         text: `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
         ingredientsKey,
         recipes,
       });
+      setPendingRecipeMessageId(recipeMessage.id);
       setManualIngredient('');
       setVoiceTranscript(prompt);
     } catch (recommendationError) {
@@ -1581,7 +1610,11 @@ export default function App() {
               );
 
               return (
-              <article key={message.id} className={message.role === 'user' ? 'chat-message user' : 'chat-message assistant'}>
+              <article
+                key={message.id}
+                className={message.role === 'user' ? 'chat-message user' : 'chat-message assistant'}
+                data-chat-message-id={message.id}
+              >
                 <div className="chat-bubble">
                   <div className="chat-bubble-content">
                     <p>{message.text}</p>
