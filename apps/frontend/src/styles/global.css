@@ -214,43 +214,6 @@ button {
   color: var(--secondary);
 }
 
-.progress-nav {
-  display: none;
-  gap: 10px;
-  overflow-x: auto;
-  padding: 8px 2px 2px;
-  margin-top: 16px;
-  scrollbar-width: none;
-}
-
-.progress-nav::-webkit-scrollbar {
-  display: none;
-}
-
-.nav-item {
-  flex: 0 0 auto;
-  display: grid;
-  gap: 2px;
-  min-width: 112px;
-  padding: 12px 14px;
-  text-align: left;
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
-  color: inherit;
-}
-
-.nav-item.active {
-  border-color: rgba(239, 126, 86, 0.5);
-  background: linear-gradient(135deg, rgba(239, 126, 86, 0.16), rgba(255, 255, 255, 0.92));
-  box-shadow: var(--shadow);
-}
-
-.nav-index {
-  color: var(--text-soft);
-  font-size: 0.8rem;
-}
-
 .main-panel {
   padding: 84px 16px 16px;
 }
@@ -260,6 +223,8 @@ button {
   flex-direction: column;
   min-height: calc(100vh - 100px);
   padding-bottom: 158px;
+  overscroll-behavior-x: contain;
+  touch-action: pan-y pinch-zoom;
 }
 
 .kids-chat-hero {
@@ -2336,11 +2301,6 @@ button {
     border-right: 0;
     border-bottom: 1px solid var(--border);
     padding: 10px 28px;
-  }
-
-  .progress-nav {
-    display: none;
-    overflow: visible;
   }
 
   .main-panel {

@@ -1,15 +1,3 @@
-export type PageId =
-  | 'home'
-  | 'favorites'
-  | 'profile'
-  | 'input'
-  | 'confirm'
-  | 'recipes'
-  | 'detail'
-  | 'cooking'
-  | 'feedback'
-  | 'logs';
-
 export interface ChildProfile {
   id: string;
   nickname: string;

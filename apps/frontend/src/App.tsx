@@ -1,44 +1,27 @@
 import { useEffect, useRef, useState, type ChangeEvent, type TouchEvent } from 'react';
 import { AppShell } from './components/AppShell';
-import { IngredientThumb } from './components/IngredientThumb';
-import { RecipeCard } from './components/RecipeCard';
 import { RecipeName } from './components/RecipeName';
-import { StepCard } from './components/StepCard';
-import { ZoomableImage } from './components/ZoomableImage';
 import audioPlayIcon from './assets/audio-play.svg';
 import loadingIcon from './assets/loading.svg';
 import newChatIcon from './assets/new-chat.svg';
 import sendMessageIcon from './assets/send-message.svg';
-import { quickIngredients } from './data/constants';
 import { defaultIngredientVisual, getIngredientVisual } from './data/ingredientVisuals';
 import {
-  createChildProfile,
   fetchGeneratedRecipeDetail,
-  fetchLlmLogs,
-  fetchRecipeDetail,
   fetchRecommendations,
   fetchSeasonalIngredientSuggestions,
   parseIngredientText,
-  submitCookingFeedback,
   uploadIngredientImage,
 } from './lib/api';
 import { buildCharacterSpeech, formatPinyin, speak, stopSpeaking } from './lib/speech';
 import type {
   ChildProfile,
-  CreateChildProfileInput,
-  FeedbackResponse,
   IngredientItem,
-  LlmLogEntry,
-  PageId,
   RecipeDetail,
   RecipeRecommendation,
   SeasonalIngredientSuggestion,
 } from './types';
 
-const defaultTasteFeedback = '很好吃，番茄酸酸甜甜的。';
-const defaultDifficultyFeedback = '煮面的时候有点难。';
-const localProfilesStorageKey = 'murphy-cookbook.local-profiles.v1';
-const recentCookedStorageKey = 'murphy-cookbook.recent-cooked.v1';
 const favoriteRecipesStorageKey = 'murphy-cookbook.favorite-recipes.v1';
 const chatMessagesStorageKey = 'murphy-cookbook.chat-messages.v1';
 const likedRecipesStorageKey = 'murphy-cookbook.liked-recipes.v1';
@@ -48,7 +31,6 @@ const activeChatSessionStorageKey = 'murphy-cookbook.active-chat-session.v1';
 const conversationProfileId = 'chat_context_profile';
 const defaultChildContext =
   '默认服务对象为小学 1-6 年级学生。推荐原则：低油脂、轻口味、膳食均衡、维生素丰富、主食蛋白质蔬菜搭配均衡，避免高糖、高盐、油炸和过度辛辣。未明确提及重度急性过敏风险时，不主动要求补充儿童年龄、饮食偏好或过敏原。';
-type RecentCookedByProfile = Record<string, RecipeDetail[]>;
 type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
 
 interface ChatMessage {
@@ -96,58 +78,6 @@ function createChatSession(input?: Partial<ChatSession>): ChatSession {
     ingredients: input?.ingredients ?? [],
     messages: input?.messages?.length ? input.messages : [createWelcomeMessage(childContext)],
   };
-}
-
-function readLocalProfiles() {
-  if (typeof window === 'undefined') {
-    return [] as ChildProfile[];
-  }
-
-  try {
-    const raw = window.localStorage.getItem(localProfilesStorageKey);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as ChildProfile[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function persistLocalProfiles(profiles: ChildProfile[]) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.setItem(localProfilesStorageKey, JSON.stringify(profiles));
-}
-
-function readRecentCookedRecipes() {
-  if (typeof window === 'undefined') {
-    return {} as RecentCookedByProfile;
-  }
-
-  try {
-    const raw = window.localStorage.getItem(recentCookedStorageKey);
-    if (!raw) {
-      return {};
-    }
-
-    const parsed = JSON.parse(raw) as RecentCookedByProfile;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function persistRecentCookedRecipes(recipes: RecentCookedByProfile) {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  window.localStorage.setItem(recentCookedStorageKey, JSON.stringify(recipes));
 }
 
 function readFavoriteRecipes() {
@@ -333,28 +263,6 @@ function buildIngredientsKey(items: IngredientItem[]) {
     .join('|');
 }
 
-function mergeRecentCookedRecipes(nextRecipe: RecipeDetail, currentRecipes: RecipeDetail[]) {
-  const deduped = [nextRecipe, ...currentRecipes.filter((recipe) => recipe.id !== nextRecipe.id)];
-  return deduped.slice(0, 8);
-}
-
-function mergeProfiles(remoteProfiles: ChildProfile[], localProfiles: ChildProfile[]) {
-  const merged = new Map<string, ChildProfile>();
-
-  for (const profile of [...remoteProfiles, ...localProfiles]) {
-    merged.set(profile.id, profile);
-  }
-
-  return Array.from(merged.values());
-}
-
-function parseTagInput(value: string) {
-  return value
-    .split(/[，,、\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function PlayInlineIcon() {
   return <img className="inline-play-icon" src={audioPlayIcon} alt="" aria-hidden="true" />;
 }
@@ -395,13 +303,15 @@ export default function App() {
     scrollLeft: 0,
     isHorizontal: false,
   });
+  const chatboxSwipeRef = useRef({
+    startX: 0,
+    startY: 0,
+    scrollLeft: 0,
+    isHorizontal: false,
+  });
 
-  const [page, setPage] = useState<PageId>('home');
-  const [profiles, setProfiles] = useState<ChildProfile[]>([]);
-  const [selectedProfileId, setSelectedProfileId] = useState('');
+  const [selectedProfileId] = useState(conversationProfileId);
   const [ingredients, setIngredients] = useState<IngredientItem[]>([]);
-  const [recommendations, setRecommendations] = useState<RecipeRecommendation[]>([]);
-  const [recentCookedByProfile, setRecentCookedByProfile] = useState<RecentCookedByProfile>({});
   const [favoriteRecipesByProfile, setFavoriteRecipesByProfile] = useState<FavoriteRecipesByProfile>({});
   const [favoriteRecipes, setFavoriteRecipes] = useState<RecipeRecommendation[]>([]);
   const [likedRecipeIds, setLikedRecipeIds] = useState<string[]>([]);
@@ -417,39 +327,14 @@ export default function App() {
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [recipeDetailLoadingById, setRecipeDetailLoadingById] = useState<Record<string, boolean>>({});
   const [recipeDetailErrorsById, setRecipeDetailErrorsById] = useState<Record<string, string>>({});
-  const [selectedRecipe, setSelectedRecipe] = useState<RecipeDetail | null>(null);
   const [learningRecipe, setLearningRecipe] = useState<RecipeRecommendation | null>(null);
-  const [stepIndex, setStepIndex] = useState(0);
   const [manualIngredient, setManualIngredient] = useState('');
-  const [voiceTranscript, setVoiceTranscript] = useState('');
-  const [lastUploadMessage, setLastUploadMessage] = useState('');
-  const [tasteFeedback, setTasteFeedback] = useState(defaultTasteFeedback);
-  const [difficultyFeedback, setDifficultyFeedback] = useState(defaultDifficultyFeedback);
-  const [feedback, setFeedback] = useState<FeedbackResponse | null>(null);
-  const [localProfiles, setLocalProfiles] = useState<ChildProfile[]>([]);
-  const [llmLogs, setLlmLogs] = useState<LlmLogEntry[]>([]);
-  const [llmLogFile, setLlmLogFile] = useState('');
-  const [logFilters, setLogFilters] = useState({
-    start: '',
-    end: '',
-    keyword: '',
-  });
-  const [newProfileForm, setNewProfileForm] = useState({
-    nickname: '',
-    age: '8',
-    tastePreferences: '',
-    allergens: '',
-    dietaryHabits: '',
-  });
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isParsingText, setIsParsingText] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isListeningVoice, setIsListeningVoice] = useState(false);
   const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
-  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
-  const [isCreatingProfile, setIsCreatingProfile] = useState(false);
-  const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [activeSpeechKey, setActiveSpeechKey] = useState('');
   const [error, setError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
@@ -499,14 +384,8 @@ export default function App() {
     ].filter(Boolean).join('。'), 'zh-CN', `step_${step.id}`);
   };
 
-  const speakRecipeOverview = (recipe: RecipeDetail) => {
-    const stepTitles = recipe.steps.map((step, index) => `第${index + 1}步，${step.title}`).join('；');
-    speakText(`${recipe.name}。一共${recipe.steps.length}步。${stepTitles}。点击每一步的朗读按钮，可以继续听详细讲解。`);
-  };
-
   const conversationProfile = buildConversationProfile(childContext);
-  const selectedProfile = profiles.find((item) => item.id === selectedProfileId) ?? conversationProfile;
-  const currentStep = selectedRecipe?.steps[stepIndex] ?? null;
+  const selectedProfile = conversationProfile;
   const lastChatMessageId = chatMessages.at(-1)?.id ?? '';
 
   const closeLearningDrawer = () => {
@@ -516,7 +395,7 @@ export default function App() {
   };
 
   const handleHorizontalTouchStart = (
-    event: TouchEvent<HTMLDivElement>,
+    event: TouchEvent<HTMLElement>,
     swipeRef: typeof ingredientSwipeRef,
   ) => {
     const touch = event.touches[0];
@@ -531,7 +410,7 @@ export default function App() {
   };
 
   const handleHorizontalTouchMove = (
-    event: TouchEvent<HTMLDivElement>,
+    event: TouchEvent<HTMLElement>,
     swipeRef: typeof ingredientSwipeRef,
   ) => {
     const touch = event.touches[0];
@@ -553,6 +432,27 @@ export default function App() {
     swipeRef.current.isHorizontal = false;
   };
 
+  const handleChatboxTouchStart = (event: TouchEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('input, textarea, select, button, .ingredient-card-row, .recipe-carousel')) {
+      chatboxSwipeRef.current.isHorizontal = false;
+      return;
+    }
+
+    handleHorizontalTouchStart(event, chatboxSwipeRef);
+  };
+
+  const handleChatboxTouchMove = (event: TouchEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('input, textarea, select, button, .ingredient-card-row, .recipe-carousel')) {
+      return;
+    }
+
+    handleHorizontalTouchMove(event, chatboxSwipeRef);
+  };
+
+  const handleChatboxTouchEnd = () => handleHorizontalTouchEnd(chatboxSwipeRef);
+
   const handleIngredientTouchStart = (event: TouchEvent<HTMLDivElement>) =>
     handleHorizontalTouchStart(event, ingredientSwipeRef);
   const handleIngredientTouchMove = (event: TouchEvent<HTMLDivElement>) =>
@@ -568,19 +468,12 @@ export default function App() {
     async function bootstrap() {
       try {
         setError('');
-        const localProfileData = readLocalProfiles();
-        const localRecentCooked = readRecentCookedRecipes();
         const localFavoriteRecipes = readFavoriteRecipes();
         const localChatMessages = readChatMessages();
         const localLikedRecipeIds = readLikedRecipeIds();
         const localChildContext = readChildContext();
         const localChatSessions = readChatSessions();
         const localActiveChatSessionId = readActiveChatSessionId();
-        setLocalProfiles(localProfileData);
-        const mergedProfiles = mergeProfiles([], localProfileData);
-        setProfiles(mergedProfiles);
-        setSelectedProfileId((current) => current || conversationProfileId);
-        setRecentCookedByProfile(localRecentCooked);
         setFavoriteRecipesByProfile(localFavoriteRecipes);
         setFavoriteRecipes(localFavoriteRecipes[conversationProfileId] ?? []);
         const initialSessions = localChatSessions.length > 0
@@ -598,7 +491,6 @@ export default function App() {
         setIngredients(activeSession.ingredients);
         setChatMessages(activeSession.messages);
         const activeRecipes = activeSession.messages.flatMap((message) => message.recipes ?? []).slice(-5);
-        setRecommendations(activeRecipes);
         void fetchDetailsForRecipeCards(activeRecipes, activeSession.ingredients, buildConversationProfile(activeSession.childContext));
         setLikedRecipeIds(localLikedRecipeIds);
       } catch (bootstrapError) {
@@ -610,14 +502,6 @@ export default function App() {
 
     void bootstrap();
   }, []);
-
-  useEffect(() => {
-    if (selectedProfileId === conversationProfileId || profiles.some((profile) => profile.id === selectedProfileId)) {
-      return;
-    }
-
-    setSelectedProfileId(conversationProfileId);
-  }, [profiles, selectedProfileId]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -653,7 +537,7 @@ export default function App() {
   }, [chatMessages]);
 
   useEffect(() => {
-    if (page !== 'home' || isBootstrapping) {
+    if (isBootstrapping) {
       return;
     }
 
@@ -670,10 +554,10 @@ export default function App() {
     }, 80);
 
     return () => window.clearTimeout(timeoutId);
-  }, [page, isBootstrapping, lastChatMessageId]);
+  }, [isBootstrapping, lastChatMessageId]);
 
   useEffect(() => {
-    if (page !== 'home' || !pendingRecipeMessageId) {
+    if (!pendingRecipeMessageId) {
       return;
     }
 
@@ -690,7 +574,7 @@ export default function App() {
     }, 120);
 
     return () => window.clearTimeout(timeoutId);
-  }, [page, pendingRecipeMessageId, lastChatMessageId]);
+  }, [pendingRecipeMessageId, lastChatMessageId]);
 
   useEffect(() => {
     if (isBootstrapping || !activeChatSessionId) {
@@ -736,7 +620,7 @@ export default function App() {
   }, [toastMessage]);
 
   useEffect(() => {
-    if (!pendingScrollRecipeId || page !== 'home') {
+    if (!pendingScrollRecipeId) {
       return;
     }
 
@@ -753,13 +637,7 @@ export default function App() {
     }, 120);
 
     return () => window.clearTimeout(timeoutId);
-  }, [pendingScrollRecipeId, page, chatMessages]);
-
-  const appendIngredients = (items: IngredientItem[]) => {
-    setIngredients((current) => {
-      return mergeIngredientItems(current, items);
-    });
-  };
+  }, [pendingScrollRecipeId, chatMessages]);
 
   const addChatMessage = (message: Omit<ChatMessage, 'id' | 'createdAt'>) => {
     const nextMessage: ChatMessage = {
@@ -776,11 +654,9 @@ export default function App() {
     setActiveChatSessionId(session.id);
     setChildContext('');
     setIngredients([]);
-    setRecommendations([]);
     setRecipeDetailsById({});
     setRecipeDetailLoadingById({});
     setRecipeDetailErrorsById({});
-    setSelectedRecipe(null);
     setChatMessages(session.messages);
     setChatSessions((current) => {
       const next = [session, ...current.filter((item) => item.id !== session.id)];
@@ -789,7 +665,6 @@ export default function App() {
       return next;
     });
     setIsConversationDrawerOpen(false);
-    setPage('home');
   };
 
   const handleSelectConversation = (session: ChatSession) => {
@@ -798,15 +673,12 @@ export default function App() {
     setChildContext(session.childContext);
     setIngredients(session.ingredients);
     setChatMessages(session.messages);
-    setRecommendations(sessionRecipes);
     setRecipeDetailsById({});
     setRecipeDetailLoadingById({});
     setRecipeDetailErrorsById({});
-    setSelectedRecipe(null);
     void fetchDetailsForRecipeCards(sessionRecipes, session.ingredients, buildConversationProfile(session.childContext));
     persistActiveChatSessionId(session.id);
     setIsConversationDrawerOpen(false);
-    setPage('home');
   };
 
   const handleOpenFavoriteRecipe = (recipe: RecipeRecommendation) => {
@@ -817,8 +689,6 @@ export default function App() {
 
     if (matchedSession) {
       handleSelectConversation(matchedSession);
-    } else {
-      setPage('home');
     }
 
     setIsFavoriteDrawerOpen(false);
@@ -911,7 +781,6 @@ export default function App() {
           return !nextIngredients.every((item) => message.text.includes(item.name));
         }),
       );
-      setRecommendations(recipes);
       setRecipeDetailsById({});
       setRecipeDetailLoadingById({});
       setRecipeDetailErrorsById({});
@@ -925,7 +794,6 @@ export default function App() {
       });
       setPendingRecipeMessageId(recipeMessage.id);
       setManualIngredient('');
-      setVoiceTranscript(prompt);
     } catch (recommendationError) {
       setError(recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。');
       addChatMessage({
@@ -989,22 +857,6 @@ export default function App() {
     }
   };
 
-  const handleManualParse = async () => {
-    if (!manualIngredient.trim()) return;
-
-    try {
-      setIsParsingText(true);
-      setError('');
-      const data = await parseIngredientText(manualIngredient);
-      appendIngredients(data.ingredients);
-      setManualIngredient('');
-    } catch (parseError) {
-      setError(parseError instanceof Error ? parseError.message : '食材解析失败。');
-    } finally {
-      setIsParsingText(false);
-    }
-  };
-
   const handleImageFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1031,7 +883,6 @@ export default function App() {
         return;
       }
       setIngredients(nextIngredients);
-      setLastUploadMessage(`已上传图片 ${data.upload.filename}，识别到 ${data.ingredients.length} 项食材。`);
       addChatMessage({
         role: 'assistant',
         text: data.ingredients.length > 0 ? '我从图片里识别到了这些食材。' : '我暂时没有从图片里识别到明确食材。',
@@ -1123,7 +974,6 @@ export default function App() {
 
       recognition.onstart = () => {
         setIsListeningVoice(true);
-        setLastUploadMessage('正在调用系统麦克风，请开始说出食材名称。');
       };
 
       recognition.onresult = async (event) => {
@@ -1137,12 +987,8 @@ export default function App() {
           return;
         }
 
-        setVoiceTranscript(transcript);
-        setLastUploadMessage('语音识别完成，正在解析食材。');
-
         try {
           await handleChatSubmit(transcript);
-          setLastUploadMessage(`语音识别成功：${transcript}`);
         } catch (parseError) {
           setError(parseError instanceof Error ? parseError.message : '语音文本解析失败。');
         }
@@ -1182,10 +1028,6 @@ export default function App() {
     }
   };
 
-  const removeIngredient = (id: string) => {
-    setIngredients((current) => current.filter((item) => item.id !== id));
-  };
-
   const removeChatIngredient = (id: string) => {
     stopSpeaking();
     setActiveSpeechKey('');
@@ -1217,171 +1059,6 @@ export default function App() {
     await requestChatRecommendations('请根据当前已识别食材推荐菜谱', nextIngredients);
   };
 
-  const fetchRecipeAndOpen = async (recipeOrId: string | RecipeRecommendation) => {
-    const id = typeof recipeOrId === 'string' ? recipeOrId : recipeOrId.id;
-    const cachedRecipe =
-      recipeDetailsById[id] ??
-      Object.values(recentCookedByProfile)
-        .flat()
-        .find((recipe) => recipe.id === id);
-
-    if (cachedRecipe) {
-      setSelectedRecipe(cachedRecipe);
-      setStepIndex(0);
-      setPage('detail');
-      return;
-    }
-
-    try {
-      setIsFetchingDetail(true);
-      setError('');
-      const recommendedRecipe =
-        typeof recipeOrId === 'string'
-          ? recommendations.find((item) => item.id === id) ?? null
-          : recipeOrId;
-      const recipe =
-        recommendedRecipe && selectedProfile
-          ? await fetchGeneratedRecipeDetail({
-              profileId: selectedProfile.id,
-              profile: selectedProfile,
-              ingredients,
-              recipe: recommendedRecipe,
-            })
-          : await fetchRecipeDetail(id);
-
-      setRecipeDetailsById((current) => ({
-        ...current,
-        [recipe.id]: recipe,
-      }));
-      setSelectedRecipe(recipe);
-      setStepIndex(0);
-      setPage('detail');
-    } catch (detailError) {
-      setError(detailError instanceof Error ? detailError.message : '菜谱详情加载失败。');
-    } finally {
-      setIsFetchingDetail(false);
-    }
-  };
-
-  const handleGetRecommendations = async () => {
-    try {
-      setIsFetchingRecommendations(true);
-      setError('');
-      const data = await fetchRecommendations(selectedProfile, ingredients);
-      setRecommendations(data.recipes);
-      setPage('recipes');
-    } catch (recommendationError) {
-      setError(recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。');
-    } finally {
-      setIsFetchingRecommendations(false);
-    }
-  };
-
-  const handleCreateProfile = async () => {
-    const nickname = newProfileForm.nickname.trim();
-    const age = Number(newProfileForm.age);
-
-    if (!nickname || !Number.isFinite(age) || age <= 0) {
-      setError('请填写正确的儿童昵称和年龄。');
-      return;
-    }
-
-    const payload: CreateChildProfileInput = {
-      nickname,
-      age,
-      tastePreferences: parseTagInput(newProfileForm.tastePreferences),
-      allergens: parseTagInput(newProfileForm.allergens),
-      dietaryHabits: parseTagInput(newProfileForm.dietaryHabits),
-    };
-
-    const localProfile: ChildProfile = {
-      id: `local_profile_${crypto.randomUUID()}`,
-      ...payload,
-    };
-
-    try {
-      setIsCreatingProfile(true);
-      setError('');
-
-      let createdProfile = localProfile;
-
-      try {
-        createdProfile = await createChildProfile(payload);
-      } catch {
-        // Netlify Functions is stateless for in-memory profiles. Keep a local profile fallback.
-      }
-
-      const nextLocalProfiles = createdProfile.id.startsWith('local_profile_')
-        ? [...localProfiles, createdProfile]
-        : localProfiles;
-
-      if (createdProfile.id.startsWith('local_profile_')) {
-        setLocalProfiles(nextLocalProfiles);
-        persistLocalProfiles(nextLocalProfiles);
-      }
-
-      const mergedProfiles = mergeProfiles(
-        profiles.filter((profile) => !profile.id.startsWith('local_profile_')),
-        nextLocalProfiles.length > 0 ? nextLocalProfiles : localProfiles,
-      );
-
-      if (!mergedProfiles.some((profile) => profile.id === createdProfile.id)) {
-        mergedProfiles.push(createdProfile);
-      }
-
-      setProfiles(mergedProfiles);
-      setSelectedProfileId(createdProfile.id);
-      setNewProfileForm({
-        nickname: '',
-        age: '8',
-        tastePreferences: '',
-        allergens: '',
-        dietaryHabits: '',
-      });
-      setPage('input');
-    } finally {
-      setIsCreatingProfile(false);
-    }
-  };
-
-  const handleSubmitFeedback = async () => {
-    if (!selectedProfileId || !selectedProfile || !selectedRecipe) return;
-
-    try {
-      setIsSubmittingFeedback(true);
-      setError('');
-      const result = await submitCookingFeedback({
-        profileId: selectedProfileId,
-        profile: selectedProfile,
-        recipeId: selectedRecipe.id,
-        recipe: selectedRecipe,
-        tasteFeedback,
-        difficultyFeedback,
-      });
-      setFeedback(result);
-    } catch (feedbackError) {
-      setError(feedbackError instanceof Error ? feedbackError.message : '点评生成失败。');
-    } finally {
-      setIsSubmittingFeedback(false);
-    }
-  };
-
-  const saveRecentCookedRecipe = (recipe: RecipeDetail) => {
-    if (!selectedProfileId) {
-      return;
-    }
-
-    setRecentCookedByProfile((current) => {
-      const nextGroup = mergeRecentCookedRecipes(recipe, current[selectedProfileId] ?? []);
-      const next = {
-        ...current,
-        [selectedProfileId]: nextGroup,
-      };
-      persistRecentCookedRecipes(next);
-      return next;
-    });
-  };
-
   const toggleFavoriteRecipe = (recipe: RecipeRecommendation) => {
     if (!selectedProfileId) {
       setError('请先选择儿童档案后再收藏菜谱。');
@@ -1403,60 +1080,9 @@ export default function App() {
     });
   };
 
-  const removeFavoriteRecipe = (recipeId: string) => {
-    if (!selectedProfileId) {
-      return;
-    }
-
-    setFavoriteRecipesByProfile((current) => {
-      const next = {
-        ...current,
-        [selectedProfileId]: (current[selectedProfileId] ?? []).filter((item) => item.id !== recipeId),
-      };
-      persistFavoriteRecipes(next);
-      return next;
-    });
-  };
-
-  const clearFavoriteRecipes = () => {
-    if (!selectedProfileId) {
-      return;
-    }
-
-    setFavoriteRecipesByProfile((current) => {
-      const next = {
-        ...current,
-        [selectedProfileId]: [],
-      };
-      persistFavoriteRecipes(next);
-      return next;
-    });
-  };
-
-  const handleFetchLogs = async () => {
-    try {
-      setIsFetchingLogs(true);
-      setError('');
-      const data = await fetchLlmLogs({
-        start: logFilters.start ? new Date(logFilters.start).toISOString() : undefined,
-        end: logFilters.end ? new Date(logFilters.end).toISOString() : undefined,
-        keyword: logFilters.keyword.trim() || undefined,
-        limit: 200,
-      });
-      setLlmLogs(data.items);
-      setLlmLogFile(data.logFile);
-    } catch (logError) {
-      setError(logError instanceof Error ? logError.message : '日志读取失败。');
-    } finally {
-      setIsFetchingLogs(false);
-    }
-  };
-
   if (isBootstrapping) {
     return (
       <AppShell
-        currentPage="home"
-        onNavigate={setPage}
         onOpenConversations={() => setIsConversationDrawerOpen(true)}
         onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
       >
@@ -1472,8 +1098,6 @@ export default function App() {
 
   return (
     <AppShell
-      currentPage={page}
-      onNavigate={setPage}
       onOpenConversations={() => setIsConversationDrawerOpen(true)}
       onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
     >
@@ -1587,8 +1211,13 @@ export default function App() {
         </div>
       ) : null}
 
-      {page === 'home' ? (
-        <section className="chatbox-page">
+      <section
+        className="chatbox-page"
+        onTouchStart={handleChatboxTouchStart}
+        onTouchMove={handleChatboxTouchMove}
+        onTouchEnd={handleChatboxTouchEnd}
+        onTouchCancel={handleChatboxTouchEnd}
+      >
           <div className="kids-chat-hero" aria-label="儿童烹饪助手">
             <div className="mascot-badge" aria-hidden="true">
               <span className="mascot-chef-hat">▴</span>
@@ -2061,715 +1690,7 @@ export default function App() {
               )}
             </button>
           </div>
-        </section>
-      ) : null}
-
-      {page === 'profile' ? (
-        <section className="page-grid">
-          <div className="panel">
-            <p className="eyebrow">儿童档案</p>
-            <h2>选择当前要推荐的孩子</h2>
-            <div className="stack-list">
-              {profiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  type="button"
-                  className={profile.id === selectedProfileId ? 'list-button active-step' : 'list-button'}
-                  onClick={() => setSelectedProfileId(profile.id)}
-                >
-                  <strong>{profile.nickname} · {profile.age} 岁</strong>
-                  <span>过敏原：{profile.allergens.join('、')} | 饮食习惯：{profile.dietaryHabits.join('、')}</span>
-                </button>
-              ))}
-            </div>
-            <div className="panel-subsection">
-              <h3>新增儿童档案</h3>
-              <div className="field-grid">
-                <div className="field">
-                  <label>昵称</label>
-                  <input
-                    placeholder="例如：小米"
-                    value={newProfileForm.nickname}
-                    onChange={(event) => setNewProfileForm((current) => ({ ...current, nickname: event.target.value }))}
-                  />
-                </div>
-                <div className="field">
-                  <label>年龄</label>
-                  <input
-                    inputMode="numeric"
-                    placeholder="例如：8"
-                    value={newProfileForm.age}
-                    onChange={(event) => setNewProfileForm((current) => ({ ...current, age: event.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="field">
-                <label>口味偏好</label>
-                <input
-                  placeholder="例如：清淡、喜欢鸡蛋、喜欢面食"
-                  value={newProfileForm.tastePreferences}
-                  onChange={(event) =>
-                    setNewProfileForm((current) => ({ ...current, tastePreferences: event.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label>过敏原</label>
-                <input
-                  placeholder="例如：花生、牛奶"
-                  value={newProfileForm.allergens}
-                  onChange={(event) => setNewProfileForm((current) => ({ ...current, allergens: event.target.value }))}
-                />
-              </div>
-              <div className="field">
-                <label>饮食习惯</label>
-                <input
-                  placeholder="例如：低盐、不吃辣"
-                  value={newProfileForm.dietaryHabits}
-                  onChange={(event) =>
-                    setNewProfileForm((current) => ({ ...current, dietaryHabits: event.target.value }))
-                  }
-                />
-              </div>
-            </div>
-            <div className="action-row">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => void handleCreateProfile()}
-                disabled={isCreatingProfile}
-              >
-                {isCreatingProfile ? (
-                  <>
-                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                    保存中...
-                  </>
-                ) : (
-                  '新增并使用这个档案'
-                )}
-              </button>
-              <button type="button" className="primary-button" onClick={() => setPage('input')}>
-                确认并继续
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {page === 'favorites' ? (
-        <section className="page-grid">
-          <div className="panel">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">菜谱收藏</p>
-                <h2>{selectedProfile?.nickname ?? '当前孩子'} 的收藏菜谱</h2>
-                <p className="muted">收藏保存在当前设备本地缓存，可反复打开和复用。</p>
-              </div>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={clearFavoriteRecipes}
-                disabled={favoriteRecipes.length === 0}
-              >
-                清空收藏
-              </button>
-            </div>
-
-            <div className="stack-list">
-              {favoriteRecipes.length > 0 ? (
-                favoriteRecipes.map((recipe) => (
-                  <div key={recipe.id} className="list-item static">
-                    <div>
-                      <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
-                      <span>{recipe.difficulty} · {recipe.estimatedTimeMinutes} 分钟 · {recipe.ageRange}</span>
-                    </div>
-                    <div className="action-row">
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => void fetchRecipeAndOpen(recipe)}
-                      >
-                        查看详情
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={() => removeFavoriteRecipe(recipe.id)}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <strong>当前档案还没有收藏菜谱</strong>
-                  <p>先去推荐页收藏喜欢的菜谱，这里会保留本地收藏记录。</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {page === 'input' ? (
-        <section className="page-grid">
-          <div className="panel">
-            <p className="eyebrow">食材输入</p>
-            <h2>优先适配手机与 pad 的输入方式</h2>
-            <div className="upload-panel">
-              <button
-                type="button"
-                className="fake-upload fake-upload-button"
-                onClick={() => cameraImageInputRef.current?.click()}
-                disabled={isUploadingImage}
-              >
-                {isUploadingImage ? (
-                  <>
-                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                    上传图片中...
-                  </>
-                ) : (
-                  '拍摄食材图片'
-                )}
-              </button>
-              <button
-                type="button"
-                className="fake-upload fake-upload-button"
-                onClick={() => fileImageInputRef.current?.click()}
-                disabled={isUploadingImage}
-              >
-                {isUploadingImage ? (
-                  <>
-                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                    上传图片中...
-                  </>
-                ) : (
-                  '选择本地图片'
-                )}
-              </button>
-              <button
-                type="button"
-                className="fake-upload fake-upload-button"
-                onClick={() => void handleStartVoiceInput()}
-                disabled={isListeningVoice}
-              >
-                {isListeningVoice ? '正在语音识别…' : '开始语音输入'}
-              </button>
-            </div>
-
-            {lastUploadMessage ? (
-              <div className="tip-card compact-card">
-                <strong>最近一次上传</strong>
-                <p>{lastUploadMessage}</p>
-              </div>
-            ) : null}
-
-            {voiceTranscript ? (
-              <div className="tip-card compact-card">
-                <strong>语音转写结果</strong>
-                <p>{voiceTranscript}</p>
-              </div>
-            ) : null}
-
-            <div className="field">
-              <label>文本输入</label>
-              <div className="inline-input">
-                <input
-                  placeholder="例如：两个鸡蛋 一个番茄 半根黄瓜"
-                  value={manualIngredient}
-                  onChange={(event) => setManualIngredient(event.target.value)}
-                />
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => void handleManualParse()}
-                  disabled={isParsingText}
-                >
-                  {isParsingText ? (
-                    <>
-                      <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                      解析中...
-                    </>
-                  ) : (
-                    '解析'
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div className="chip-row">
-              {quickIngredients.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className="chip-button"
-                  onClick={() =>
-                    appendIngredients([
-                      {
-                        id: `ing_quick_${item}_${crypto.randomUUID()}`,
-                        name: item,
-                        normalizedName: item,
-                        quantity: '1份',
-                        source: 'manual',
-                      },
-                    ])
-                  }
-                >
-                  + {item}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">当前食材清单</p>
-                <h3>{ingredients.length} 项待确认</h3>
-              </div>
-              <span className="chip">档案：{selectedProfile?.nickname ?? '未选择'}</span>
-            </div>
-            <div className="stack-list">
-              {ingredients.length > 0 ? (
-                ingredients.map((ingredient) => (
-                  <div key={ingredient.id} className="list-item">
-                    <div className="ingredient-listing">
-                      <IngredientThumb name={ingredient.name} />
-                      <div>
-                        <strong>{ingredient.name}</strong>
-                        <span>{ingredient.quantity} · 来源 {ingredient.source}</span>
-                      </div>
-                    </div>
-                    <button type="button" className="ghost-button" onClick={() => removeIngredient(ingredient.id)}>
-                      删除
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <strong>还没有食材</strong>
-                  <p>先从图片、录音或文本输入一种食材，才能进入下一步。</p>
-                </div>
-              )}
-            </div>
-            <div className="action-row sticky-actions">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => setPage('confirm')}
-                disabled={ingredients.length === 0}
-              >
-                继续确认识别结果
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {page === 'confirm' ? (
-        <section className="page-grid">
-          <div className="panel">
-            <p className="eyebrow">识别确认</p>
-            <h2>确认这些食材后再开始推荐</h2>
-            <div className="stack-list">
-              {ingredients.map((ingredient) => (
-                <div key={ingredient.id} className="list-item">
-                  <div className="ingredient-listing">
-                    <IngredientThumb name={ingredient.name} />
-                    <div>
-                      <strong>{ingredient.name}</strong>
-                      <span>{ingredient.quantity}</span>
-                    </div>
-                  </div>
-                  <button type="button" className="ghost-button" onClick={() => removeIngredient(ingredient.id)}>
-                    删除
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="alert-box soft">
-              <strong>提示</strong>
-              <p>这一步会把最终确认后的食材发送到真实后端推荐接口。文本与视觉理解使用 SiliconFlow 的 Qwen 模型。</p>
-            </div>
-            <div className="action-row sticky-actions">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => void handleGetRecommendations()}
-                disabled={ingredients.length === 0 || isFetchingRecommendations}
-              >
-                {isFetchingRecommendations ? (
-                  <>
-                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                    推荐中...
-                  </>
-                ) : (
-                  '开始推荐菜谱'
-                )}
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {page === 'recipes' ? (
-        <section className="page-grid">
-          <div className="panel">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">推荐结果</p>
-                <h2>推荐给 {selectedProfile?.nickname ?? '孩子'} 的儿童菜谱</h2>
-              </div>
-              <span className="chip">真实接口返回</span>
-            </div>
-            <div className="alert-box soft">
-              <strong>过敏原过滤已生效</strong>
-              <p>已自动排除包含 {selectedProfile?.allergens.join('、') ?? '过敏原'} 的菜谱。</p>
-            </div>
-            <div className="recipe-list">
-              {recommendations.map((recipe) => (
-                <RecipeCard
-                  key={recipe.id}
-                  recipe={recipe}
-                  onSelect={(id) => void fetchRecipeAndOpen(id)}
-                  onOpenLearning={setLearningRecipe}
-                  onToggleFavorite={toggleFavoriteRecipe}
-                  isFavorite={favoriteRecipes.some((item) => item.id === recipe.id)}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {page === 'detail' ? (
-        <section className="page-grid">
-          <div className="panel hero-detail">
-            <p className="eyebrow">菜谱详情</p>
-            {isFetchingDetail || !selectedRecipe ? (
-              <h2 className="loading-heading">
-                <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                正在加载菜谱详情...
-              </h2>
-            ) : (
-              <>
-                <ZoomableImage className="detail-hero-image" src={selectedRecipe.imageUrl} alt={selectedRecipe.name} />
-                <div className="detail-name-group">
-                  <button
-                    type="button"
-                    className="name-audio-button detail-chinese-name"
-                    onClick={() => setLearningRecipe(selectedRecipe)}
-                    aria-label={`打开菜名识字抽屉：${selectedRecipe.name}`}
-                  >
-                    <RecipeName as="span" name={selectedRecipe.name} pinyin={selectedRecipe.namePinyin} />
-                  </button>
-                  <button
-                    type="button"
-                    className="name-audio-button english-name"
-                    onClick={() => speak(selectedRecipe.englishName, 'en-US')}
-                    aria-label={`Read English recipe name: ${selectedRecipe.englishName}`}
-                  >
-                    {selectedRecipe.englishName}
-                  </button>
-                </div>
-                <p className="muted">
-                  {selectedRecipe.ageRange} · {selectedRecipe.difficulty} · 准备 {selectedRecipe.prepTimeMinutes} 分钟 · 制作 {selectedRecipe.cookTimeMinutes} 分钟
-                </p>
-                <div className="action-row">
-                  <button type="button" className="secondary-button" onClick={() => speakRecipeOverview(selectedRecipe)}>
-                    语音介绍整道菜
-                  </button>
-                </div>
-                <div className="chip-row">
-                  {selectedRecipe.fitReasons.map((reason) => (
-                    <span key={reason} className="chip fit-chip">
-                      {reason}
-                    </span>
-                  ))}
-                </div>
-                <div className="info-block">
-                  <h3>营养摘要</h3>
-                  <p>{selectedRecipe.nutritionSummary}</p>
-                </div>
-                <div className="alert-box">
-                  <strong>安全提醒</strong>
-                  <ul>
-                    {selectedRecipe.riskAlerts.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="panel-subsection">
-                  <h3>食材与用量</h3>
-                  <div className="stack-list compact-list">
-                    {selectedRecipe.ingredients.map((ingredient) => (
-                      <div key={`${selectedRecipe.id}-${ingredient.name}`} className="list-item static">
-                        <div className="ingredient-listing">
-                          <ZoomableImage className="ingredient-thumb" src={ingredient.imageUrl} alt={ingredient.name} />
-                          <div>
-                            <strong>{ingredient.name}</strong>
-                            <span>{ingredient.quantity}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="panel-subsection">
-                  <h3>步骤预览</h3>
-                  <ol className="step-preview">
-                    {selectedRecipe.steps.map((step) => (
-                      <li key={step.id}>
-                        <strong>{step.title}</strong>
-                        <p>{step.description}</p>
-                        <p className="muted">{step.childAction || '按提示一步一步做，先慢一点再继续。'}</p>
-                        <p className="muted">{step.expectedResult || '完成后看一看食材颜色和状态有没有变化。'}</p>
-                        <div className="action-row compact-list">
-                          <button type="button" className="ghost-button" onClick={() => speakStep(step)}>
-                            {activeSpeechKey === `step_${step.id}` ? '停止朗读' : '朗读这一步'}
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => {
-                    setStepIndex(0);
-                    setPage('cooking');
-                  }}
-                >
-                  开始制作
-                </button>
-              </>
-            )}
-          </div>
-        </section>
-      ) : null}
-
-      {page === 'cooking' && selectedRecipe && currentStep ? (
-        <section className="page-grid">
-          <div className="panel cooking-panel">
-            <StepCard
-              step={currentStep}
-              index={stepIndex}
-              total={selectedRecipe.steps.length}
-              onSpeak={speakStep}
-              activeSpeechKey={activeSpeechKey}
-              embedded
-            />
-            <p className="eyebrow">烹饪进度</p>
-            <div className="progress-bar" aria-hidden="true">
-              <div
-                className="progress-fill"
-                style={{
-                  width: `${((stepIndex + 1) / selectedRecipe.steps.length) * 100}%`,
-                }}
-              />
-            </div>
-            <div className="stack-list compact-step-list">
-              {selectedRecipe.steps.map((step, index) => (
-                <div
-                  key={step.id}
-                  className={index === stepIndex ? 'list-item active-step' : 'list-item static'}
-                >
-                  <strong>{step.title}</strong>
-                  <span>{step.requiresParentAssist ? '需家长陪同' : '可独立完成'}</span>
-                </div>
-              ))}
-            </div>
-            <div className="action-row sticky-actions cooking-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setStepIndex((current) => Math.max(0, current - 1))}
-                disabled={stepIndex === 0}
-              >
-                上一步
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => {
-                  if (stepIndex < selectedRecipe.steps.length - 1) {
-                    setStepIndex((current) => current + 1);
-                    return;
-                  }
-
-                  saveRecentCookedRecipe(selectedRecipe);
-                  setFeedback(null);
-                  setPage('feedback');
-                }}
-              >
-                {stepIndex === selectedRecipe.steps.length - 1 ? '完成并点评' : '下一步'}
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {page === 'feedback' && selectedRecipe ? (
-        <section className="page-grid">
-          <div className="panel">
-            <p className="eyebrow">成果点评</p>
-            <h2>
-              {selectedProfile?.nickname ?? '孩子'} 完成了 <RecipeName as="span" name={selectedRecipe.name} pinyin={selectedRecipe.namePinyin} />
-            </h2>
-            <div className="fake-upload large">上传成品图片（MVP 占位）</div>
-            <div className="field">
-              <label>今天味道怎么样？</label>
-              <textarea rows={3} value={tasteFeedback} onChange={(event) => setTasteFeedback(event.target.value)} />
-            </div>
-            <div className="field">
-              <label>哪里觉得有点难？</label>
-              <textarea rows={3} value={difficultyFeedback} onChange={(event) => setDifficultyFeedback(event.target.value)} />
-            </div>
-            <div className="action-row sticky-actions">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => void handleSubmitFeedback()}
-                disabled={isSubmittingFeedback}
-              >
-                {isSubmittingFeedback ? (
-                  <>
-                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                    生成点评中...
-                  </>
-                ) : (
-                  '生成 AI 点评'
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="tip-card warm">
-              <strong>AI 点评</strong>
-              {feedback ? (
-                <>
-                  <p>{feedback.praise}</p>
-                  <p>{feedback.improvement}</p>
-                  <p>{feedback.nextSuggestion}</p>
-                </>
-              ) : (
-                <p>提交后端点评接口后，这里会展示鼓励式反馈和下一步建议。</p>
-              )}
-            </div>
-            <div className="action-row">
-              <button type="button" className="secondary-button" onClick={() => setPage('recipes')}>
-                再试一道类似菜谱
-              </button>
-              <button type="button" className="primary-button" onClick={() => setPage('home')}>
-                返回首页
-              </button>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {page === 'logs' ? (
-        <section className="page-grid">
-          <div className="panel">
-            <p className="eyebrow">本地调试日志</p>
-            <h2>查看大模型接口调用记录</h2>
-            <p className="muted">
-              仅用于本地开发调试。支持按时间范围和关键字检索请求摘要、响应摘要和错误信息。
-            </p>
-            <div className="field-grid">
-              <div className="field">
-                <label>开始时间</label>
-                <input
-                  type="datetime-local"
-                  value={logFilters.start}
-                  onChange={(event) => setLogFilters((current) => ({ ...current, start: event.target.value }))}
-                />
-              </div>
-              <div className="field">
-                <label>结束时间</label>
-                <input
-                  type="datetime-local"
-                  value={logFilters.end}
-                  onChange={(event) => setLogFilters((current) => ({ ...current, end: event.target.value }))}
-                />
-              </div>
-            </div>
-            <div className="field">
-              <label>关键字</label>
-              <input
-                placeholder="例如：generate_recipe_plan / error / 番茄"
-                value={logFilters.keyword}
-                onChange={(event) => setLogFilters((current) => ({ ...current, keyword: event.target.value }))}
-              />
-            </div>
-            <div className="action-row">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => void handleFetchLogs()}
-                disabled={isFetchingLogs}
-              >
-                {isFetchingLogs ? (
-                  <>
-                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                    检索中...
-                  </>
-                ) : (
-                  '检索日志'
-                )}
-              </button>
-            </div>
-            {llmLogFile ? (
-              <div className="tip-card compact-card">
-                <strong>日志文件</strong>
-                <p>{llmLogFile}</p>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="panel">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">结果</p>
-                <h3>{llmLogs.length} 条记录</h3>
-              </div>
-            </div>
-            <div className="stack-list">
-              {llmLogs.length > 0 ? (
-                llmLogs.map((entry, index) => (
-                  <article key={`${entry.timestamp ?? 'log'}_${index}`} className="log-entry">
-                    <div className="chip-row">
-                      <span className="chip">{entry.operation ?? 'unknown'}</span>
-                      <span className="chip">{entry.success ? 'success' : 'error'}</span>
-                      <span className="chip">{entry.durationMs ?? 0} ms</span>
-                    </div>
-                    <strong>{entry.timestamp ?? '无时间戳'}</strong>
-                    <p className="muted">模型：{entry.model ?? 'unknown'}</p>
-                    {entry.error ? <p className="log-error">{entry.error}</p> : null}
-                    {entry.responsePreview ? (
-                      <pre className="log-pre">{entry.responsePreview}</pre>
-                    ) : null}
-                    {entry.requestSummary ? (
-                      <pre className="log-pre">{JSON.stringify(entry.requestSummary, null, 2)}</pre>
-                    ) : null}
-                    {entry.metadata ? (
-                      <pre className="log-pre">{JSON.stringify(entry.metadata, null, 2)}</pre>
-                    ) : null}
-                  </article>
-                ))
-              ) : (
-                <div className="empty-state">
-                  <strong>还没有日志结果</strong>
-                  <p>先在本地触发一次食材识别、菜谱推荐或点评，再回来检索。</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      ) : null}
+      </section>
 
       {learningRecipe ? (
         <div className="drawer-layer" role="presentation">
