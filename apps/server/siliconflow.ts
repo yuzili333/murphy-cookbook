@@ -281,7 +281,7 @@ function parseSeasonalIngredientSuggestionPayload(content: string) {
         reason: String(item.reason ?? '').trim(),
       }))
       .filter((item) => item.name)
-      .slice(0, 8);
+      .slice(0, 5);
   } catch {
     throw new Error('季节食材推荐模型返回内容无法解析为有效 JSON。');
   }
@@ -583,11 +583,14 @@ function buildRecipeDetailUserPrompt(
     '6. 菜谱必须提供 imageSearchQuery，使用 2-4 个英文单词准确描述成品图主体，例如 "broccoli egg noodles"；必须是做熟后的菜品成品图，不要写模糊词。',
     '7. 每个配料必须提供 imageSearchQuery，使用 1-3 个英文单词准确描述单个原料，例如 "broccoli florets"、"raw egg"；必须是单个食材特写，不要把调料或其他食材混进去。',
     '8. 任何调味料和近似量不要写“适量/少许/微量”，统一改成儿童可理解的勺数，例如1平勺、半平勺、2平勺。',
-    '9. steps 必须补充全量操作步骤细节，拆成 5-8 个小步骤；不要把“洗切炒煮”合并成一句。每一步都要像教小朋友一样具体：先做什么、用什么工具、放在哪里、等待多久、看到什么状态再进入下一步。',
-    '10. 每一步 steps 除了 title、description、tip、riskLevel、requiresParentAssist，必须补充 childAction、parentAction、expectedResult，帮助识字量少的儿童理解；childAction 用儿童能听懂的短句，parentAction 写清家长何时接手或陪同。',
-    '11. 如果步骤涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskLevel 必须是 medium 或 high，requiresParentAssist 必须是 true，parentAction 必须明确“家长全程陪同/由家长操作”。',
-    '12. 步骤要清晰、适合亲子共做；安全提醒不能只写在总提醒里，相关步骤也必须单独标注。',
-    '13. 输出字段必须完整，不要输出任何解释文字。',
+    '9. steps 控制在 4-8 个步骤，适合前端按步骤生成卡通手绘风分镜插画。简单菜谱用 4-5 步，可把连续准备动作合并；复杂菜谱用 6-8 步，但不要超过 8 步。',
+    '10. 每一步都要明确写出本步骤需要的食材清单，并把食材名称写进 title 或 description，例如“番茄、鸡蛋”“鸡蛋打散”“番茄入锅”；不要只写“准备”“处理”“完成”等泛化标题。',
+    '11. 每一步都要包含食材处理或烹饪动作的简短细节，例如“番茄切小块，鸡蛋打散”“倒入锅中轻轻翻炒”“小火煮到变软”；不要写成长段落。',
+    '12. 每一步都要能独立成为插画配文：title 不超过 8 个汉字，description、childAction、expectedResult、tip 都使用短句，单字段尽量不超过 28 个汉字；可以补充必要工具、火候、等待状态，但不要写过密执行说明。',
+    '13. 每一步 steps 除了 title、description、tip、riskLevel、requiresParentAssist，必须补充 childAction、parentAction、expectedResult，帮助识字量少的儿童看图理解；childAction 写孩子能做或能观察的关键动作，parentAction 写清家长何时接手或陪同。',
+    '14. 如果步骤涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskLevel 必须是 medium 或 high，requiresParentAssist 必须是 true，parentAction 必须明确“家长全程陪同/由家长操作”。',
+    '15. 步骤要清晰、适合亲子共做；安全提醒不能只写在总提醒里，相关步骤也必须单独标注。',
+    '16. 输出字段必须完整，不要输出任何解释文字。',
   ].join('\n');
 }
 
@@ -692,7 +695,7 @@ export async function generateSeasonalIngredientSuggestions(input: {
         `季节/节令提示: ${seasonHint}`,
         `儿童默认原则: ${input.childContext || '小学1-6年级学生，低油脂、轻口味、膳食均衡、维生素丰富、搭配均衡'}`,
         '生成要求:',
-        '1. 返回 5-8 个食材建议。',
+        '1. 只返回 5 个食材建议。',
         '2. 春节/冬季偏青菜瓜果、温热暖体、清淡少油；夏季偏牛油果、西瓜、黄瓜、清爽冰沙/酸奶可用食材；秋季偏润燥祛湿；春季偏新鲜青菜和维生素丰富食材。',
         '3. 食材名要短，便于用户点击后直接识别为食材。',
         '4. 不要包含过度辛辣、高糖、高油或明显不适合儿童的食材。',
@@ -700,7 +703,7 @@ export async function generateSeasonalIngredientSuggestions(input: {
     },
   ], {
     operation: 'generate_seasonal_ingredient_suggestions',
-    maxTokens: 500,
+    maxTokens: 360,
     metadata: {
       month,
       seasonHint,
@@ -758,7 +761,7 @@ export async function generateRecipeDetail(
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和指定推荐卡片，生成 1 个完整儿童菜谱详情。操作者多为小学阶段儿童，步骤必须拆细、引导性强、上手难度低。如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，必须在 riskAlerts 和对应 step 中高亮提醒需家长全程陪同。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺","imageSearchQuery":"1到3个英文单词的单食材检索词"}],"steps":[{"id":"可选","title":"步骤标题","description":"步骤描述","tip":"提示","childAction":"孩子要做什么","parentAction":"家长何时介入","expectedResult":"完成后看到什么","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出额外说明。',
+        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和指定推荐卡片，生成 1 个完整儿童菜谱详情。操作者多为小学阶段儿童，steps 必须适合前端生成卡通手绘风分镜插画：总步数 4-8 步，每步必须明确写出该步骤需要的食材清单，并用短句写清关键食材处理或烹饪动作，可适当补充工具、火候、等待状态等必要细节，但避免长段落和密集文字。如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，必须在 riskAlerts 和对应 step 中高亮提醒需家长全程陪同。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺","imageSearchQuery":"1到3个英文单词的单食材检索词"}],"steps":[{"id":"可选","title":"步骤标题","description":"本步骤食材和动作短句","tip":"短句提示","childAction":"孩子关键动作","parentAction":"家长何时介入","expectedResult":"完成状态短句","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出额外说明。',
     },
     {
       role: 'user',
@@ -766,7 +769,7 @@ export async function generateRecipeDetail(
     },
   ], {
     operation: 'generate_recipe_detail',
-    maxTokens: 1900,
+    maxTokens: 1600,
     metadata: {
       profileId: profile.id,
       recipeId: recipe.id,

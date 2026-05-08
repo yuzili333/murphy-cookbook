@@ -158,14 +158,8 @@ export function fetchGeneratedRecipeDetail(payload: {
     })),
     recipe: payload.recipe,
   };
-  const query = new URLSearchParams({
-    profileId: requestPayload.profileId,
-    profile: JSON.stringify(requestPayload.profile),
-    ingredients: JSON.stringify(requestPayload.ingredients),
-    recipe: JSON.stringify(requestPayload.recipe),
-  }).toString();
 
-  return request<RecipeDetail>(`/recipes/detail?${query}`, {
+  return request<RecipeDetail>('/recipes/detail', {
     method: 'POST',
     body: JSON.stringify(requestPayload),
   });

@@ -36,8 +36,8 @@ const recipeDetailCacheFile = process.env.RECIPE_DETAIL_CACHE_FILE
     ? '/tmp/murphy-cookbook-recipe-detail-cache.json'
     : resolve(process.cwd(), '.local', 'cache', 'recipe-detail-cache.json');
 const recipeDetailCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
-const recipeDetailCacheVersion = 'child-full-steps-v2';
-const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 15000);
+const recipeDetailCacheVersion = 'storyboard-balanced-steps-v6';
+const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 9000);
 const recipeDetailMemoryCache = new Map<string, RecipeDetailCacheEntry>();
 const pendingRecipeDetailRequests = new Map<string, Promise<{ data: RecipeDetail } | { error: RecommendationError }>>();
 const defaultRecommendationProfile: ChildProfile = {
@@ -55,12 +55,8 @@ interface RecipeDetailCacheEntry {
   expiresAt: string;
   request: {
     profile: ChildProfile;
-    ingredients: Array<{
-      name: string;
-      normalizedName: string;
-      quantity: string;
-      source: IngredientItem['source'];
-    }>;
+    ingredients: string[];
+    recipeId?: string;
     recipeName: string;
   };
   response: RecipeDetail;
@@ -82,36 +78,30 @@ function stableStringify(value: unknown): string {
 }
 
 function normalizeIngredientsForCache(ingredients: IngredientItem[]) {
-  return ingredients
-    .map((ingredient) => ({
-      name: ingredient.name.trim(),
-      normalizedName: normalizeIngredientName(ingredient.normalizedName ?? ingredient.name),
-      quantity: String(ingredient.quantity ?? '').trim() || '1份',
-      source: ingredient.source,
-    }))
-    .sort((left, right) =>
-      `${left.normalizedName}|${left.quantity}|${left.source}`.localeCompare(
-        `${right.normalizedName}|${right.quantity}|${right.source}`,
-      ),
-    );
+  const normalizedNames = ingredients
+    .map((ingredient) => normalizeIngredientName(ingredient.normalizedName ?? ingredient.name))
+    .filter(Boolean);
+
+  return Array.from(new Set(normalizedNames)).sort();
 }
 
 function buildRecipeDetailCacheKey(input: {
   profile: ChildProfile;
   ingredients: IngredientItem[];
+  recipeId?: string;
   recipeName: string;
 }) {
   const payload = {
     version: recipeDetailCacheVersion,
     profile: {
       id: input.profile.id,
-      nickname: input.profile.nickname,
       age: input.profile.age,
       tastePreferences: [...input.profile.tastePreferences].sort(),
       allergens: [...input.profile.allergens].sort(),
       dietaryHabits: [...input.profile.dietaryHabits].sort(),
     },
     ingredients: normalizeIngredientsForCache(input.ingredients),
+    recipeId: input.recipeId?.trim() || '',
     recipeName: input.recipeName.trim(),
   };
 
@@ -190,6 +180,7 @@ function toRecipeDetailCacheEntry(input: {
   key: string;
   profile: ChildProfile;
   ingredients: IngredientItem[];
+  recipeId?: string;
   recipeName: string;
   response: RecipeDetail;
 }): RecipeDetailCacheEntry {
@@ -200,6 +191,7 @@ function toRecipeDetailCacheEntry(input: {
     request: {
       profile: input.profile,
       ingredients: normalizeIngredientsForCache(input.ingredients),
+      recipeId: input.recipeId,
       recipeName: input.recipeName,
     },
     response: input.response,
@@ -386,6 +378,7 @@ export async function getRecipeDetailForRecommendation(input: {
   const cacheKey = buildRecipeDetailCacheKey({
     profile,
     ingredients: input.ingredients,
+    recipeId: input.recipe.id,
     recipeName: input.recipe.name,
   });
   const cachedRecipe = getCachedRecipeDetail(cacheKey);
@@ -438,56 +431,56 @@ async function generateRecipeDetailWithCache(input: {
       steps: [
         {
           id: `step_${detailInput.recipe.id}_1`,
-          title: '摆好食材和工具',
-          description: '把所有食材放到桌面上，准备一个小碗、一把勺子和一块干净的案板。',
-          tip: '先点一遍食材名字，确认没有漏掉。',
-          childAction: '把食材排成一排，告诉家长你看到了哪些食材。',
-          parentAction: '家长检查食材是否新鲜，并确认工具摆放安全。',
-          expectedResult: '桌面整齐，食材和工具都能一眼看到。',
+          title: '摆好食材',
+          description: '全部食材和小碗摆好。',
+          tip: '先点一遍食材。',
+          childAction: '说出食材名字。',
+          parentAction: '家长检查新鲜度。',
+          expectedResult: '食材清楚可见。',
           riskLevel: 'low',
           requiresParentAssist: false,
         },
         {
           id: `step_${detailInput.recipe.id}_2`,
           title: '清洗食材',
-          description: '把蔬菜或可清洗食材放进盆里，用流动清水轻轻冲洗。',
-          tip: '不要把水开太大，避免溅到衣服上。',
-          childAction: '用手轻轻搓一搓表面，再把水倒掉。',
-          parentAction: '家长帮忙处理需要削皮或去根的部分。',
-          expectedResult: '食材表面干净，没有明显泥沙。',
+          description: '蔬菜食材清水洗净。',
+          tip: '水流不要太大。',
+          childAction: '轻轻搓洗表面。',
+          parentAction: '家长处理去皮去根。',
+          expectedResult: '表面没有泥沙。',
           riskLevel: 'low',
           requiresParentAssist: false,
         },
         {
           id: `step_${detailInput.recipe.id}_3`,
-          title: '切配或分装',
-          description: '需要切开的食材由家长处理，孩子负责把切好的食材放进小碗。',
-          tip: '刀具只让家长拿，孩子不要抢着切。',
-          childAction: '把切好的食材按颜色或种类放进不同小碗。',
-          parentAction: '家长使用刀具完成切配，并把刀具放回安全位置。',
-          expectedResult: '每种食材都分装好了，大小比较接近。',
+          title: '切配分装',
+          description: '蔬菜肉蛋切配分碗。',
+          tip: '刀具只让家长拿。',
+          childAction: '把食材放小碗。',
+          parentAction: '家长切配并收刀。',
+          expectedResult: '食材大小接近。',
           riskLevel: 'medium',
           requiresParentAssist: true,
         },
         {
           id: `step_${detailInput.recipe.id}_4`,
-          title: '家长加热烹饪',
-          description: '如果这道菜需要加热，请由家长打开明火、电磁炉、微波炉或烤箱，孩子站在安全距离外观察。',
-          tip: '看到热锅、热水、热油时，要离远一点。',
-          childAction: '站在家长旁边一臂远的位置，说出你观察到的颜色和气味变化。',
-          parentAction: '家长全程操作加热设备，并提醒孩子不要触碰锅具和电器。',
-          expectedResult: '食材逐渐变软、变香或颜色变深。',
+          title: '加热烹饪',
+          description: '主食材入锅加热。',
+          tip: '热锅热油要远离。',
+          childAction: '观察颜色变化。',
+          parentAction: '家长全程操作热源。',
+          expectedResult: '食材变软变香。',
           riskLevel: 'high',
           requiresParentAssist: true,
         },
         {
           id: `step_${detailInput.recipe.id}_5`,
           title: '装盘和确认',
-          description: '关火或停止加热后，家长把食物盛到盘子里，稍微放凉再试吃。',
-          tip: '先闻一闻，再小口尝，太烫就继续等。',
-          childAction: '帮忙摆好餐具，小口尝一尝味道。',
-          parentAction: '家长确认温度合适，没有骨刺或硬块后再让孩子食用。',
-          expectedResult: '菜品温热不烫，味道清淡，适合入口。',
+          description: '装盘放凉再试吃。',
+          tip: '太烫就再等等。',
+          childAction: '摆餐具小口尝。',
+          parentAction: '家长确认温度安全。',
+          expectedResult: '温热不烫口。',
           riskLevel: 'low',
           requiresParentAssist: true,
         },
@@ -499,6 +492,7 @@ async function generateRecipeDetailWithCache(input: {
       key: cacheKey,
       profile,
       ingredients: detailInput.ingredients,
+      recipeId: detailInput.recipe.id,
       recipeName: detailInput.recipe.name,
       response,
     }));

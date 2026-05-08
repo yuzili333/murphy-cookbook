@@ -276,6 +276,149 @@ function TrashInlineIcon() {
   );
 }
 
+function summarizeStepCaption(step: RecipeDetail['steps'][number]) {
+  const source = step.childAction || step.description || step.title;
+  const compact = source
+    .replace(/^[请先然后接着最后再把将]+/, '')
+    .replace(/[。！？!?,，；;].*$/, '')
+    .trim();
+
+  return (compact || step.title).slice(0, 18);
+}
+
+function getStoryboardPanelCount(stepCount: number) {
+  if (stepCount <= 4) return 1;
+  if (stepCount <= 6) return 2;
+  if (stepCount <= 8) return 3;
+  return 4;
+}
+
+function groupStepsForStoryboard(steps: RecipeDetail['steps']) {
+  const panelCount = getStoryboardPanelCount(steps.length);
+  const groupSize = Math.ceil(steps.length / panelCount);
+
+  return Array.from({ length: panelCount }, (_, panelIndex) => {
+    const startIndex = panelIndex * groupSize;
+    return steps.slice(startIndex, startIndex + groupSize);
+  }).filter((group) => group.length > 0);
+}
+
+const storyboardFamilyGroups = [
+  ['👩‍🍳', '👧'],
+  ['👨‍🍳', '👦'],
+  ['👩‍🍳', '👨‍🍳', '🧒'],
+  ['👩🏻‍🍳', '👧🏻'],
+  ['👨🏻‍🍳', '👦🏻'],
+  ['👩🏼‍🍳', '👨🏼‍🍳', '👧🏼'],
+  ['👩🏽‍🍳', '👧🏽'],
+  ['👨🏽‍🍳', '👦🏽'],
+  ['👩🏾‍🍳', '👨🏾‍🍳', '🧒🏾'],
+  ['👩🏿‍🍳', '👧🏿'],
+  ['👨🏿‍🍳', '👦🏿'],
+  ['👩', '🧒'],
+  ['👨', '🧒'],
+  ['👩', '👨', '👧'],
+  ['👩‍🍳', '🧒'],
+  ['👨‍🍳', '🧒'],
+  ['👩‍🍳', '👨', '👦'],
+  ['👨‍🍳', '👩', '👧'],
+  ['👨‍👩‍👧'],
+  ['👨‍👩‍👦'],
+];
+
+const storyboardKitchenSafetyEmojis = [
+  { emoji: '🔪', keywords: ['刀', '切', '削', '剁', '片', '丝'] },
+  { emoji: '✂️', keywords: ['剪'] },
+  { emoji: '🔥', keywords: ['火', '燃气', '明火', '烧', '热锅'] },
+  { emoji: '🍳', keywords: ['锅', '煎', '炒'] },
+  { emoji: '🥘', keywords: ['炖', '焖', '煮'] },
+  { emoji: '🍲', keywords: ['汤', '煲'] },
+  { emoji: '♨️', keywords: ['烫', '热', '开水'] },
+  { emoji: '💨', keywords: ['蒸'] },
+  { emoji: '⚡', keywords: ['电', '插座'] },
+  { emoji: '📛', keywords: ['危险', '禁止'] },
+  { emoji: '⚠️', keywords: ['注意', '小心', '风险'] },
+  { emoji: '🧯', keywords: ['火', '油'] },
+  { emoji: '🧤', keywords: ['烤箱', '热盘', '端出'] },
+  { emoji: '🥣', keywords: ['搅拌', '混合'] },
+  { emoji: '🥄', keywords: ['勺', '舀'] },
+  { emoji: '🍽️', keywords: ['装盘', '摆盘'] },
+  { emoji: '🧊', keywords: ['冷藏', '冰', '降温'] },
+  { emoji: '⏲️', keywords: ['分钟', '等待', '计时'] },
+  { emoji: '🌡️', keywords: ['温度', '火候'] },
+  { emoji: '🧼', keywords: ['洗', '清洁'] },
+];
+
+function getKnownIngredientVisual(name: string) {
+  const visual = getIngredientVisual(name);
+  return visual.name === defaultIngredientVisual.name ? null : visual;
+}
+
+function buildStepSearchText(step: RecipeDetail['steps'][number]) {
+  return [step.title, step.description, step.childAction, step.parentAction, step.expectedResult, step.tip].filter(Boolean).join('');
+}
+
+function getIngredientStepKeywords(ingredientName: string, visual: NonNullable<ReturnType<typeof getKnownIngredientVisual>>) {
+  const baseNames = [ingredientName, visual.name, ...(visual.aliases ?? [])].filter(Boolean);
+  const derivedNames = new Set(baseNames);
+
+  for (const name of baseNames) {
+    if (name.includes('鸡蛋')) {
+      derivedNames.add('蛋液');
+      derivedNames.add('打蛋');
+      derivedNames.add('蛋黄');
+      derivedNames.add('蛋清');
+    }
+    if (name.includes('西红柿') || name.includes('番茄')) {
+      derivedNames.add('番茄');
+      derivedNames.add('西红柿');
+    }
+    if (name.includes('土豆')) {
+      derivedNames.add('薯块');
+      derivedNames.add('土豆块');
+    }
+    if (name.includes('胡萝卜')) {
+      derivedNames.add('萝卜丁');
+      derivedNames.add('胡萝卜丁');
+    }
+    if (name.includes('青菜') || name.includes('白菜') || name.includes('菠菜') || name.includes('生菜')) {
+      derivedNames.add('菜叶');
+      derivedNames.add('叶菜');
+    }
+  }
+
+  return Array.from(derivedNames);
+}
+
+function getPanelIngredientVisuals(panelSteps: RecipeDetail['steps'], recipeIngredients: RecipeDetail['ingredients']) {
+  const panelText = panelSteps.map(buildStepSearchText).join('');
+  const normalizedPanelText = panelText.replace(/\s+/g, '').toLowerCase();
+  const matched = recipeIngredients
+    .map((ingredient) => {
+      const visual = getKnownIngredientVisual(ingredient.name);
+      if (!visual) return null;
+      const names = getIngredientStepKeywords(ingredient.name, visual);
+      const isMatched = names.some((name) => {
+        const normalizedName = name.replace(/\s+/g, '').toLowerCase();
+        return normalizedPanelText.includes(normalizedName);
+      });
+
+      return isMatched ? { name: ingredient.name, emoji: visual.emoji } : null;
+    })
+    .filter((item): item is { name: string; emoji: string } => Boolean(item));
+
+  return matched.filter((item, index, items) => items.findIndex((candidate) => candidate.name === item.name) === index).slice(0, 4);
+}
+
+function getPanelSafetyEmojis(panelSteps: RecipeDetail['steps']) {
+  const panelText = panelSteps.map(buildStepSearchText).join('');
+  const matched = storyboardKitchenSafetyEmojis
+    .filter((item) => item.keywords.some((keyword) => panelText.includes(keyword)))
+    .map((item) => item.emoji);
+
+  return Array.from(new Set(matched)).slice(0, 4);
+}
+
 function readImageAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -370,18 +513,6 @@ export default function App() {
       setActiveSpeechKey('');
     }
     window.speechSynthesis.speak(utterance);
-  };
-
-  const speakStep = (step: RecipeDetail['steps'][number]) => {
-    speakText([
-      step.title,
-      step.childAction || step.description,
-      step.tip ? `小贴士：${step.tip}` : '',
-      step.requiresParentAssist
-        ? step.parentAction || '这一步需要家长陪同完成。'
-        : '这一步可以由孩子独立完成。',
-      step.expectedResult ? `完成后应该看到：${step.expectedResult}` : '',
-    ].filter(Boolean).join('。'), 'zh-CN', `step_${step.id}`);
   };
 
   const conversationProfile = buildConversationProfile(childContext);
@@ -510,7 +641,7 @@ export default function App() {
       try {
         const data = await fetchSeasonalIngredientSuggestions(new Date().getMonth() + 1, childContext.trim() || defaultChildContext);
         if (!isCancelled) {
-          setSeasonalIngredientSuggestions(data.suggestions.filter((item) => item.name).slice(0, 8));
+          setSeasonalIngredientSuggestions(data.suggestions.filter((item) => item.name).slice(0, 5));
         }
       } catch {
         if (!isCancelled) {
@@ -718,6 +849,10 @@ export default function App() {
     profile: ChildProfile = selectedProfile,
     showToast = true,
   ) => {
+    if (recipeDetailsById[recipe.id] || recipeDetailLoadingById[recipe.id]) {
+      return;
+    }
+
     setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: true }));
     setRecipeDetailErrorsById((current) => {
       const next = { ...current };
@@ -1364,6 +1499,7 @@ export default function App() {
                   >
                     {message.recipes.map((recipe) => {
                       const recipeDetail = recipeDetailsById[recipe.id];
+                      const recipeStoryboardPanels = recipeDetail ? groupStepsForStoryboard(recipeDetail.steps) : [];
                       const fitReasonText = recipe.fitReasons.slice(0, 2).join('；');
                       const extraIngredientText = recipe.extraIngredients.slice(0, 4).join('、');
                       const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
@@ -1492,7 +1628,14 @@ export default function App() {
                                 <div className="ingredient-table" role="list">
                                   {recipeDetail.ingredients.map((ingredient) => (
                                     <div className="ingredient-row" key={`${recipe.id}_${ingredient.name}`} role="listitem">
-                                      <span className="ingredient-name">{ingredient.name}</span>
+                                      <span className="ingredient-name">
+                                        {ingredient.name}
+                                        {getKnownIngredientVisual(ingredient.name) ? (
+                                          <span className="ingredient-inline-emoji" aria-hidden="true">
+                                            {getKnownIngredientVisual(ingredient.name)?.emoji}
+                                          </span>
+                                        ) : null}
+                                      </span>
                                       <span className="ingredient-quantity">{ingredient.quantity}</span>
                                       <button
                                         type="button"
@@ -1508,52 +1651,87 @@ export default function App() {
                               </div>
                               <div className="inline-detail-block">
                                 <div className="detail-block-heading">
-                                  <strong>详尽烹饪步骤</strong>
-                                  <span>逐步执行</span>
+                                  <strong>卡通步骤图解</strong>
+                                  <span>看图做菜</span>
                                 </div>
-                                <ol className="recipe-step-timeline">
-                                  {recipeDetail.steps.map((step, index) => (
-                                    <li
-                                      key={step.id}
-                                      className={step.requiresParentAssist ? 'recipe-step-item needs-assist' : 'recipe-step-item'}
-                                    >
-                                      <span className="step-index">{index + 1}</span>
-                                      <div className="step-body">
-                                        <div className="inline-step-heading">
-                                          <b>{step.title}</b>
-                                          <button
-                                            type="button"
-                                            className="step-speech-button"
-                                            onClick={() => speakStep(step)}
-                                            aria-label={`${activeSpeechKey === `step_${step.id}` ? '停止朗读' : '朗读'}步骤：${step.title}`}
-                                          >
-                                            <PlayInlineIcon />
-                                            {activeSpeechKey === `step_${step.id}` ? '停止' : '朗读'}
-                                          </button>
+                                <div className="step-storyboard" aria-label={`${recipe.name} 卡通步骤图解`}>
+                                  {recipeStoryboardPanels.map((panelSteps, panelIndex) => {
+                                    const hasAssistStep = panelSteps.some((step) => step.requiresParentAssist);
+                                    const panelIngredients = getPanelIngredientVisuals(panelSteps, recipeDetail.ingredients);
+                                    const panelSafetyEmojis = getPanelSafetyEmojis(panelSteps);
+                                    const familyEmojis = storyboardFamilyGroups[panelIndex % storyboardFamilyGroups.length];
+                                    const speechKey = `story_${recipe.id}_${panelIndex}`;
+                                    const panelSpeechText = panelSteps
+                                      .map((step) => {
+                                        const stepNumber = recipeDetail.steps.findIndex((item) => item.id === step.id) + 1;
+                                        return `第${stepNumber}步，${step.title}，${step.childAction || step.description}`;
+                                      })
+                                      .join('。');
+
+                                    return (
+                                      <article
+                                        className={hasAssistStep ? 'storyboard-panel needs-assist' : 'storyboard-panel'}
+                                        key={`${recipe.id}_story_${panelIndex}`}
+                                      >
+                                        <div className="storyboard-illustration" aria-hidden="true">
+                                          <div className="storyboard-ingredient-emoji-row">
+                                            {panelIngredients.map((ingredient) => (
+                                              <span key={`${recipe.id}_${panelIndex}_${ingredient.name}`}>{ingredient.emoji}</span>
+                                            ))}
+                                          </div>
+                                          <div className="storyboard-family-row">
+                                            {familyEmojis.map((emoji, familyIndex) => (
+                                              <span key={`${recipe.id}_${panelIndex}_family_${familyIndex}`} className="storyboard-character">
+                                                {emoji}
+                                              </span>
+                                            ))}
+                                          </div>
                                         </div>
-                                        <p>{step.childAction || step.description}</p>
-                                        {step.expectedResult ? (
-                                          <p className="step-result">
-                                            <b>完成状态</b>
-                                            {step.expectedResult}
-                                          </p>
-                                        ) : null}
-                                        {step.tip ? (
-                                          <p className="step-note">
-                                            <b>小贴士</b>
-                                            {step.tip}
-                                          </p>
-                                        ) : null}
-                                        {step.requiresParentAssist ? (
-                                          <p className="step-safety">
-                                            <b>注意事项</b>
-                                            {step.parentAction || '这一步需要家长陪同完成。'}
-                                          </p>
-                                        ) : null}
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ol>
+                                        <div className="storyboard-copy">
+                                          <div className="storyboard-heading">
+                                            <strong>图 {panelIndex + 1}</strong>
+                                            <button
+                                              type="button"
+                                              className="step-speech-button"
+                                              onClick={() => speakText(panelSpeechText, 'zh-CN', speechKey)}
+                                              aria-label={`${activeSpeechKey === speechKey ? '停止朗读' : '朗读'}图解步骤 ${panelIndex + 1}`}
+                                            >
+                                              <PlayInlineIcon />
+                                              {activeSpeechKey === speechKey ? '停止' : '朗读'}
+                                            </button>
+                                          </div>
+                                          {panelIngredients.length > 0 ? (
+                                            <div className="storyboard-ingredient-tags" aria-label="本步骤食材">
+                                              {panelIngredients.map((ingredient) => (
+                                                <span key={`${recipe.id}_${panelIndex}_${ingredient.name}_tag`}>
+                                                  {ingredient.name}
+                                                  <b aria-hidden="true">{ingredient.emoji}</b>
+                                                </span>
+                                              ))}
+                                            </div>
+                                          ) : null}
+                                          <ol className="storyboard-caption-list">
+                                            {panelSteps.map((step) => {
+                                              const stepNumber = recipeDetail.steps.findIndex((item) => item.id === step.id) + 1;
+                                              return (
+                                                <li key={step.id} className={step.requiresParentAssist ? 'needs-assist' : undefined}>
+                                                  <b>{stepNumber}</b>
+                                                  <span>{summarizeStepCaption(step)}</span>
+                                                </li>
+                                              );
+                                            })}
+                                          </ol>
+                                          {hasAssistStep ? (
+                                            <p className="storyboard-safety">
+                                              <span aria-hidden="true">{(panelSafetyEmojis.length ? panelSafetyEmojis : ['⚠️']).join(' ')}</span>
+                                              热源、刀具或电器步骤请家长接手。
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                      </article>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             </>
                           ) : recipeDetailErrorsById[recipe.id] ? (
