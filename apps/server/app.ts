@@ -4,6 +4,9 @@ import multer from 'multer';
 import {
   childProfiles,
   recipeCatalog,
+  type ChildProfile,
+  type IngredientItem,
+  type RecipeRecommendation,
 } from './data.js';
 import { getLocalLlmLogFilePath, readLocalLlmLogs, shouldUseLocalDebugLog } from './logger.js';
 import {
@@ -59,17 +62,28 @@ export function resolveIngredientTextInput(body: unknown, query: unknown = {}) {
   return normalizeTextInputValue(rawText);
 }
 
-export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown = {}) {
+interface RecipeDetailRequestPayload {
+  profileId: string;
+  ingredients: IngredientItem[];
+  profile: Partial<ChildProfile> | null;
+  recipe: Partial<RecipeRecommendation> | null;
+}
+
+function isRecipeRecommendationInput(recipe: Partial<RecipeRecommendation> | null): recipe is RecipeRecommendation {
+  return Boolean(recipe?.id && recipe?.name);
+}
+
+export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown = {}): RecipeDetailRequestPayload {
   const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
   const queryPayload = query && typeof query === 'object' ? query as Record<string, unknown> : {};
 
   return {
     profileId: String(payload.profileId ?? queryPayload.profileId ?? ''),
     ingredients: Array.isArray(payload.ingredients)
-      ? payload.ingredients
-      : parseJsonInput(queryPayload.ingredients, []),
-    profile: payload.profile ?? parseJsonInput(queryPayload.profile, null),
-    recipe: payload.recipe ?? parseJsonInput(queryPayload.recipe, null),
+      ? payload.ingredients as IngredientItem[]
+      : parseJsonInput<IngredientItem[]>(queryPayload.ingredients, []),
+    profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
+    recipe: (payload.recipe ?? parseJsonInput(queryPayload.recipe, null)) as Partial<RecipeRecommendation> | null,
   };
 }
 
@@ -363,7 +377,7 @@ export function createApp(): Express {
   app.post('/api/v1/recipes/detail', async (req, res) => {
     const { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
 
-    if (!recipe?.id || !recipe?.name) {
+    if (!isRecipeRecommendationInput(recipe)) {
       res.status(400).json({
         error: { code: 'INVALID_ARGUMENT', message: '请提供有效的推荐菜谱卡片信息。' },
       });
