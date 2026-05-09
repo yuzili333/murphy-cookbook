@@ -531,7 +531,7 @@ async function generateRecipeDetailWithCache(input: {
   } catch (error) {
     const isTimeout = error instanceof Error && error.message.includes('超时');
 
-    if (isTimeout || !shouldRequireRealModel()) {
+    if (isTimeout || isSiliconFlowConfigured() || !shouldRequireRealModel()) {
       persistDetail(fallbackRecipe);
       return { data: fallbackRecipe };
     }

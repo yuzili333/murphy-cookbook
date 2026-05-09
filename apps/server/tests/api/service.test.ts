@@ -741,6 +741,67 @@ test('getRecipeDetailForRecommendation coalesces concurrent requests for same de
   }
 });
 
+test('getRecipeDetailForRecommendation returns fallback detail when configured model fails in production', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  process.env.NODE_ENV = 'production';
+
+  global.fetch = (async () => {
+    throw new Error('upstream unavailable');
+  }) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'cp_001',
+    ingredients: [
+      {
+        id: 'ing_fallback_1',
+        name: '番茄',
+        normalizedName: '番茄',
+        quantity: '1个',
+        source: 'manual' as const,
+      },
+    ],
+    recipe: {
+      id: `recipe_model_fail_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      name: `模型失败兜底菜_${Date.now()}`,
+      englishName: 'Fallback Detail Dish',
+      nameLearning: {
+        characters: [{ character: '菜', pinyin: 'cài', strokes: 11, structure: '上下结构', hint: '蔬菜的菜。' }],
+      },
+      ageRange: '7-12 岁',
+      difficulty: 'easy' as const,
+      estimatedTimeMinutes: 10,
+      fitReasons: ['快速兜底'],
+      riskAlerts: [],
+      nutritionSummary: '清淡均衡。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if ('error' in result) {
+    assert.fail(`expected fallback detail, got ${result.error.code}`);
+  }
+
+  assert.equal(result.data.steps.length > 0, true);
+  assert.equal(result.data.ingredients[0]?.name, '番茄');
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+
+  if (originalNodeEnv) {
+    process.env.NODE_ENV = originalNodeEnv;
+  } else {
+    delete process.env.NODE_ENV;
+  }
+});
+
 test('generateCookingFeedback returns parsed feedback fields', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;

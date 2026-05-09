@@ -59,6 +59,20 @@ export function resolveIngredientTextInput(body: unknown, query: unknown = {}) {
   return normalizeTextInputValue(rawText);
 }
 
+export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown = {}) {
+  const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const queryPayload = query && typeof query === 'object' ? query as Record<string, unknown> : {};
+
+  return {
+    profileId: String(payload.profileId ?? queryPayload.profileId ?? ''),
+    ingredients: Array.isArray(payload.ingredients)
+      ? payload.ingredients
+      : parseJsonInput(queryPayload.ingredients, []),
+    profile: payload.profile ?? parseJsonInput(queryPayload.profile, null),
+    recipe: payload.recipe ?? parseJsonInput(queryPayload.recipe, null),
+  };
+}
+
 export function createApp(): Express {
   const app = express();
   const upload = multer({
@@ -347,12 +361,7 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/recipes/detail', async (req, res) => {
-    const profileId = String(req.body?.profileId ?? req.query.profileId ?? '');
-    const ingredients = Array.isArray(req.body?.ingredients)
-      ? req.body.ingredients
-      : parseJsonInput(req.query.ingredients, []);
-    const profile = req.body?.profile ?? parseJsonInput(req.query.profile, null);
-    const recipe = req.body?.recipe ?? parseJsonInput(req.query.recipe, null);
+    const { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
 
     if (!recipe?.id || !recipe?.name) {
       res.status(400).json({
