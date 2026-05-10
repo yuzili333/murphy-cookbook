@@ -356,10 +356,50 @@ export interface GeneratedRecommendationPayload {
   sortBy: string;
 }
 
-export interface GeneratedRecommendationSummaryPayload {
-  recipes: RecipeRecommendation[];
-  filteredAllergens: string[];
-  sortBy: string;
+function normalizeGeneratedRecipeSummaries(
+  payload: {
+    recipes?: Array<Partial<RecipeRecommendation>>;
+  },
+  profile: ChildProfile,
+) {
+  const recipes = (payload.recipes ?? [])
+    .filter((recipe) => recipe.name)
+    .map((recipe, index) => {
+      const recipeVisualQuery =
+        typeof (recipe as { imageSearchQuery?: unknown }).imageSearchQuery === 'string'
+          ? String((recipe as { imageSearchQuery?: string }).imageSearchQuery)
+          : '';
+      const name = String(recipe.name);
+      const namePinyin = String((recipe as { namePinyin?: string }).namePinyin ?? '');
+
+      return {
+        id: String(recipe.id ?? `recipe_gen_summary_${slugifyRecipeName(name)}_${index + 1}`),
+        name,
+        namePinyin,
+        englishName: String(recipe.englishName ?? buildFallbackEnglishName(name)),
+        nameLearning: normalizeNameLearning(recipe, name, namePinyin),
+        imageUrl: buildRecipeImageUrl(name, recipeVisualQuery),
+        ageRange: String(recipe.ageRange ?? `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`),
+        difficulty: recipe.difficulty === 'hard' || recipe.difficulty === 'medium' ? recipe.difficulty : 'easy',
+        estimatedTimeMinutes: Math.max(1, Number(recipe.estimatedTimeMinutes ?? 20)),
+        fitReasons: Array.isArray(recipe.fitReasons) ? recipe.fitReasons.map(String).slice(0, 3) : ['适合当前儿童档案'],
+        riskAlerts: Array.isArray(recipe.riskAlerts) ? recipe.riskAlerts.map(String).slice(0, 3) : [],
+        nutritionSummary: String(recipe.nutritionSummary ?? '营养搭配均衡，适合作为儿童一餐。'),
+        extraIngredients: Array.isArray(recipe.extraIngredients) ? recipe.extraIngredients.map(String).slice(0, 4) : [],
+        canCookWithCurrentIngredients:
+          typeof recipe.canCookWithCurrentIngredients === 'boolean'
+            ? recipe.canCookWithCurrentIngredients
+            : false,
+      } satisfies RecipeRecommendation;
+    })
+    .filter((recipe) => recipe.fitReasons.length > 0);
+
+  return {
+    recipes,
+    recipeDetails: [],
+    filteredAllergens: profile.allergens,
+    sortBy: 'balanced',
+  } satisfies GeneratedRecommendationPayload;
 }
 
 function normalizeGeneratedRecipeDetails(
@@ -458,51 +498,6 @@ function normalizeGeneratedRecipeDetails(
   } satisfies GeneratedRecommendationPayload;
 }
 
-function normalizeGeneratedRecipeSummaries(
-  payload: {
-    recipes?: Array<Partial<RecipeRecommendation>>;
-  },
-  profile: ChildProfile,
-) {
-  const recipes = (payload.recipes ?? [])
-    .filter((recipe) => recipe.name)
-    .map((recipe, index) => {
-      const recipeVisualQuery =
-        typeof (recipe as { imageSearchQuery?: unknown }).imageSearchQuery === 'string'
-          ? String((recipe as { imageSearchQuery?: string }).imageSearchQuery)
-          : '';
-      const name = String(recipe.name);
-      const namePinyin = String((recipe as { namePinyin?: string }).namePinyin ?? '');
-
-      return {
-        id: String(recipe.id ?? `recipe_gen_summary_${slugifyRecipeName(name)}_${index + 1}`),
-        name,
-        namePinyin,
-        englishName: String(recipe.englishName ?? buildFallbackEnglishName(name)),
-        nameLearning: normalizeNameLearning(recipe, name, namePinyin),
-        imageUrl: buildRecipeImageUrl(name, recipeVisualQuery),
-        ageRange: String(recipe.ageRange ?? `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`),
-        difficulty: recipe.difficulty === 'hard' || recipe.difficulty === 'medium' ? recipe.difficulty : 'easy',
-        estimatedTimeMinutes: Math.max(1, Number(recipe.estimatedTimeMinutes ?? 20)),
-        fitReasons: Array.isArray(recipe.fitReasons) ? recipe.fitReasons.map(String).slice(0, 3) : ['适合当前儿童档案'],
-        riskAlerts: Array.isArray(recipe.riskAlerts) ? recipe.riskAlerts.map(String).slice(0, 3) : [],
-        nutritionSummary: String(recipe.nutritionSummary ?? '营养搭配均衡，适合作为儿童一餐。'),
-        extraIngredients: Array.isArray(recipe.extraIngredients) ? recipe.extraIngredients.map(String).slice(0, 4) : [],
-        canCookWithCurrentIngredients:
-          typeof recipe.canCookWithCurrentIngredients === 'boolean'
-            ? recipe.canCookWithCurrentIngredients
-            : false,
-      } satisfies RecipeRecommendation;
-    })
-    .filter((recipe) => recipe.fitReasons.length > 0);
-
-  return {
-    recipes,
-    filteredAllergens: profile.allergens,
-    sortBy: 'balanced',
-  } satisfies GeneratedRecommendationSummaryPayload;
-}
-
 function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
   const ingredientLines = ingredients
     .map((item, index) => `${index + 1}. ${item.name}｜数量:${item.quantity}｜来源:${item.source}`)
@@ -517,7 +512,7 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
   ].join('\n');
 
   return [
-    '任务: 为儿童生成 3-5 道推荐菜谱卡片，并输出严格 JSON。',
+    '任务: 为儿童生成 3-5 道推荐菜谱卡片摘要，并输出严格 JSON。',
     '儿童档案:',
     profileLines,
     userPrompt.trim() ? '用户本轮对话描述:' : '',
@@ -525,17 +520,16 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
     '现有食材清单:',
     ingredientLines,
     '生成要求:',
-    '1. 返回 3-5 道推荐菜谱，数量不要少于 3 道，除非食材明显不足；优先使用现有食材，并结合用户本轮对话里的口味、场景、时间和限制条件；缺少食材尽量少。',
+    '1. 返回 3-5 道推荐菜谱摘要，数量不要少于 3 道，除非食材明显不足；优先使用现有食材，并结合用户本轮对话里的口味、场景、时间和限制条件；缺少食材尽量少。',
     '2. 菜谱要适合儿童年龄、口味和饮食习惯，操作者多为小学阶段儿童，优先推荐简单、低门槛、易上手、步骤清楚、营养均衡的菜谱。',
     '3. 严格避开过敏原和明显不适宜儿童的做法；避免复杂刀工、长时间油炸、重油重辣和需要精准火候的菜谱。',
-    '4. 这里只生成推荐卡片摘要，不要生成步骤、配料明细、prepTimeMinutes、cookTimeMinutes。',
+    '4. 这里只生成推荐卡片摘要，不要生成 steps、ingredients、prepTimeMinutes、cookTimeMinutes，烹饪步骤会由详情接口单独生成。',
     '5. 每道菜都必须包含 namePinyin，使用带声调的汉语拼音，并按词分隔，例如 "fān qié jī dàn miàn"。',
     '6. 每道菜都必须包含 englishName，使用自然英译名，适合儿童听读，不要机械逐字翻译。',
     '7. 每道菜都必须包含 nameLearning.characters，逐字覆盖中文菜名中的汉字；每项包含 character、pinyin、strokes、structure、hint，pinyin 必须使用带调号拼音。',
-    '8. 每道菜都必须包含 imageSearchQuery，使用 2-4 个英文单词描述成品图主体，例如 "broccoli egg noodles"；画面必须是这道菜做熟后的成品近景，不能是无关菜品、原料堆或餐厅环境。',
-    '9. 不要生成泛化图片词，例如 "food"、"meal"、"dish" 单独出现，必须包含核心主食材和成品形式。',
-    '10. 如果菜谱会使用明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮写明“需家长全程陪同”，difficulty 不要标为 easy，canCookWithCurrentIngredients 不能掩盖安全风险。',
-    '11. 输出字段必须完整，不要输出任何解释文字。',
+    '8. 每道菜都必须包含 imageSearchQuery，使用 2-4 个英文单词描述成品图主体，例如 "broccoli egg noodles"；不要生成泛化图片词，例如 "food"、"meal"、"dish" 单独出现。',
+    '9. 如果菜谱会使用明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮写明“需家长全程陪同”，difficulty 不要标为 easy，canCookWithCurrentIngredients 不能掩盖安全风险。',
+    '10. 输出字段必须完整，不要输出任何解释文字。',
   ].join('\n');
 }
 
@@ -591,6 +585,59 @@ function buildRecipeDetailUserPrompt(
     '14. 如果步骤涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskLevel 必须是 medium 或 high，requiresParentAssist 必须是 true，parentAction 必须明确“家长全程陪同/由家长操作”。',
     '15. 步骤要清晰、适合亲子共做；安全提醒不能只写在总提醒里，相关步骤也必须单独标注。',
     '16. 输出字段必须完整，不要输出任何解释文字。',
+  ].join('\n');
+}
+
+function buildRecipeDetailsUserPrompt(
+  profile: ChildProfile,
+  ingredients: IngredientItem[],
+  recipes: RecipeRecommendation[],
+) {
+  const ingredientLines = ingredients
+    .map((item, index) => `${index + 1}. ${item.name}｜数量:${item.quantity}｜来源:${item.source}`)
+    .join('\n');
+
+  const profileLines = [
+    `昵称: ${profile.nickname}`,
+    `年龄: ${profile.age} 岁`,
+    `口味偏好: ${profile.tastePreferences.join('、') || '无'}`,
+    `过敏原: ${profile.allergens.join('、') || '无'}`,
+    `饮食习惯: ${profile.dietaryHabits.join('、') || '无'}`,
+  ].join('\n');
+
+  const recipeLines = recipes
+    .map((recipe, index) => [
+      `${index + 1}. 菜名: ${recipe.name}`,
+      `id: ${recipe.id}`,
+      `英文名: ${recipe.englishName}`,
+      `年龄段: ${recipe.ageRange}`,
+      `难度: ${recipe.difficulty}`,
+      `预计总时长: ${recipe.estimatedTimeMinutes} 分钟`,
+      `适配原因: ${recipe.fitReasons.join('、') || '无'}`,
+      `风险提醒: ${recipe.riskAlerts.join('、') || '无'}`,
+      `额外食材: ${recipe.extraIngredients.join('、') || '无'}`,
+    ].join('\n'))
+    .join('\n\n');
+
+  return [
+    '任务: 基于推荐卡片列表，为每一道菜生成完整儿童菜谱详情，并输出严格 JSON。',
+    '儿童档案:',
+    profileLines,
+    '现有食材清单:',
+    ingredientLines,
+    '目标推荐卡片列表:',
+    recipeLines,
+    '生成要求:',
+    `1. 必须为上述 ${recipes.length} 道菜各生成 1 个详情，输出顺序和目标推荐卡片列表一致，不要新增其他菜。`,
+    '2. 每道菜输出完整字段：id、name、namePinyin、englishName、nameLearning、imageSearchQuery、ageRange、difficulty、estimatedTimeMinutes、fitReasons、riskAlerts、nutritionSummary、extraIngredients、canCookWithCurrentIngredients、prepTimeMinutes、cookTimeMinutes、ingredients、steps。',
+    '3. 尽量沿用目标推荐卡片的 id、name、englishName、ageRange、difficulty、fitReasons、riskAlerts、nutritionSummary、extraIngredients、canCookWithCurrentIngredients。',
+    '4. 每个配料必须提供 imageSearchQuery，使用 1-3 个英文单词准确描述单个原料；任何调味料和近似量不要写“适量/少许/微量”，统一改成儿童可理解的勺数。',
+    '5. steps 控制在 4-8 个步骤，适合前端按步骤生成卡通手绘风分镜插画。',
+    '6. 每一步都要明确写出本步骤需要的食材清单，并把食材名称写进 title 或 description。',
+    '7. 每一步都要包含食材处理或烹饪动作的简短细节，描述精炼易懂但不能只有标签。',
+    '8. 每一步除了 title、description、tip、riskLevel、requiresParentAssist，必须补充 childAction、parentAction、expectedResult。',
+    '9. 如果步骤涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskLevel 必须是 medium 或 high，requiresParentAssist 必须是 true，parentAction 必须明确“家长全程陪同/由家长操作”。',
+    '10. 输出字段必须完整，不要输出任何解释文字。',
   ].join('\n');
 }
 
@@ -718,7 +765,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 3-5 个安全、适龄、简单易上手的儿童菜谱推荐卡片。操作者多为小学阶段儿童，优先选择低油、轻口味、步骤清楚、亲子可执行的菜谱；如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮提醒“需家长全程陪同”。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true}]}。不要输出额外说明。',
+        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 3-5 个安全、适龄、简单易上手的儿童菜谱推荐卡片摘要。操作者多为小学阶段儿童，优先选择低油、轻口味、步骤清楚、亲子可执行的菜谱；如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮提醒“需家长全程陪同”。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true}]}。不要输出额外说明。',
     },
     {
       role: 'user',
@@ -726,7 +773,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     },
   ], {
     operation: 'generate_recipe_plan',
-    maxTokens: 1200,
+    maxTokens: 1600,
     metadata: {
       profileId: profile.id,
       age: profile.age,
@@ -736,15 +783,10 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     },
   });
 
-  const summaryPayload = normalizeGeneratedRecipeSummaries(
+  return normalizeGeneratedRecipeSummaries(
     parseRecipePlanPayload(content),
     profile,
   );
-
-  return {
-    ...summaryPayload,
-    recipeDetails: [],
-  };
 }
 
 export async function generateRecipeDetail(
@@ -808,6 +850,79 @@ export async function generateRecipeDetail(
         ? recipe.canCookWithCurrentIngredients
         : matched.canCookWithCurrentIngredients,
   } satisfies RecipeDetail;
+}
+
+export async function generateRecipeDetails(
+  profile: ChildProfile,
+  ingredients: IngredientItem[],
+  recipes: RecipeRecommendation[],
+) {
+  const catalogDetails = recipes
+    .map((recipe) => recipeCatalog.find((item) => item.id === recipe.id))
+    .filter((recipe): recipe is RecipeDetail => Boolean(recipe));
+  const missingRecipes = recipes.filter((recipe) => !catalogDetails.some((detail) => detail.id === recipe.id));
+
+  if (missingRecipes.length === 0) {
+    return catalogDetails;
+  }
+
+  const content = await callSiliconFlow([
+    {
+      role: 'system',
+      content:
+        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和推荐卡片列表，为每道菜生成完整儿童菜谱详情。steps 必须适合前端生成卡通手绘风分镜插画：总步数 4-8 步，每步必须明确写出该步骤需要的食材清单，并用短句写清关键食材处理或烹饪动作。如涉及明火、热源、电器、开水或锋利刀具，必须在 riskAlerts 和对应 step 中高亮提醒需家长全程陪同。输出严格 JSON：{"recipes":[{"id":"沿用推荐卡片id","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"imageSearchQuery":"2到4个英文单词的成品图检索词","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺","imageSearchQuery":"1到3个英文单词的单食材检索词"}],"steps":[{"id":"可选","title":"步骤标题","description":"本步骤食材和动作短句","tip":"短句提示","childAction":"孩子关键动作","parentAction":"家长何时介入","expectedResult":"完成状态短句","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出额外说明。',
+    },
+    {
+      role: 'user',
+      content: buildRecipeDetailsUserPrompt(profile, ingredients, missingRecipes),
+    },
+  ], {
+    operation: 'generate_recipe_details',
+    maxTokens: Math.min(8000, Math.max(2600, missingRecipes.length * 1700)),
+    metadata: {
+      profileId: profile.id,
+      recipeCount: missingRecipes.length,
+      recipeNames: missingRecipes.map((recipe) => recipe.name),
+      ingredientCount: ingredients.length,
+      ingredientNames: ingredients.map((item) => item.name),
+    },
+  });
+
+  const detailPayload = normalizeGeneratedRecipeDetails(
+    parseRecipePlanPayload(content),
+    profile,
+    ingredients,
+  );
+
+  const generatedDetails = missingRecipes.map((recipe) => {
+    const matched = detailPayload.recipeDetails.find((detail) => detail.id === recipe.id || detail.name === recipe.name);
+    if (!matched) {
+      throw new Error(`菜谱详情生成失败：${recipe.name}`);
+    }
+
+    return {
+      ...matched,
+      id: recipe.id || matched.id,
+      imageUrl: recipe.imageUrl ?? matched.imageUrl,
+      name: recipe.name || matched.name,
+      namePinyin: recipe.namePinyin || matched.namePinyin,
+      englishName: recipe.englishName || matched.englishName,
+      nameLearning: recipe.nameLearning ?? matched.nameLearning,
+      ageRange: recipe.ageRange || matched.ageRange,
+      difficulty: recipe.difficulty || matched.difficulty,
+      estimatedTimeMinutes: recipe.estimatedTimeMinutes || matched.estimatedTimeMinutes,
+      fitReasons: recipe.fitReasons.length > 0 ? recipe.fitReasons : matched.fitReasons,
+      riskAlerts: recipe.riskAlerts.length > 0 ? recipe.riskAlerts : matched.riskAlerts,
+      nutritionSummary: recipe.nutritionSummary || matched.nutritionSummary,
+      extraIngredients: recipe.extraIngredients.length > 0 ? recipe.extraIngredients : matched.extraIngredients,
+      canCookWithCurrentIngredients:
+        typeof recipe.canCookWithCurrentIngredients === 'boolean'
+          ? recipe.canCookWithCurrentIngredients
+          : matched.canCookWithCurrentIngredients,
+    } satisfies RecipeDetail;
+  });
+
+  return [...catalogDetails, ...generatedDetails];
 }
 
 export async function generateCookingFeedback(input: {

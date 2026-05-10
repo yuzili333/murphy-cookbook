@@ -70,6 +70,7 @@ export interface RecipeDetail extends RecipeRecommendation {
 
 export interface RecommendationResponse {
   recipes: RecipeRecommendation[];
+  recipeDetails: RecipeDetail[];
   filteredAllergens: string[];
   sortBy: string;
 }

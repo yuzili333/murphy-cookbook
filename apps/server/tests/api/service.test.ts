@@ -96,6 +96,7 @@ test('recommendRecipes returns model-generated recipe matches for existing child
   assert.equal(result.data?.recipes[0].englishName, 'Tomato Egg Noodles');
   assert.equal(result.data?.recipes[0].nameLearning.characters[0].character, '番');
   assert.equal(result.data?.filteredAllergens[0], '花生');
+  assert.equal(result.data?.recipeDetails.length, 0);
 });
 
 test('parseIngredientJson converts LLM json output to ingredient items', () => {
@@ -296,7 +297,7 @@ test('understandIngredientsFromImage posts image message and returns model conte
   }
 });
 
-test('generateRecipePlan returns normalized recipe details from model output', async () => {
+test('generateRecipePlan returns normalized recipe summaries from model output', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
@@ -444,50 +445,7 @@ test('recommendRecipes uses salvaged model recipes when recipe JSON is truncated
   }
 });
 
-test('getRecipeDetailForRecommendation generates detail on demand from recipe card', async () => {
-  const originalKey = process.env.SILICONFLOW_API_KEY;
-  const originalFetch = global.fetch;
-  process.env.SILICONFLOW_API_KEY = 'test-key';
-
-  global.fetch = (async () =>
-    new Response(JSON.stringify({
-      choices: [{
-        message: {
-          content: JSON.stringify({
-            recipes: [{
-              id: 'recipe_dynamic_001',
-              name: '西兰花鸡蛋软面',
-              imageUrl: 'https://example.com/recipe.jpg',
-              ageRange: '7-12 岁',
-              difficulty: 'easy',
-              estimatedTimeMinutes: 20,
-              fitReasons: ['符合清淡口味'],
-              riskAlerts: ['煮面时注意防烫'],
-              nutritionSummary: '富含膳食纤维和维生素。',
-              extraIngredients: ['鸡蛋 2 个', '细面条 1 把'],
-              canCookWithCurrentIngredients: false,
-              prepTimeMinutes: 5,
-              cookTimeMinutes: 15,
-              ingredients: [
-                { name: '西兰花', quantity: '1份', imageUrl: 'https://example.com/broccoli.jpg' },
-                { name: '鸡蛋', quantity: '2个', imageUrl: 'https://example.com/egg.jpg' },
-              ],
-              steps: [{
-                title: '准备食材',
-                description: '把西兰花切小朵，鸡蛋打散。',
-                tip: '切菜时请家长陪同。',
-                riskLevel: 'medium',
-                requiresParentAssist: true,
-              }],
-            }],
-          }),
-        },
-      }],
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })) as typeof fetch;
-
+test('getRecipeDetailForRecommendation returns embedded detail without calling model', async () => {
   const result = await getRecipeDetailForRecommendation({
     profileId: 'cp_001',
     ingredients: [
@@ -514,6 +472,20 @@ test('getRecipeDetailForRecommendation generates detail on demand from recipe ca
       nutritionSummary: '富含膳食纤维和维生素。',
       extraIngredients: ['鸡蛋 2 个', '细面条 1 把'],
       canCookWithCurrentIngredients: false,
+      prepTimeMinutes: 5,
+      cookTimeMinutes: 15,
+      ingredients: [
+        { name: '西兰花', quantity: '1份' },
+        { name: '鸡蛋', quantity: '2个' },
+      ],
+      steps: [{
+        id: 'step_1',
+        title: '准备食材',
+        description: '把西兰花切小朵，鸡蛋打散。',
+        tip: '切菜时请家长陪同。',
+        riskLevel: 'medium',
+        requiresParentAssist: true,
+      }],
     },
   });
 
@@ -523,54 +495,42 @@ test('getRecipeDetailForRecommendation generates detail on demand from recipe ca
 
   assert.equal(result.data.id, 'recipe_dynamic_001');
   assert.equal(result.data.steps[0].title, '准备食材');
-
-  global.fetch = originalFetch;
-  if (originalKey) {
-    process.env.SILICONFLOW_API_KEY = originalKey;
-  } else {
-    delete process.env.SILICONFLOW_API_KEY;
-  }
 });
 
-test('getRecipeDetailForRecommendation reuses cached detail for same profile ingredients and recipe name', async () => {
+test('getRecipeDetailForRecommendation generates model detail for summary-only generated card', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
-  const recipeId = `recipe_cache_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const recipeName = `缓存测试软面_${Date.now()}`;
-  let fetchCount = 0;
 
-  global.fetch = (async () => {
-    fetchCount += 1;
-    return new Response(JSON.stringify({
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
       choices: [{
         message: {
           content: JSON.stringify({
             recipes: [{
-              id: recipeId,
-              name: recipeName,
-              englishName: 'Cached Soft Noodles',
+              id: 'recipe_generated_detail_001',
+              name: '番茄鸡蛋软面',
+              englishName: 'Tomato Egg Soft Noodles',
               nameLearning: {
                 characters: [{ character: '面', pinyin: 'miàn', strokes: 9, structure: '左右结构', hint: '面条的面。' }],
               },
-              imageUrl: 'https://example.com/recipe.jpg',
               ageRange: '7-12 岁',
               difficulty: 'easy',
               estimatedTimeMinutes: 18,
               fitReasons: ['适合清淡饮食'],
-              riskAlerts: ['注意防烫'],
+              riskAlerts: ['热锅需家长陪同'],
               nutritionSummary: '搭配均衡。',
               extraIngredients: [],
               canCookWithCurrentIngredients: true,
               prepTimeMinutes: 5,
               cookTimeMinutes: 13,
-              ingredients: [{ name: '番茄', quantity: '1个' }],
+              ingredients: [{ name: '番茄', quantity: '1个' }, { name: '鸡蛋', quantity: '1个' }],
               steps: [{
-                title: '准备食材',
-                description: '洗净番茄。',
-                tip: '慢慢来。',
-                riskLevel: 'low',
-                requiresParentAssist: false,
+                title: '番茄鸡蛋',
+                description: '番茄切块，鸡蛋打散。',
+                tip: '刀具交给家长。',
+                riskLevel: 'medium',
+                requiresParentAssist: true,
               }],
             }],
           }),
@@ -579,14 +539,13 @@ test('getRecipeDetailForRecommendation reuses cached detail for same profile ing
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    });
-  }) as typeof fetch;
+    })) as typeof fetch;
 
-  const input = {
+  const result = await getRecipeDetailForRecommendation({
     profileId: 'cp_001',
     ingredients: [
       {
-        id: 'ing_cache_1',
+        id: 'ing_unavailable_1',
         name: '番茄',
         normalizedName: '番茄',
         quantity: '1个',
@@ -594,8 +553,8 @@ test('getRecipeDetailForRecommendation reuses cached detail for same profile ing
       },
     ],
     recipe: {
-      id: recipeId,
-      name: recipeName,
+      id: `recipe_summary_only_${Date.now()}`,
+      name: '番茄鸡蛋软面',
       englishName: 'Cached Soft Noodles',
       nameLearning: {
         characters: [{ character: '面', pinyin: 'miàn', strokes: 9, structure: '左右结构', hint: '面条的面。' }],
@@ -609,196 +568,20 @@ test('getRecipeDetailForRecommendation reuses cached detail for same profile ing
       extraIngredients: [],
       canCookWithCurrentIngredients: true,
     },
-  };
-
-  const first = await getRecipeDetailForRecommendation(input);
-  const second = await getRecipeDetailForRecommendation(input);
-
-  if ('error' in first) {
-    assert.fail(`expected first detail data, got ${first.error.code}`);
-  }
-
-  if ('error' in second) {
-    assert.fail(`expected cached detail data, got ${second.error.code}`);
-  }
-
-  assert.equal(fetchCount, 1);
-  assert.equal(second.data.name, recipeName);
-
-  global.fetch = originalFetch;
-  if (originalKey) {
-    process.env.SILICONFLOW_API_KEY = originalKey;
-  } else {
-    delete process.env.SILICONFLOW_API_KEY;
-  }
-});
-
-test('getRecipeDetailForRecommendation coalesces concurrent requests for same detail key', async () => {
-  const originalKey = process.env.SILICONFLOW_API_KEY;
-  const originalFetch = global.fetch;
-  process.env.SILICONFLOW_API_KEY = 'test-key';
-  const recipeId = `recipe_pending_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const recipeName = `并发缓存测试_${Date.now()}`;
-  let fetchCount = 0;
-  const pendingFetchResolvers: Array<(response: Response) => void> = [];
-
-  global.fetch = (async () => {
-    fetchCount += 1;
-    return new Promise<Response>((resolve) => {
-      pendingFetchResolvers.push(resolve);
-    });
-  }) as typeof fetch;
-
-  const input = {
-    profileId: 'cp_001',
-    ingredients: [
-      {
-        id: 'ing_pending_1',
-        name: '鸡蛋',
-        normalizedName: '鸡蛋',
-        quantity: '1个',
-        source: 'manual' as const,
-      },
-    ],
-    recipe: {
-      id: recipeId,
-      name: recipeName,
-      englishName: 'Pending Egg Bowl',
-      nameLearning: {
-        characters: [{ character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '鸡蛋的蛋。' }],
-      },
-      ageRange: '7-12 岁',
-      difficulty: 'easy' as const,
-      estimatedTimeMinutes: 12,
-      fitReasons: ['简单易做'],
-      riskAlerts: ['加热需家长陪同'],
-      nutritionSummary: '补充蛋白质。',
-      extraIngredients: [],
-      canCookWithCurrentIngredients: true,
-    },
-  };
-
-  const first = getRecipeDetailForRecommendation(input);
-  const second = getRecipeDetailForRecommendation(input);
-
-  assert.equal(fetchCount, 1);
-  const resolvePendingFetch = pendingFetchResolvers[0];
-  assert.equal(typeof resolvePendingFetch, 'function');
-  resolvePendingFetch(new Response(JSON.stringify({
-    choices: [{
-      message: {
-        content: JSON.stringify({
-          recipes: [{
-            id: recipeId,
-            name: recipeName,
-            englishName: 'Pending Egg Bowl',
-            nameLearning: {
-              characters: [{ character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '鸡蛋的蛋。' }],
-            },
-            ageRange: '7-12 岁',
-            difficulty: 'easy',
-            estimatedTimeMinutes: 12,
-            fitReasons: ['简单易做'],
-            riskAlerts: ['加热需家长陪同'],
-            nutritionSummary: '补充蛋白质。',
-            extraIngredients: [],
-            canCookWithCurrentIngredients: true,
-            prepTimeMinutes: 3,
-            cookTimeMinutes: 9,
-            ingredients: [{ name: '鸡蛋', quantity: '1个' }],
-            steps: [{
-              title: '准备鸡蛋',
-              description: '把鸡蛋打入碗中。',
-              tip: '慢慢敲开。',
-              riskLevel: 'low',
-              requiresParentAssist: false,
-            }],
-          }],
-        }),
-      },
-    }],
-  }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  }));
-
-  const [firstResult, secondResult] = await Promise.all([first, second]);
-  if ('error' in firstResult) {
-    assert.fail(`expected first detail data, got ${firstResult.error.code}`);
-  }
-  if ('error' in secondResult) {
-    assert.fail(`expected second detail data, got ${secondResult.error.code}`);
-  }
-  assert.equal(fetchCount, 1);
-  assert.equal(firstResult.data.name, recipeName);
-  assert.equal(secondResult.data.name, recipeName);
-
-  global.fetch = originalFetch;
-  if (originalKey) {
-    process.env.SILICONFLOW_API_KEY = originalKey;
-  } else {
-    delete process.env.SILICONFLOW_API_KEY;
-  }
-});
-
-test('getRecipeDetailForRecommendation returns fallback detail when configured model fails in production', async () => {
-  const originalKey = process.env.SILICONFLOW_API_KEY;
-  const originalNodeEnv = process.env.NODE_ENV;
-  const originalFetch = global.fetch;
-  process.env.SILICONFLOW_API_KEY = 'test-key';
-  process.env.NODE_ENV = 'production';
-
-  global.fetch = (async () => {
-    throw new Error('upstream unavailable');
-  }) as typeof fetch;
-
-  const result = await getRecipeDetailForRecommendation({
-    profileId: 'cp_001',
-    ingredients: [
-      {
-        id: 'ing_fallback_1',
-        name: '番茄',
-        normalizedName: '番茄',
-        quantity: '1个',
-        source: 'manual' as const,
-      },
-    ],
-    recipe: {
-      id: `recipe_model_fail_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      name: `模型失败兜底菜_${Date.now()}`,
-      englishName: 'Fallback Detail Dish',
-      nameLearning: {
-        characters: [{ character: '菜', pinyin: 'cài', strokes: 11, structure: '上下结构', hint: '蔬菜的菜。' }],
-      },
-      ageRange: '7-12 岁',
-      difficulty: 'easy' as const,
-      estimatedTimeMinutes: 10,
-      fitReasons: ['快速兜底'],
-      riskAlerts: [],
-      nutritionSummary: '清淡均衡。',
-      extraIngredients: [],
-      canCookWithCurrentIngredients: true,
-    },
   });
 
   if ('error' in result) {
-    assert.fail(`expected fallback detail, got ${result.error.code}`);
+    assert.fail(`expected generated detail data, got ${result.error.code}`);
   }
 
-  assert.equal(result.data.steps.length > 0, true);
-  assert.equal(result.data.ingredients[0]?.name, '番茄');
+  assert.equal(result.data.name, '番茄鸡蛋软面');
+  assert.equal(result.data.steps[0].title, '番茄鸡蛋');
 
   global.fetch = originalFetch;
   if (originalKey) {
     process.env.SILICONFLOW_API_KEY = originalKey;
   } else {
     delete process.env.SILICONFLOW_API_KEY;
-  }
-
-  if (originalNodeEnv) {
-    process.env.NODE_ENV = originalNodeEnv;
-  } else {
-    delete process.env.NODE_ENV;
   }
 });
 

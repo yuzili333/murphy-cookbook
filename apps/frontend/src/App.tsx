@@ -8,6 +8,7 @@ import sendMessageIcon from './assets/send-message.svg';
 import { defaultIngredientVisual, getIngredientVisual } from './data/ingredientVisuals';
 import {
   fetchGeneratedRecipeDetail,
+  fetchGeneratedRecipeDetails,
   fetchRecommendations,
   fetchSeasonalIngredientSuggestions,
   parseIngredientText,
@@ -19,6 +20,7 @@ import type {
   IngredientItem,
   RecipeDetail,
   RecipeRecommendation,
+  RecommendationResponse,
   SeasonalIngredientSuggestion,
 } from './types';
 
@@ -28,10 +30,14 @@ const likedRecipesStorageKey = 'murphy-cookbook.liked-recipes.v1';
 const childContextStorageKey = 'murphy-cookbook.child-context.v1';
 const chatSessionsStorageKey = 'murphy-cookbook.chat-sessions.v1';
 const activeChatSessionStorageKey = 'murphy-cookbook.active-chat-session.v1';
+const recommendationCacheStorageKey = 'murphy-cookbook.recommendation-cache.v1';
+const recipeDetailCacheStorageKey = 'murphy-cookbook.recipe-detail-cache.v1';
+const webCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const conversationProfileId = 'chat_context_profile';
 const defaultChildContext =
   '默认服务对象为小学 1-6 年级学生。推荐原则：低油脂、轻口味、膳食均衡、维生素丰富、主食蛋白质蔬菜搭配均衡，避免高糖、高盐、油炸和过度辛辣。未明确提及重度急性过敏风险时，不主动要求补充儿童年龄、饮食偏好或过敏原。';
 type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
+type TimedCache<T> = Record<string, { createdAt: string; expiresAt: string; data: T }>;
 
 interface ChatMessage {
   id: string;
@@ -43,6 +49,7 @@ interface ChatMessage {
   ingredientsKey?: string;
   ingredients?: IngredientItem[];
   recipes?: RecipeRecommendation[];
+  recipeDetails?: RecipeDetail[];
 }
 
 interface ChatSession {
@@ -207,6 +214,51 @@ function persistActiveChatSessionId(sessionId: string) {
   window.localStorage.setItem(activeChatSessionStorageKey, sessionId);
 }
 
+function readTimedCache<T>(storageKey: string): TimedCache<T> {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as TimedCache<T>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readCachedValue<T>(storageKey: string, cacheKey: string) {
+  const cache = readTimedCache<T>(storageKey);
+  const entry = cache[cacheKey];
+  if (!entry || Date.parse(entry.expiresAt) <= Date.now()) {
+    return null;
+  }
+
+  return entry.data;
+}
+
+function writeCachedValue<T>(storageKey: string, cacheKey: string, data: T) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const cache = readTimedCache<T>(storageKey);
+  const now = Date.now();
+  const nextEntries = Object.entries({
+    ...cache,
+    [cacheKey]: {
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + webCacheTtlMs).toISOString(),
+      data,
+    },
+  })
+    .filter(([, entry]) => Date.parse(entry.expiresAt) > now)
+    .slice(-80);
+  window.localStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(nextEntries)));
+}
+
 function buildSessionTitle(messages: ChatMessage[], childContext: string) {
   const firstUserMessage = messages.find((message) => message.role === 'user')?.text ?? childContext;
   const normalized = firstUserMessage.trim().replace(/\s+/g, ' ');
@@ -261,6 +313,45 @@ function buildIngredientsKey(items: IngredientItem[]) {
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'))
     .join('|');
+}
+
+function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: string, prompt: string) {
+  return JSON.stringify({
+    profileId: profile.id,
+    age: profile.age,
+    tastePreferences: profile.tastePreferences,
+    allergens: profile.allergens,
+    dietaryHabits: profile.dietaryHabits,
+    ingredientsKey,
+    prompt: prompt.trim(),
+  });
+}
+
+function buildRecipeDetailCacheKey(profile: ChildProfile, ingredientsKey: string, recipe: RecipeRecommendation) {
+  return JSON.stringify({
+    profileId: profile.id,
+    age: profile.age,
+    ingredientsKey,
+    recipeId: recipe.id,
+    recipeName: recipe.name,
+  });
+}
+
+function buildRecipeDetailsMap(details: RecipeDetail[]) {
+  return details.reduce<Record<string, RecipeDetail>>((map, detail) => {
+    map[detail.id] = detail;
+    return map;
+  }, {});
+}
+
+function formatRecipeDifficulty(difficulty: RecipeRecommendation['difficulty']) {
+  const labels: Record<RecipeRecommendation['difficulty'], string> = {
+    easy: '简单',
+    medium: '中等',
+    hard: '较难',
+  };
+
+  return labels[difficulty] ?? '中等';
 }
 
 function PlayInlineIcon() {
@@ -477,7 +568,6 @@ export default function App() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isListeningVoice, setIsListeningVoice] = useState(false);
   const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false);
-  const [isFetchingDetail, setIsFetchingDetail] = useState(false);
   const [activeSpeechKey, setActiveSpeechKey] = useState('');
   const [error, setError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
@@ -621,8 +711,7 @@ export default function App() {
         setChildContext(activeSession.childContext);
         setIngredients(activeSession.ingredients);
         setChatMessages(activeSession.messages);
-        const activeRecipes = activeSession.messages.flatMap((message) => message.recipes ?? []).slice(-5);
-        void fetchDetailsForRecipeCards(activeRecipes, activeSession.ingredients, buildConversationProfile(activeSession.childContext));
+        setRecipeDetailsById(buildRecipeDetailsMap(activeSession.messages.flatMap((message) => message.recipeDetails ?? [])));
         setLikedRecipeIds(localLikedRecipeIds);
       } catch (bootstrapError) {
         setError(bootstrapError instanceof Error ? bootstrapError.message : '初始化失败，请稍后重试。');
@@ -799,15 +888,13 @@ export default function App() {
   };
 
   const handleSelectConversation = (session: ChatSession) => {
-    const sessionRecipes = session.messages.flatMap((message) => message.recipes ?? []).slice(-5);
     setActiveChatSessionId(session.id);
     setChildContext(session.childContext);
     setIngredients(session.ingredients);
     setChatMessages(session.messages);
-    setRecipeDetailsById({});
+    setRecipeDetailsById(buildRecipeDetailsMap(session.messages.flatMap((message) => message.recipeDetails ?? [])));
     setRecipeDetailLoadingById({});
     setRecipeDetailErrorsById({});
-    void fetchDetailsForRecipeCards(sessionRecipes, session.ingredients, buildConversationProfile(session.childContext));
     persistActiveChatSessionId(session.id);
     setIsConversationDrawerOpen(false);
   };
@@ -826,30 +913,40 @@ export default function App() {
     setPendingScrollRecipeId(recipe.id);
   };
 
-  const fetchDetailsForRecipeCards = async (
-    recipes: RecipeRecommendation[],
-    nextIngredients: IngredientItem[],
-    profile: ChildProfile = selectedProfile,
-  ) => {
-    if (!profile) {
-      return;
-    }
+  const mergeRecipeDetailIntoCurrentSession = (messageId: string, detail: RecipeDetail) => {
+    setChatMessages((current) =>
+      current.map((message) => {
+        if (message.id !== messageId) {
+          return message;
+        }
 
-    setIsFetchingDetail(true);
-    try {
-      await Promise.all(recipes.map((recipe) => fetchRecipeDetailForCard(recipe, nextIngredients, profile, true)));
-    } finally {
-      setIsFetchingDetail(false);
-    }
+        const nextDetails = [
+          ...(message.recipeDetails ?? []).filter((item) => item.id !== detail.id),
+          detail,
+        ];
+
+        return {
+          ...message,
+          recipeDetails: nextDetails,
+        };
+      }),
+    );
   };
 
-  const fetchRecipeDetailForCard = async (
+  const loadRecipeDetailForCard = async (
     recipe: RecipeRecommendation,
-    nextIngredients: IngredientItem[] = ingredients,
-    profile: ChildProfile = selectedProfile,
-    showToast = true,
+    nextIngredients: IngredientItem[],
+    profile: ChildProfile,
+    messageId: string,
+    showToast = false,
   ) => {
-    if (recipeDetailsById[recipe.id] || recipeDetailLoadingById[recipe.id]) {
+    const ingredientsKey = buildIngredientsKey(nextIngredients);
+    const cacheKey = buildRecipeDetailCacheKey(profile, ingredientsKey, recipe);
+    const cachedDetail = readCachedValue<RecipeDetail>(recipeDetailCacheStorageKey, cacheKey);
+
+    if (cachedDetail) {
+      setRecipeDetailsById((current) => ({ ...current, [cachedDetail.id]: cachedDetail, [recipe.id]: cachedDetail }));
+      mergeRecipeDetailIntoCurrentSession(messageId, cachedDetail);
       return;
     }
 
@@ -867,20 +964,97 @@ export default function App() {
         ingredients: nextIngredients,
         recipe,
       });
-      setRecipeDetailsById((current) => ({
-        ...current,
-        [recipe.id]: detail,
-        [detail.id]: detail,
-      }));
+      writeCachedValue(recipeDetailCacheStorageKey, cacheKey, detail);
+      setRecipeDetailsById((current) => ({ ...current, [detail.id]: detail, [recipe.id]: detail }));
+      mergeRecipeDetailIntoCurrentSession(messageId, detail);
     } catch (detailError) {
-      const message = detailError instanceof Error ? detailError.message : '菜谱详情获取失败。';
+      const message = detailError instanceof Error ? detailError.message : '菜谱步骤获取失败。';
       setRecipeDetailErrorsById((current) => ({ ...current, [recipe.id]: message }));
       if (showToast) {
-        setToastMessage(`${recipe.name} 详情获取失败，请稍后重试。`);
+        setToastMessage(`${recipe.name} 步骤获取失败，请稍后重试。`);
       }
     } finally {
       setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: false }));
     }
+  };
+
+  const loadRecipeDetailsForCards = (
+    recipes: RecipeRecommendation[],
+    nextIngredients: IngredientItem[],
+    profile: ChildProfile,
+    messageId: string,
+  ) => {
+    const ingredientsKey = buildIngredientsKey(nextIngredients);
+    const missingRecipes: RecipeRecommendation[] = [];
+
+    for (const recipe of recipes) {
+      const cacheKey = buildRecipeDetailCacheKey(profile, ingredientsKey, recipe);
+      const cachedDetail = readCachedValue<RecipeDetail>(recipeDetailCacheStorageKey, cacheKey);
+
+      if (cachedDetail) {
+        setRecipeDetailsById((current) => ({ ...current, [cachedDetail.id]: cachedDetail, [recipe.id]: cachedDetail }));
+        mergeRecipeDetailIntoCurrentSession(messageId, cachedDetail);
+      } else {
+        missingRecipes.push(recipe);
+      }
+    }
+
+    if (missingRecipes.length === 0) {
+      return;
+    }
+
+    setRecipeDetailLoadingById((current) => ({
+      ...current,
+      ...Object.fromEntries(missingRecipes.map((recipe) => [recipe.id, true])),
+    }));
+    setRecipeDetailErrorsById((current) => {
+      const next = { ...current };
+      for (const recipe of missingRecipes) {
+        delete next[recipe.id];
+      }
+      return next;
+    });
+
+    void (async () => {
+      try {
+        const details = await fetchGeneratedRecipeDetails({
+          profileId: profile.id,
+          profile,
+          ingredients: nextIngredients,
+          recipes: missingRecipes,
+        });
+        const detailByRecipe = new Map<string, RecipeDetail>();
+        for (const detail of details) {
+          detailByRecipe.set(detail.id, detail);
+          detailByRecipe.set(detail.name, detail);
+        }
+
+        for (const recipe of missingRecipes) {
+          const detail = detailByRecipe.get(recipe.id) ?? detailByRecipe.get(recipe.name);
+          if (!detail) {
+            setRecipeDetailErrorsById((current) => ({ ...current, [recipe.id]: '菜谱步骤获取失败。' }));
+            continue;
+          }
+
+          const cacheKey = buildRecipeDetailCacheKey(profile, ingredientsKey, recipe);
+          writeCachedValue(recipeDetailCacheStorageKey, cacheKey, detail);
+          setRecipeDetailsById((current) => ({ ...current, [detail.id]: detail, [recipe.id]: detail }));
+          mergeRecipeDetailIntoCurrentSession(messageId, detail);
+        }
+      } catch (detailError) {
+        const message = detailError instanceof Error ? detailError.message : '菜谱步骤获取失败。';
+        setRecipeDetailErrorsById((current) => ({
+          ...current,
+          ...Object.fromEntries(missingRecipes.map((recipe) => [recipe.id, message])),
+        }));
+        setToastMessage('烹饪步骤获取失败，请稍后重试。');
+      } finally {
+        setRecipeDetailLoadingById((current) => ({
+          ...current,
+          ...Object.fromEntries(missingRecipes.map((recipe) => [recipe.id, false])),
+        }));
+      }
+    })();
   };
 
   const requestChatRecommendations = async (prompt: string, nextIngredients: IngredientItem[]) => {
@@ -901,8 +1075,17 @@ export default function App() {
         `儿童情况：${childContext.trim() || defaultChildContext}`,
         `用户本轮输入：${prompt}`,
       ].join('\n');
-      const data = await fetchRecommendations(selectedProfile, nextIngredients, recommendationPrompt);
+      const recommendationCacheKey = buildRecommendationCacheKey(selectedProfile, ingredientsKey, recommendationPrompt);
+      const cachedRecommendation = readCachedValue<RecommendationResponse>(
+        recommendationCacheStorageKey,
+        recommendationCacheKey,
+      );
+      const data = cachedRecommendation ?? await fetchRecommendations(selectedProfile, nextIngredients, recommendationPrompt);
+      if (!cachedRecommendation) {
+        writeCachedValue(recommendationCacheStorageKey, recommendationCacheKey, data);
+      }
       const recipes = data.recipes;
+      const recipeDetails = data.recipeDetails ?? [];
       setChatMessages((current) =>
         current.filter((message) => {
           if (!message.recipes?.length) {
@@ -916,17 +1099,19 @@ export default function App() {
           return !nextIngredients.every((item) => message.text.includes(item.name));
         }),
       );
-      setRecipeDetailsById({});
+      setRecipeDetailsById(buildRecipeDetailsMap(recipeDetails));
       setRecipeDetailLoadingById({});
       setRecipeDetailErrorsById({});
-      void fetchDetailsForRecipeCards(recipes, nextIngredients);
       skipNextChatAutoScrollRef.current = true;
       const recipeMessage = addChatMessage({
         role: 'assistant',
         text: `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
         ingredientsKey,
+        ingredients: nextIngredients,
         recipes,
+        recipeDetails,
       });
+      loadRecipeDetailsForCards(recipes, nextIngredients, selectedProfile, recipeMessage.id);
       setPendingRecipeMessageId(recipeMessage.id);
       setManualIngredient('');
     } catch (recommendationError) {
@@ -1551,7 +1736,7 @@ export default function App() {
                             <small>分钟</small>
                           </span>
                           <span>
-                            <b>{recipe.difficulty}</b>
+                            <b>{formatRecipeDifficulty(recipe.difficulty)}</b>
                             <small>难度</small>
                           </span>
                           <span>
@@ -1734,31 +1919,28 @@ export default function App() {
                                 </div>
                               </div>
                             </>
+                          ) : recipeDetailLoadingById[recipe.id] ? (
+                            <p className="muted compact-copy inline-loading-copy">
+                              <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                              正在生成烹饪步骤...
+                            </p>
                           ) : recipeDetailErrorsById[recipe.id] ? (
                             <div className="detail-error-block">
-                              <strong>详情获取失败</strong>
+                              <strong>步骤获取失败</strong>
                               <p>{recipeDetailErrorsById[recipe.id]}</p>
                               <button
                                 type="button"
                                 className="secondary-button"
-                                onClick={() => void fetchRecipeDetailForCard(recipe)}
-                                disabled={recipeDetailLoadingById[recipe.id]}
+                                onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
                               >
-                                {recipeDetailLoadingById[recipe.id] ? (
-                                  <>
-                                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                                    正在重新获取...
-                                  </>
-                                ) : (
-                                  '再次获取'
-                                )}
+                                再次获取
                               </button>
                             </div>
                           ) : (
-                            <p className="muted compact-copy inline-loading-copy">
-                              {recipeDetailLoadingById[recipe.id] || isFetchingDetail ? <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" /> : null}
-                              {recipeDetailLoadingById[recipe.id] || isFetchingDetail ? '正在生成内容...' : '内容加载中...'}
-                            </p>
+                            <div className="detail-error-block">
+                              <strong>步骤准备中</strong>
+                              <p>正在从缓存或大模型加载烹饪步骤，请稍候。</p>
+                            </div>
                           )}
                         </div>
                         <div className="carousel-actions single-action">

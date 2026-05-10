@@ -11,6 +11,7 @@ import {
 import { getLocalLlmLogFilePath, readLocalLlmLogs, shouldUseLocalDebugLog } from './logger.js';
 import {
   getRecipeDetailForRecommendation,
+  getRecipeDetailsForRecommendations,
   parseIngredientJson,
   parseTextToIngredients,
   recommendRecipes,
@@ -69,6 +70,13 @@ interface RecipeDetailRequestPayload {
   recipe: Partial<RecipeRecommendation> | null;
 }
 
+interface RecipeDetailsRequestPayload {
+  profileId: string;
+  ingredients: IngredientItem[];
+  profile: Partial<ChildProfile> | null;
+  recipes: Array<Partial<RecipeRecommendation>>;
+}
+
 function isRecipeRecommendationInput(recipe: Partial<RecipeRecommendation> | null): recipe is RecipeRecommendation {
   return Boolean(recipe?.id && recipe?.name);
 }
@@ -84,6 +92,22 @@ export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown 
       : parseJsonInput<IngredientItem[]>(queryPayload.ingredients, []),
     profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
     recipe: (payload.recipe ?? parseJsonInput(queryPayload.recipe, null)) as Partial<RecipeRecommendation> | null,
+  };
+}
+
+export function resolveRecipeDetailsRequestPayload(body: unknown, query: unknown = {}): RecipeDetailsRequestPayload {
+  const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const queryPayload = query && typeof query === 'object' ? query as Record<string, unknown> : {};
+
+  return {
+    profileId: String(payload.profileId ?? queryPayload.profileId ?? ''),
+    ingredients: Array.isArray(payload.ingredients)
+      ? payload.ingredients as IngredientItem[]
+      : parseJsonInput<IngredientItem[]>(queryPayload.ingredients, []),
+    profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
+    recipes: Array.isArray(payload.recipes)
+      ? payload.recipes as Array<Partial<RecipeRecommendation>>
+      : parseJsonInput<Array<Partial<RecipeRecommendation>>>(queryPayload.recipes, []),
   };
 }
 
@@ -389,6 +413,40 @@ export function createApp(): Express {
       ingredients,
       profileInput: profile,
       recipe,
+    });
+
+    if ('error' in result) {
+      const status =
+        result.error.code === 'PROFILE_NOT_FOUND'
+          ? 404
+          : result.error.code === 'INVALID_ARGUMENT' || result.error.code === 'RECIPE_DETAIL_UNAVAILABLE'
+            ? 400
+            : result.error.code === 'MODEL_PROVIDER_NOT_CONFIGURED'
+              ? 500
+              : 502;
+      res.status(status).json({ error: result.error });
+      return;
+    }
+
+    res.json({ data: result.data });
+  });
+
+  app.post('/api/v1/recipes/details', async (req, res) => {
+    const { profileId, ingredients, profile, recipes } = resolveRecipeDetailsRequestPayload(req.body, req.query);
+    const validRecipes = recipes.filter(isRecipeRecommendationInput);
+
+    if (validRecipes.length === 0) {
+      res.status(400).json({
+        error: { code: 'INVALID_ARGUMENT', message: '请提供有效的推荐菜谱卡片列表。' },
+      });
+      return;
+    }
+
+    const result = await getRecipeDetailsForRecommendations({
+      profileId,
+      ingredients,
+      profileInput: profile,
+      recipes: validRecipes,
     });
 
     if ('error' in result) {

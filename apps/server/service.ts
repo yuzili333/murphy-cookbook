@@ -1,8 +1,4 @@
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
 import {
-  buildIngredientImageUrl,
   childProfiles,
   createIngredient,
   normalizeIngredientName,
@@ -15,6 +11,7 @@ import {
 } from './data.js';
 import {
   generateRecipeDetail,
+  generateRecipeDetails,
   generateRecipePlan,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
@@ -30,16 +27,8 @@ export type RecommendationResult =
   | { data: GeneratedRecommendationPayload }
   | { error: RecommendationError };
 
-const recipeDetailCacheFile = process.env.RECIPE_DETAIL_CACHE_FILE
-  ? resolve(process.env.RECIPE_DETAIL_CACHE_FILE)
-  : process.env.NETLIFY || process.env.AWS_LAMBDA_FUNCTION_NAME
-    ? '/tmp/murphy-cookbook-recipe-detail-cache.json'
-    : resolve(process.cwd(), '.local', 'cache', 'recipe-detail-cache.json');
-const recipeDetailCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
-const recipeDetailCacheVersion = 'storyboard-balanced-steps-v6';
-const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 9000);
-const recipeDetailMemoryCache = new Map<string, RecipeDetailCacheEntry>();
-const pendingRecipeDetailRequests = new Map<string, Promise<{ data: RecipeDetail } | { error: RecommendationError }>>();
+const recipeRecommendationModelTimeoutMs = Number(process.env.RECIPE_RECOMMENDATION_MODEL_TIMEOUT_MS ?? 120000);
+const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 120000);
 const defaultRecommendationProfile: ChildProfile = {
   id: 'chat_context_profile',
   nickname: '小学阶段学生',
@@ -48,119 +37,6 @@ const defaultRecommendationProfile: ChildProfile = {
   allergens: [],
   dietaryHabits: ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
 };
-
-interface RecipeDetailCacheEntry {
-  key: string;
-  createdAt: string;
-  expiresAt: string;
-  request: {
-    profile: ChildProfile;
-    ingredients: string[];
-    recipeId?: string;
-    recipeName: string;
-  };
-  response: RecipeDetail;
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
-  }
-
-  if (value && typeof value === 'object') {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-      .join(',')}}`;
-  }
-
-  return JSON.stringify(value);
-}
-
-function normalizeIngredientsForCache(ingredients: IngredientItem[]) {
-  const normalizedNames = ingredients
-    .map((ingredient) => normalizeIngredientName(ingredient.normalizedName ?? ingredient.name))
-    .filter(Boolean);
-
-  return Array.from(new Set(normalizedNames)).sort();
-}
-
-function buildRecipeDetailCacheKey(input: {
-  profile: ChildProfile;
-  ingredients: IngredientItem[];
-  recipeId?: string;
-  recipeName: string;
-}) {
-  const payload = {
-    version: recipeDetailCacheVersion,
-    profile: {
-      id: input.profile.id,
-      age: input.profile.age,
-      tastePreferences: [...input.profile.tastePreferences].sort(),
-      allergens: [...input.profile.allergens].sort(),
-      dietaryHabits: [...input.profile.dietaryHabits].sort(),
-    },
-    ingredients: normalizeIngredientsForCache(input.ingredients),
-    recipeId: input.recipeId?.trim() || '',
-    recipeName: input.recipeName.trim(),
-  };
-
-  return createHash('sha256').update(stableStringify(payload)).digest('hex');
-}
-
-function readRecipeDetailCache() {
-  const memoryEntries = Array.from(recipeDetailMemoryCache.values());
-  if (!existsSync(recipeDetailCacheFile)) {
-    return memoryEntries;
-  }
-
-  try {
-    const parsed = JSON.parse(readFileSync(recipeDetailCacheFile, 'utf8')) as unknown;
-    const fileEntries = Array.isArray(parsed) ? parsed as RecipeDetailCacheEntry[] : [];
-    for (const entry of fileEntries) {
-      recipeDetailMemoryCache.set(entry.key, entry);
-    }
-    return Array.from(new Map([...memoryEntries, ...fileEntries].map((entry) => [entry.key, entry])).values());
-  } catch {
-    return memoryEntries;
-  }
-}
-
-function getCachedRecipeDetail(key: string) {
-  const now = Date.now();
-  const memoryEntry = recipeDetailMemoryCache.get(key);
-  if (memoryEntry && Date.parse(memoryEntry.expiresAt) > now) {
-    return memoryEntry.response;
-  }
-
-  const entry = readRecipeDetailCache().find((item) => item.key === key);
-
-  if (!entry || Date.parse(entry.expiresAt) <= now) {
-    recipeDetailMemoryCache.delete(key);
-    return null;
-  }
-
-  recipeDetailMemoryCache.set(key, entry);
-  return entry.response;
-}
-
-function writeRecipeDetailCache(entry: RecipeDetailCacheEntry) {
-  recipeDetailMemoryCache.set(entry.key, entry);
-
-  try {
-    mkdirSync(dirname(recipeDetailCacheFile), { recursive: true });
-    const now = Date.now();
-    const next = [
-      entry,
-      ...readRecipeDetailCache().filter((item) =>
-        item.key !== entry.key && Date.parse(item.expiresAt) > now,
-      ),
-    ].slice(0, 200);
-    writeFileSync(recipeDetailCacheFile, JSON.stringify(next, null, 2), 'utf8');
-  } catch {
-    // Cache failures must not affect API responses.
-  }
-}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -176,29 +52,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   });
 }
 
-function toRecipeDetailCacheEntry(input: {
-  key: string;
-  profile: ChildProfile;
-  ingredients: IngredientItem[];
-  recipeId?: string;
-  recipeName: string;
-  response: RecipeDetail;
-}): RecipeDetailCacheEntry {
-  return {
-    key: input.key,
-    createdAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + recipeDetailCacheTtlMs).toISOString(),
-    request: {
-      profile: input.profile,
-      ingredients: normalizeIngredientsForCache(input.ingredients),
-      recipeId: input.recipeId,
-      recipeName: input.recipeName,
-    },
-    response: input.response,
-  };
-}
-
-function isRecipeDetailPayload(recipe: RecipeRecommendation): recipe is RecipeDetail {
+function isRecipeDetailPayload(recipe: RecipeRecommendation | RecipeDetail): recipe is RecipeDetail {
   const candidate = recipe as Partial<RecipeDetail>;
   return (
     Array.isArray(candidate.ingredients) &&
@@ -346,7 +200,11 @@ export async function recommendRecipes(
 
   try {
     return {
-      data: await generateRecipePlan(profile, ingredients, userPrompt),
+      data: await withTimeout(
+        generateRecipePlan(profile, ingredients, userPrompt),
+        recipeRecommendationModelTimeoutMs,
+        '菜谱推荐生成超时，请稍后重试。',
+      ),
     };
   } catch (error) {
     if (!shouldRequireRealModel()) {
@@ -365,7 +223,7 @@ export async function recommendRecipes(
 export async function getRecipeDetailForRecommendation(input: {
   profileId: string;
   ingredients: IngredientItem[];
-  recipe: RecipeRecommendation;
+  recipe: RecipeRecommendation | RecipeDetail;
   profileInput?: Partial<ChildProfile> | null;
 }): Promise<{ data: RecipeDetail } | { error: RecommendationError }> {
   const validation = validateRecommendationInput(input.profileId, input.ingredients, input.profileInput);
@@ -374,168 +232,88 @@ export async function getRecipeDetailForRecommendation(input: {
     return { error: validation.error };
   }
 
+  if (isRecipeDetailPayload(input.recipe)) {
+    return { data: input.recipe };
+  }
+
+  const catalogRecipe = recipeCatalog.find((item) => item.id === input.recipe.id);
+  if (catalogRecipe) {
+    return { data: catalogRecipe };
+  }
+
   const { profile } = validation;
-  const cacheKey = buildRecipeDetailCacheKey({
-    profile,
-    ingredients: input.ingredients,
-    recipeId: input.recipe.id,
-    recipeName: input.recipe.name,
-  });
-  const cachedRecipe = getCachedRecipeDetail(cacheKey);
-
-  if (cachedRecipe) {
-    return { data: cachedRecipe };
-  }
-
-  const pendingRequest = pendingRecipeDetailRequests.get(cacheKey);
-  if (pendingRequest) {
-    return pendingRequest;
-  }
-
-  const requestPromise = generateRecipeDetailWithCache({
-    cacheKey,
-    profile,
-    input,
-  }).finally(() => {
-    pendingRecipeDetailRequests.delete(cacheKey);
-  });
-
-  pendingRecipeDetailRequests.set(cacheKey, requestPromise);
-  return requestPromise;
-}
-
-async function generateRecipeDetailWithCache(input: {
-  cacheKey: string;
-  profile: ChildProfile;
-  input: {
-    profileId: string;
-    ingredients: IngredientItem[];
-    recipe: RecipeRecommendation;
-    profileInput?: Partial<ChildProfile> | null;
-  };
-}): Promise<{ data: RecipeDetail } | { error: RecommendationError }> {
-  const { cacheKey, profile } = input;
-  const detailInput = input.input;
-
-  const fallbackRecipe =
-    recipeCatalog.find((item) => item.id === detailInput.recipe.id) ??
-    ({
-      ...detailInput.recipe,
-      prepTimeMinutes: Math.max(1, Math.round(detailInput.recipe.estimatedTimeMinutes * 0.3)),
-      cookTimeMinutes: Math.max(1, detailInput.recipe.estimatedTimeMinutes - Math.max(1, Math.round(detailInput.recipe.estimatedTimeMinutes * 0.3))),
-      ingredients: detailInput.ingredients.map((ingredient) => ({
-        name: ingredient.name,
-        quantity: ingredient.quantity,
-        imageUrl: buildIngredientImageUrl(ingredient.name),
-      })),
-      steps: [
-        {
-          id: `step_${detailInput.recipe.id}_1`,
-          title: '摆好食材',
-          description: '全部食材和小碗摆好。',
-          tip: '先点一遍食材。',
-          childAction: '说出食材名字。',
-          parentAction: '家长检查新鲜度。',
-          expectedResult: '食材清楚可见。',
-          riskLevel: 'low',
-          requiresParentAssist: false,
-        },
-        {
-          id: `step_${detailInput.recipe.id}_2`,
-          title: '清洗食材',
-          description: '蔬菜食材清水洗净。',
-          tip: '水流不要太大。',
-          childAction: '轻轻搓洗表面。',
-          parentAction: '家长处理去皮去根。',
-          expectedResult: '表面没有泥沙。',
-          riskLevel: 'low',
-          requiresParentAssist: false,
-        },
-        {
-          id: `step_${detailInput.recipe.id}_3`,
-          title: '切配分装',
-          description: '蔬菜肉蛋切配分碗。',
-          tip: '刀具只让家长拿。',
-          childAction: '把食材放小碗。',
-          parentAction: '家长切配并收刀。',
-          expectedResult: '食材大小接近。',
-          riskLevel: 'medium',
-          requiresParentAssist: true,
-        },
-        {
-          id: `step_${detailInput.recipe.id}_4`,
-          title: '加热烹饪',
-          description: '主食材入锅加热。',
-          tip: '热锅热油要远离。',
-          childAction: '观察颜色变化。',
-          parentAction: '家长全程操作热源。',
-          expectedResult: '食材变软变香。',
-          riskLevel: 'high',
-          requiresParentAssist: true,
-        },
-        {
-          id: `step_${detailInput.recipe.id}_5`,
-          title: '装盘和确认',
-          description: '装盘放凉再试吃。',
-          tip: '太烫就再等等。',
-          childAction: '摆餐具小口尝。',
-          parentAction: '家长确认温度安全。',
-          expectedResult: '温热不烫口。',
-          riskLevel: 'low',
-          requiresParentAssist: true,
-        },
-      ],
-    } satisfies RecipeDetail);
-
-  const persistDetail = (response: RecipeDetail) => {
-    writeRecipeDetailCache(toRecipeDetailCacheEntry({
-      key: cacheKey,
-      profile,
-      ingredients: detailInput.ingredients,
-      recipeId: detailInput.recipe.id,
-      recipeName: detailInput.recipe.name,
-      response,
-    }));
-  };
-
-  if (isRecipeDetailPayload(detailInput.recipe)) {
-    persistDetail(detailInput.recipe);
-    return { data: detailInput.recipe };
-  }
-
   if (!isSiliconFlowConfigured()) {
-    if (shouldRequireRealModel()) {
-      return {
-        error: {
-          code: 'MODEL_PROVIDER_NOT_CONFIGURED',
-          message: '服务端未配置 SiliconFlow API Key，无法生成生产环境菜谱详情。',
-        },
-      };
-    }
-
-    persistDetail(fallbackRecipe);
-    return { data: fallbackRecipe };
+    return {
+      error: {
+        code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+        message: '服务端未配置 SiliconFlow API Key，无法生成菜谱详情。',
+      },
+    };
   }
 
   try {
-    const recipeDetail = await withTimeout(
-      generateRecipeDetail(profile, detailInput.ingredients, detailInput.recipe),
-      recipeDetailModelTimeoutMs,
-      '菜谱详情生成超时，已返回快速生成版本。',
-    );
-    persistDetail(recipeDetail);
-
     return {
-      data: recipeDetail,
+      data: await withTimeout(
+        generateRecipeDetail(profile, input.ingredients, input.recipe),
+        recipeDetailModelTimeoutMs,
+        '菜谱详情生成超时，请稍后重试。',
+      ),
     };
   } catch (error) {
-    const isTimeout = error instanceof Error && error.message.includes('超时');
+    return {
+      error: {
+        code: 'RECIPE_DETAIL_FAILED',
+        message: error instanceof Error ? error.message : '菜谱详情生成失败。',
+      },
+    };
+  }
+}
 
-    if (isTimeout || isSiliconFlowConfigured() || !shouldRequireRealModel()) {
-      persistDetail(fallbackRecipe);
-      return { data: fallbackRecipe };
-    }
+export async function getRecipeDetailsForRecommendations(input: {
+  profileId: string;
+  ingredients: IngredientItem[];
+  recipes: Array<RecipeRecommendation | RecipeDetail>;
+  profileInput?: Partial<ChildProfile> | null;
+}): Promise<{ data: RecipeDetail[] } | { error: RecommendationError }> {
+  const validation = validateRecommendationInput(input.profileId, input.ingredients, input.profileInput);
 
+  if ('error' in validation) {
+    return { error: validation.error };
+  }
+
+  const embeddedDetails = input.recipes.filter(isRecipeDetailPayload);
+  const catalogDetails = input.recipes
+    .filter((recipe) => !isRecipeDetailPayload(recipe))
+    .map((recipe) => recipeCatalog.find((item) => item.id === recipe.id))
+    .filter((recipe): recipe is RecipeDetail => Boolean(recipe));
+  const existingDetailIds = new Set([...embeddedDetails, ...catalogDetails].map((recipe) => recipe.id));
+  const missingRecipes = input.recipes
+    .filter((recipe): recipe is RecipeRecommendation => !isRecipeDetailPayload(recipe))
+    .filter((recipe) => !existingDetailIds.has(recipe.id));
+
+  if (missingRecipes.length === 0) {
+    return { data: [...embeddedDetails, ...catalogDetails] };
+  }
+
+  if (!isSiliconFlowConfigured()) {
+    return {
+      error: {
+        code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+        message: '服务端未配置 SiliconFlow API Key，无法生成菜谱详情。',
+      },
+    };
+  }
+
+  try {
+    const generatedDetails = await withTimeout(
+      generateRecipeDetails(validation.profile, input.ingredients, missingRecipes),
+      recipeDetailModelTimeoutMs,
+      '菜谱详情生成超时，请稍后重试。',
+    );
+    return {
+      data: [...embeddedDetails, ...catalogDetails, ...generatedDetails],
+    };
+  } catch (error) {
     return {
       error: {
         code: 'RECIPE_DETAIL_FAILED',

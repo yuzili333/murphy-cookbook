@@ -124,14 +124,7 @@ export function fetchRecommendations(profile: ChildProfile, ingredients: Ingredi
     sortBy: 'balanced',
     allowExtraIngredients: true,
   };
-  const query = new URLSearchParams({
-    profileId: payload.profileId,
-    profile: JSON.stringify(payload.profile),
-    userPrompt,
-    ingredients: JSON.stringify(payload.ingredients),
-  }).toString();
-
-  return request<RecommendationResponse>(`/recommendations/recipes?${query}`, {
+  return request<RecommendationResponse>('/recommendations/recipes', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -160,6 +153,30 @@ export function fetchGeneratedRecipeDetail(payload: {
   };
 
   return request<RecipeDetail>('/recipes/detail', {
+    method: 'POST',
+    body: JSON.stringify(requestPayload),
+  });
+}
+
+export function fetchGeneratedRecipeDetails(payload: {
+  profileId: string;
+  profile: ChildProfile;
+  ingredients: IngredientItem[];
+  recipes: Array<RecipeDetail | RecipeRecommendation>;
+}) {
+  const requestPayload = {
+    profileId: payload.profileId,
+    profile: payload.profile,
+    ingredients: payload.ingredients.map((ingredient) => ({
+      name: ingredient.name,
+      normalizedName: ingredient.normalizedName ?? ingredient.name,
+      quantity: ingredient.quantity,
+      source: ingredient.source,
+    })),
+    recipes: payload.recipes,
+  };
+
+  return request<RecipeDetail[]>('/recipes/details', {
     method: 'POST',
     body: JSON.stringify(requestPayload),
   });
