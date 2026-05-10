@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   resolveIngredientTextInput,
+  resolveRecommendationRequestPayload,
   resolveRecipeDetailRequestPayload,
 } from '../../app.js';
 
@@ -50,4 +51,42 @@ test('resolveRecipeDetailRequestPayload accepts body-only payload', () => {
   assert.equal(payload.profileId, 'cp_001');
   assert.equal(payload.ingredients[0]?.name, '番茄');
   assert.equal(payload.recipe?.name, '接口详情测试菜');
+});
+
+test('resolveRecommendationRequestPayload accepts query ingredients fallback', () => {
+  const payload = resolveRecommendationRequestPayload({}, {
+    profileId: 'chat_context_profile',
+    userPrompt: '请根据当前已识别食材推荐菜谱',
+    ingredients: JSON.stringify([
+      {
+        id: 'ing_query_1',
+        name: '鸡蛋',
+        normalizedName: '鸡蛋',
+        quantity: '1个',
+        source: 'manual',
+      },
+    ]),
+  });
+
+  assert.equal(payload.profileId, 'chat_context_profile');
+  assert.equal(payload.ingredients.length, 1);
+  assert.equal(payload.ingredients[0]?.name, '鸡蛋');
+  assert.equal(payload.userPrompt, '请根据当前已识别食材推荐菜谱');
+});
+
+test('resolveRecommendationRequestPayload accepts stringified body payload', () => {
+  const payload = resolveRecommendationRequestPayload(JSON.stringify({
+    profileId: 'chat_context_profile',
+    ingredients: [
+      {
+        name: '番茄',
+        quantity: '1个',
+        source: 'manual',
+      },
+    ],
+  }));
+
+  assert.equal(payload.ingredients.length, 1);
+  assert.equal(payload.ingredients[0]?.name, '番茄');
+  assert.equal(payload.ingredients[0]?.source, 'manual');
 });

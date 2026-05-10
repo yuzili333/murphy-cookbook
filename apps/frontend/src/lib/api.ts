@@ -111,20 +111,28 @@ export function fetchSeasonalIngredientSuggestions(month: number, childContext: 
 }
 
 export function fetchRecommendations(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
+  const normalizedIngredients = ingredients.map((ingredient) => ({
+    id: ingredient.id,
+    name: ingredient.name,
+    normalizedName: ingredient.normalizedName ?? ingredient.name,
+    quantity: ingredient.quantity,
+    source: ingredient.source,
+  }));
   const payload = {
     profileId: profile.id,
     profile,
     userPrompt,
-    ingredients: ingredients.map((ingredient) => ({
-      name: ingredient.name,
-      normalizedName: ingredient.normalizedName ?? ingredient.name,
-      quantity: ingredient.quantity,
-      source: ingredient.source,
-    })),
+    ingredients: normalizedIngredients,
     sortBy: 'balanced',
     allowExtraIngredients: true,
   };
-  return request<RecommendationResponse>('/recommendations/recipes', {
+  const query = new URLSearchParams({
+    profileId: payload.profileId,
+    userPrompt,
+    ingredients: JSON.stringify(normalizedIngredients),
+  }).toString();
+
+  return request<RecommendationResponse>(`/recommendations/recipes?${query}`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

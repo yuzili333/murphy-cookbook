@@ -77,33 +77,88 @@ interface RecipeDetailsRequestPayload {
   recipes: Array<Partial<RecipeRecommendation>>;
 }
 
+interface RecommendationRequestPayload {
+  profileId: string;
+  ingredients: IngredientItem[];
+  profile: Partial<ChildProfile> | null;
+  userPrompt: string;
+}
+
 function isRecipeRecommendationInput(recipe: Partial<RecipeRecommendation> | null): recipe is RecipeRecommendation {
   return Boolean(recipe?.id && recipe?.name);
 }
 
-export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown = {}): RecipeDetailRequestPayload {
-  const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
-  const queryPayload = query && typeof query === 'object' ? query as Record<string, unknown> : {};
+function normalizeRequestRecord(value: unknown) {
+  if (typeof value === 'string') {
+    return parseJsonInput<Record<string, unknown>>(value, {});
+  }
+
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function resolveIngredientItems(value: unknown): IngredientItem[] {
+  const parsed = typeof value === 'string' ? parseJsonInput<unknown>(value, value) : value;
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed.reduce<IngredientItem[]>((items, item, index) => {
+    if (!item || typeof item !== 'object') {
+      return items;
+    }
+
+    const ingredient = item as Partial<IngredientItem>;
+    const name = String(ingredient.name ?? ingredient.normalizedName ?? '').trim();
+    if (!name) {
+      return items;
+    }
+
+    items.push({
+      id: String(ingredient.id ?? `ing_request_${index + 1}`),
+      name,
+      normalizedName: String(ingredient.normalizedName ?? name),
+      quantity: String(ingredient.quantity ?? '1份'),
+      source: ingredient.source === 'image' || ingredient.source === 'voice' || ingredient.source === 'manual'
+        ? ingredient.source
+        : 'manual',
+      confidence: typeof ingredient.confidence === 'number' ? ingredient.confidence : undefined,
+    });
+
+    return items;
+  }, []);
+}
+
+export function resolveRecommendationRequestPayload(body: unknown, query: unknown = {}): RecommendationRequestPayload {
+  const payload = normalizeRequestRecord(body);
+  const queryPayload = normalizeRequestRecord(query);
 
   return {
     profileId: String(payload.profileId ?? queryPayload.profileId ?? ''),
-    ingredients: Array.isArray(payload.ingredients)
-      ? payload.ingredients as IngredientItem[]
-      : parseJsonInput<IngredientItem[]>(queryPayload.ingredients, []),
+    ingredients: resolveIngredientItems(payload.ingredients ?? queryPayload.ingredients),
+    profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
+    userPrompt: String(payload.userPrompt ?? queryPayload.userPrompt ?? ''),
+  };
+}
+
+export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown = {}): RecipeDetailRequestPayload {
+  const payload = normalizeRequestRecord(body);
+  const queryPayload = normalizeRequestRecord(query);
+
+  return {
+    profileId: String(payload.profileId ?? queryPayload.profileId ?? ''),
+    ingredients: resolveIngredientItems(payload.ingredients ?? queryPayload.ingredients),
     profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
     recipe: (payload.recipe ?? parseJsonInput(queryPayload.recipe, null)) as Partial<RecipeRecommendation> | null,
   };
 }
 
 export function resolveRecipeDetailsRequestPayload(body: unknown, query: unknown = {}): RecipeDetailsRequestPayload {
-  const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
-  const queryPayload = query && typeof query === 'object' ? query as Record<string, unknown> : {};
+  const payload = normalizeRequestRecord(body);
+  const queryPayload = normalizeRequestRecord(query);
 
   return {
     profileId: String(payload.profileId ?? queryPayload.profileId ?? ''),
-    ingredients: Array.isArray(payload.ingredients)
-      ? payload.ingredients as IngredientItem[]
-      : parseJsonInput<IngredientItem[]>(queryPayload.ingredients, []),
+    ingredients: resolveIngredientItems(payload.ingredients ?? queryPayload.ingredients),
     profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
     recipes: Array.isArray(payload.recipes)
       ? payload.recipes as Array<Partial<RecipeRecommendation>>
@@ -357,12 +412,7 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/recommendations/recipes', async (req, res) => {
-    const profileId = String(req.body?.profileId ?? req.query.profileId ?? '');
-    const ingredients = Array.isArray(req.body?.ingredients)
-      ? req.body.ingredients
-      : parseJsonInput(req.query.ingredients, []);
-    const profile = req.body?.profile ?? parseJsonInput(req.query.profile, null);
-    const userPrompt = String(req.body?.userPrompt ?? req.query.userPrompt ?? '');
+    const { profileId, ingredients, profile, userPrompt } = resolveRecommendationRequestPayload(req.body, req.query);
     const result = await recommendRecipes(profileId, ingredients, profile, userPrompt);
 
     if ('error' in result) {
