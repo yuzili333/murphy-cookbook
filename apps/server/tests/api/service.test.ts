@@ -618,6 +618,48 @@ test('getRecipeDetailForRecommendation does not reject empty ingredients as inva
   }
 });
 
+test('getRecipeDetailForRecommendation does not reject deployed broad bean payload as invalid argument', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  delete process.env.SILICONFLOW_API_KEY;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'chat_context_profile',
+    profileInput: {
+      id: 'chat_context_profile',
+      nickname: '小学阶段学生',
+      age: 8,
+      tastePreferences: ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
+      allergens: [],
+      dietaryHabits: ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
+    },
+    ingredients: [{ id: 'ing_broad_bean', name: '蚕豆', normalizedName: '蚕豆', quantity: '适量', source: 'manual' }],
+    recipe: {
+      id: '1',
+      name: '清煮鲜蚕豆',
+      namePinyin: 'qīng zhǔ xiān cán dòu',
+      englishName: 'Boiled Fresh Broad Beans',
+      ageRange: '7-12 岁',
+      difficulty: 'medium' as const,
+      estimatedTimeMinutes: 15,
+      fitReasons: ['做法最简单，保留蚕豆原味', '低油脂，符合轻口味需求', '操作门槛低，适合儿童初次尝试'],
+      riskAlerts: ['需家长全程陪同', '涉及开水和燃气灶/电磁炉'],
+      nutritionSummary: '富含植物蛋白和膳食纤维，清淡易消化。',
+      extraIngredients: ['少许盐'],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if (!('error' in result)) {
+    assert.fail('expected provider configuration error when model is not configured');
+  }
+
+  assert.notEqual(result.error.code, 'INVALID_ARGUMENT');
+
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  }
+});
+
 test('generateCookingFeedback returns parsed feedback fields', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;

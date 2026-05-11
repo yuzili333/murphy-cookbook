@@ -94,6 +94,52 @@ test('resolveRecipeDetailRequestPayload accepts stringified recipe in body', () 
   assert.equal('nameLearning' in (payload.recipe ?? {}), false);
 });
 
+const broadBeanDetailPayload = {
+  profileId: 'chat_context_profile',
+  profile: {
+    id: 'chat_context_profile',
+    nickname: '小学阶段学生',
+    age: 8,
+    tastePreferences: ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
+    allergens: [],
+    dietaryHabits: ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
+  },
+  ingredients: [{ name: '蚕豆', normalizedName: '蚕豆', quantity: '适量', source: 'manual' }],
+  recipe: {
+    id: '1',
+    name: '清煮鲜蚕豆',
+    namePinyin: 'qīng zhǔ xiān cán dòu',
+    englishName: 'Boiled Fresh Broad Beans',
+    ageRange: '7-12 岁',
+    difficulty: 'medium',
+    estimatedTimeMinutes: 15,
+    fitReasons: ['做法最简单，保留蚕豆原味', '低油脂，符合轻口味需求', '操作门槛低，适合儿童初次尝试'],
+    riskAlerts: ['需家长全程陪同', '涉及开水和燃气灶/电磁炉'],
+    nutritionSummary: '富含植物蛋白和膳食纤维，清淡易消化。',
+    extraIngredients: ['少许盐'],
+    canCookWithCurrentIngredients: true,
+  },
+};
+
+test('resolveRecipeDetailRequestPayload accepts deployed broad bean detail payload', () => {
+  const payload = resolveRecipeDetailRequestPayload(broadBeanDetailPayload);
+
+  assert.equal(payload.profileId, 'chat_context_profile');
+  assert.equal(payload.ingredients[0]?.name, '蚕豆');
+  assert.equal(payload.recipe?.id, '1');
+  assert.equal(payload.recipe?.name, '清煮鲜蚕豆');
+});
+
+test('resolveRecipeDetailRequestPayload accepts nested serverless payload shape', () => {
+  const payload = resolveRecipeDetailRequestPayload({
+    body: JSON.stringify(broadBeanDetailPayload),
+  });
+
+  assert.equal(payload.profileId, 'chat_context_profile');
+  assert.equal(payload.ingredients[0]?.name, '蚕豆');
+  assert.equal(payload.recipe?.id, '1');
+});
+
 test('stripRecipeDetailImageFields removes recipe and ingredient image urls', () => {
   const detail = stripRecipeDetailImageFields({
     id: 'recipe_with_images',

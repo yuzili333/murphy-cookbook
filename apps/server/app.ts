@@ -147,6 +147,27 @@ function normalizeRequestRecord(value: unknown) {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
 
+function resolveNestedRequestRecord(value: unknown, expectedKeys: string[]) {
+  const record = normalizeRequestRecord(value);
+  if (expectedKeys.some((key) => record[key] !== undefined)) {
+    return record;
+  }
+
+  for (const key of ['data', 'payload', 'body']) {
+    const nested = record[key];
+    if (nested === undefined || nested === null) {
+      continue;
+    }
+
+    const nestedRecord = normalizeRequestRecord(nested);
+    if (expectedKeys.some((expectedKey) => nestedRecord[expectedKey] !== undefined)) {
+      return nestedRecord;
+    }
+  }
+
+  return record;
+}
+
 function resolveIngredientItems(value: unknown): IngredientItem[] {
   const parsed = typeof value === 'string' ? parseJsonInput<unknown>(value, value) : value;
   if (!Array.isArray(parsed)) {
@@ -192,14 +213,19 @@ export function resolveRecommendationRequestPayload(body: unknown, query: unknow
 }
 
 export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown = {}): RecipeDetailRequestPayload {
-  const payload = normalizeRequestRecord(body);
+  const payload = resolveNestedRequestRecord(body, ['profileId', 'profile', 'ingredients', 'recipe']);
   const queryPayload = normalizeRequestRecord(query);
 
   return {
     profileId: String(payload.profileId ?? queryPayload.profileId ?? ''),
     ingredients: resolveIngredientItems(payload.ingredients ?? queryPayload.ingredients),
     profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
-    recipe: sanitizeRecipeDetailInput(payload.recipe ?? parseJsonInput(queryPayload.recipe, null)),
+    recipe: sanitizeRecipeDetailInput(
+      payload.recipe ??
+        payload.recipeInput ??
+        payload.selectedRecipe ??
+        parseJsonInput(queryPayload.recipe, null),
+    ),
   };
 }
 

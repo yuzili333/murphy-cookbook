@@ -541,28 +541,21 @@ function buildRecipeDetailUserPrompt(
   ].join('\n');
 
   return [
-    '任务: 基于已选推荐卡片，生成 1 道儿童菜谱详情，并输出严格 JSON。',
-    '儿童档案:',
+    '为儿童生成 1 道菜谱详情，严格 JSON，不要解释。',
+    '儿童:',
     profileLines,
-    '现有食材清单:',
+    '食材:',
     ingredientLines,
-    '目标推荐卡片:',
+    '菜谱卡片:',
     recipeLines,
-    '生成要求:',
-    '1. 只生成这一道菜的详情，不要生成其他备选菜。',
-    '2. 输出完整字段：id、name、namePinyin、englishName、ageRange、difficulty、estimatedTimeMinutes、fitReasons、riskAlerts、nutritionSummary、extraIngredients、canCookWithCurrentIngredients、prepTimeMinutes、cookTimeMinutes、ingredients、steps。',
-    '3. 菜谱必须提供 namePinyin，使用带声调的汉语拼音，并按词分隔，例如 "fān qié jī dàn miàn"。',
-    '4. 菜谱必须提供 englishName，使用自然英译名，适合儿童听读，不要机械逐字翻译。',
-    '5. 不要输出 nameLearning、imageUrl、imageSearchQuery；这些字段不属于详情生成任务。',
-    '6. 任何调味料和近似量不要写“适量/少许/微量”，统一改成儿童可理解的勺数，例如1平勺、半平勺、2平勺。',
-    '7. steps 控制在 4-8 个步骤，适合前端按步骤生成卡通手绘风分镜插画。简单菜谱用 4-5 步，可把连续准备动作合并；复杂菜谱用 6-8 步，但不要超过 8 步。',
-    '8. 每一步都要明确写出本步骤需要的食材清单，并把食材名称写进 title 或 description，例如“番茄、鸡蛋”“鸡蛋打散”“番茄入锅”；不要只写“准备”“处理”“完成”等泛化标题。',
-    '9. 每一步都要包含食材处理或烹饪动作的简短细节，例如“番茄切小块，鸡蛋打散”“倒入锅中轻轻翻炒”“小火煮到变软”；不要写成长段落。',
-    '10. 每一步都要能独立成为插画配文：title 不超过 8 个汉字，description、childAction、expectedResult、tip 都使用短句，单字段尽量不超过 28 个汉字；可以补充必要工具、火候、等待状态，但不要写过密执行说明。',
-    '11. 每一步 steps 除了 title、description、tip、riskLevel、requiresParentAssist，必须补充 childAction、parentAction、expectedResult，帮助识字量少的儿童看图理解；childAction 写孩子能做或能观察的关键动作，parentAction 写清家长何时接手或陪同。',
-    '12. 如果步骤涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskLevel 必须是 medium 或 high，requiresParentAssist 必须是 true，parentAction 必须明确“家长全程陪同/由家长操作”。',
-    '13. 步骤要清晰、适合亲子共做；安全提醒不能只写在总提醒里，相关步骤也必须单独标注。',
-    '14. 输出字段必须完整，不要输出任何解释文字。',
+    '规则:',
+    '1. 只生成这一道菜。',
+    '2. 输出字段: id,name,namePinyin,englishName,ageRange,difficulty,estimatedTimeMinutes,fitReasons,riskAlerts,nutritionSummary,extraIngredients,canCookWithCurrentIngredients,prepTimeMinutes,cookTimeMinutes,ingredients,steps。',
+    '3. 不要输出 nameLearning、imageUrl、imageSearchQuery。',
+    '4. ingredients 写食材名和儿童可理解用量，不要写“适量/少许”。',
+    '5. steps 4-8 步，每步写清本步骤食材和关键动作，适合卡通分镜。',
+    '6. 每步包含 title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。',
+    '7. 涉及开水、热锅、明火、电器、刀具时 riskLevel=medium/high，requiresParentAssist=true，parentAction 写家长全程陪同或由家长操作。',
   ].join('\n');
 }
 
@@ -781,7 +774,7 @@ export async function generateRecipeDetail(
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和指定推荐卡片，生成 1 个完整儿童菜谱详情。操作者多为小学阶段儿童，steps 必须适合前端生成卡通手绘风分镜插画：总步数 4-8 步，每步必须明确写出该步骤需要的食材清单，并用短句写清关键食材处理或烹饪动作，可适当补充工具、火候、等待状态等必要细节，但避免长段落和密集文字。如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，必须在 riskAlerts 和对应 step 中高亮提醒需家长全程陪同。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺"}],"steps":[{"id":"可选","title":"步骤标题","description":"本步骤食材和动作短句","tip":"短句提示","childAction":"孩子关键动作","parentAction":"家长何时介入","expectedResult":"完成状态短句","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出 nameLearning、imageUrl、imageSearchQuery 或额外说明。',
+        '你是儿童菜谱详情生成器。只输出 JSON：{"recipes":[{"id":"","name":"","namePinyin":"","englishName":"","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":[],"riskAlerts":[],"nutritionSummary":"","extraIngredients":[],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"","quantity":""}],"steps":[{"title":"","description":"","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。禁止输出 nameLearning、imageUrl、imageSearchQuery。',
     },
     {
       role: 'user',
@@ -789,7 +782,7 @@ export async function generateRecipeDetail(
     },
   ], {
     operation: 'generate_recipe_detail',
-    maxTokens: 1600,
+    maxTokens: 1200,
     metadata: {
       profileId: profile.id,
       recipeId: recipe.id,
