@@ -41,6 +41,9 @@ export interface RecipeRecommendation {
   canCookWithCurrentIngredients?: boolean;
 }
 
+export type RecipeDetailRecipeInput = Pick<RecipeRecommendation, 'id' | 'name'> &
+  Partial<Omit<RecipeRecommendation, 'id' | 'name' | 'imageUrl' | 'nameLearning'>>;
+
 export interface CookingStep {
   id: string;
   title: string;

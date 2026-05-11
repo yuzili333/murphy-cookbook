@@ -7,6 +7,8 @@ import {
   type ChildProfile,
   type IngredientItem,
   type RecipeRecommendation,
+  type RecipeDetail,
+  type RecipeDetailRecipeInput,
 } from './data.js';
 import { getLocalLlmLogFilePath, readLocalLlmLogs, shouldUseLocalDebugLog } from './logger.js';
 import {
@@ -67,7 +69,7 @@ interface RecipeDetailRequestPayload {
   profileId: string;
   ingredients: IngredientItem[];
   profile: Partial<ChildProfile> | null;
-  recipe: Partial<RecipeRecommendation> | null;
+  recipe: Partial<RecipeDetailRecipeInput> | null;
 }
 
 interface RecipeDetailsRequestPayload {
@@ -84,8 +86,57 @@ interface RecommendationRequestPayload {
   userPrompt: string;
 }
 
-function isRecipeRecommendationInput(recipe: Partial<RecipeRecommendation> | null): recipe is RecipeRecommendation {
+function isRecipeRecommendationInput(recipe: Partial<RecipeDetailRecipeInput> | null): recipe is RecipeDetailRecipeInput {
   return Boolean(recipe?.id && recipe?.name);
+}
+
+function isFullRecipeRecommendationInput(recipe: Partial<RecipeRecommendation> | null): recipe is RecipeRecommendation {
+  return Boolean(recipe?.id && recipe?.name && recipe?.englishName && recipe?.nameLearning);
+}
+
+function sanitizeRecipeDetailInput(recipe: unknown): Partial<RecipeDetailRecipeInput> | null {
+  const parsedRecipe = typeof recipe === 'string' ? parseJsonInput<unknown>(recipe, null) : recipe;
+  if (!parsedRecipe || typeof parsedRecipe !== 'object') {
+    return null;
+  }
+
+  const candidate = parsedRecipe as Partial<RecipeRecommendation>;
+  const sanitized: Partial<RecipeDetailRecipeInput> = {
+    id: typeof candidate.id === 'string' ? candidate.id : undefined,
+    name: typeof candidate.name === 'string' ? candidate.name : undefined,
+    namePinyin: typeof candidate.namePinyin === 'string' ? candidate.namePinyin : undefined,
+    englishName: typeof candidate.englishName === 'string' ? candidate.englishName : undefined,
+    ageRange: typeof candidate.ageRange === 'string' ? candidate.ageRange : undefined,
+    difficulty:
+      candidate.difficulty === 'easy' || candidate.difficulty === 'medium' || candidate.difficulty === 'hard'
+        ? candidate.difficulty
+        : undefined,
+    estimatedTimeMinutes: Number.isFinite(Number(candidate.estimatedTimeMinutes))
+      ? Number(candidate.estimatedTimeMinutes)
+      : undefined,
+    fitReasons: Array.isArray(candidate.fitReasons) ? candidate.fitReasons.map(String) : undefined,
+    riskAlerts: Array.isArray(candidate.riskAlerts) ? candidate.riskAlerts.map(String) : undefined,
+    nutritionSummary: typeof candidate.nutritionSummary === 'string' ? candidate.nutritionSummary : undefined,
+    extraIngredients: Array.isArray(candidate.extraIngredients) ? candidate.extraIngredients.map(String) : undefined,
+    canCookWithCurrentIngredients:
+      typeof candidate.canCookWithCurrentIngredients === 'boolean'
+        ? candidate.canCookWithCurrentIngredients
+        : undefined,
+  };
+
+  return Object.fromEntries(Object.entries(sanitized).filter(([, value]) => value !== undefined)) as Partial<RecipeDetailRecipeInput>;
+}
+
+export function stripRecipeDetailImageFields(detail: RecipeDetail) {
+  const { imageUrl: _imageUrl, ingredients, ...rest } = detail;
+
+  return {
+    ...rest,
+    ingredients: ingredients.map((ingredient) => {
+      const { imageUrl: _ingredientImageUrl, ...ingredientRest } = ingredient;
+      return ingredientRest;
+    }),
+  };
 }
 
 function normalizeRequestRecord(value: unknown) {
@@ -148,7 +199,7 @@ export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown 
     profileId: String(payload.profileId ?? queryPayload.profileId ?? ''),
     ingredients: resolveIngredientItems(payload.ingredients ?? queryPayload.ingredients),
     profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
-    recipe: (payload.recipe ?? parseJsonInput(queryPayload.recipe, null)) as Partial<RecipeRecommendation> | null,
+    recipe: sanitizeRecipeDetailInput(payload.recipe ?? parseJsonInput(queryPayload.recipe, null)),
   };
 }
 
@@ -478,12 +529,12 @@ export function createApp(): Express {
       return;
     }
 
-    res.json({ data: result.data });
+    res.json({ data: stripRecipeDetailImageFields(result.data) });
   });
 
   app.post('/api/v1/recipes/details', async (req, res) => {
     const { profileId, ingredients, profile, recipes } = resolveRecipeDetailsRequestPayload(req.body, req.query);
-    const validRecipes = recipes.filter(isRecipeRecommendationInput);
+    const validRecipes = recipes.filter(isFullRecipeRecommendationInput);
 
     if (validRecipes.length === 0) {
       res.status(400).json({
@@ -512,7 +563,7 @@ export function createApp(): Express {
       return;
     }
 
-    res.json({ data: result.data });
+    res.json({ data: result.data.map(stripRecipeDetailImageFields) });
   });
 
   app.post('/api/v1/cooking-feedback', async (req, res) => {

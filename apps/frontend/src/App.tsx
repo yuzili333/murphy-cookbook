@@ -86,6 +86,22 @@ function createChatSession(input?: Partial<ChatSession>): ChatSession {
   };
 }
 
+function hasMeaningfulChatMessages(messages: ChatMessage[]) {
+  return messages.some((message) =>
+    message.role === 'user' ||
+    Boolean(message.imageDataUrl) ||
+    Boolean(message.ingredients?.length) ||
+    Boolean(message.recipes?.length),
+  );
+}
+
+function isPersistableChatSession(session: ChatSession) {
+  return Boolean(
+    session.ingredients.length > 0 ||
+      hasMeaningfulChatMessages(session.messages),
+  );
+}
+
 function readFavoriteRecipes() {
   if (typeof window === 'undefined') {
     return {} as FavoriteRecipesByProfile;
@@ -183,7 +199,7 @@ function readChatSessions() {
     const raw = window.localStorage.getItem(chatSessionsStorageKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as ChatSession[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? parsed.filter(isPersistableChatSession) : [];
   } catch {
     return [];
   }
@@ -194,7 +210,7 @@ function persistChatSessions(sessions: ChatSession[]) {
     return;
   }
 
-  window.localStorage.setItem(chatSessionsStorageKey, JSON.stringify(sessions.slice(0, 30)));
+  window.localStorage.setItem(chatSessionsStorageKey, JSON.stringify(sessions.filter(isPersistableChatSession).slice(0, 30)));
 }
 
 function readActiveChatSessionId() {
@@ -687,15 +703,23 @@ export default function App() {
         const localActiveChatSessionId = readActiveChatSessionId();
         setFavoriteRecipesByProfile(localFavoriteRecipes);
         setFavoriteRecipes(localFavoriteRecipes[conversationProfileId] ?? []);
-        const initialSessions = localChatSessions.length > 0
-          ? localChatSessions
-          : [createChatSession({
+        const storedSessions = localChatSessions.filter(isPersistableChatSession);
+        const legacySession = localChatMessages.length > 0
+          ? createChatSession({
               childContext: localChildContext,
-              messages: localChatMessages.length > 0 ? localChatMessages : undefined,
+              messages: localChatMessages,
               title: buildSessionTitle(localChatMessages, localChildContext),
-            })];
+            })
+          : null;
+        const initialSessions = storedSessions.length > 0
+          ? storedSessions
+          : legacySession && isPersistableChatSession(legacySession)
+            ? [legacySession]
+            : [];
         const activeSession =
-          initialSessions.find((session) => session.id === localActiveChatSessionId) ?? initialSessions[0];
+          initialSessions.find((session) => session.id === localActiveChatSessionId) ??
+          initialSessions[0] ??
+          createChatSession({ childContext: localChildContext });
         setChatSessions(initialSessions);
         setActiveChatSessionId(activeSession.id);
         setChildContext(activeSession.childContext);
@@ -802,6 +826,12 @@ export default function App() {
         createdAt: current.find((session) => session.id === activeChatSessionId)?.createdAt,
         updatedAt,
       });
+      if (!isPersistableChatSession(nextSession)) {
+        const next = current.filter((session) => session.id !== activeChatSessionId);
+        persistChatSessions(next);
+        persistActiveChatSessionId(activeChatSessionId);
+        return next;
+      }
       const next = [
         nextSession,
         ...current.filter((session) => session.id !== activeChatSessionId),
@@ -878,7 +908,7 @@ export default function App() {
     setRecipeDetailErrorsById({});
     setChatMessages(session.messages);
     setChatSessions((current) => {
-      const next = [session, ...current.filter((item) => item.id !== session.id)];
+      const next = current.filter((item) => item.id !== session.id);
       persistChatSessions(next);
       persistActiveChatSessionId(session.id);
       return next;
@@ -901,11 +931,10 @@ export default function App() {
   const handleDeleteConversation = (sessionId: string) => {
     setChatSessions((current) => {
       const remaining = current.filter((session) => session.id !== sessionId);
-      const nextSessions = remaining.length > 0 ? remaining : [createChatSession()];
-      persistChatSessions(nextSessions);
+      persistChatSessions(remaining);
 
       if (sessionId === activeChatSessionId) {
-        const nextActiveSession = nextSessions[0];
+        const nextActiveSession = remaining[0] ?? createChatSession();
         setActiveChatSessionId(nextActiveSession.id);
         setChildContext(nextActiveSession.childContext);
         setIngredients(nextActiveSession.ingredients);
@@ -916,7 +945,7 @@ export default function App() {
         persistActiveChatSessionId(nextActiveSession.id);
       }
 
-      return nextSessions;
+      return remaining;
     });
   };
 
@@ -1504,29 +1533,33 @@ export default function App() {
             </button>
             <div className="conversation-list">
               <p className="conversation-group-title">最近</p>
-              {chatSessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={session.id === activeChatSessionId ? 'conversation-item active' : 'conversation-item'}
-                >
-                  <button
-                    type="button"
-                    className="conversation-select-button"
-                    onClick={() => handleSelectConversation(session)}
+              {chatSessions.length > 0 ? (
+                chatSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={session.id === activeChatSessionId ? 'conversation-item active' : 'conversation-item'}
                   >
-                    <strong>{session.title}</strong>
-                    <span>{session.childContext || '默认小学阶段健康饮食原则'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="conversation-delete-button"
-                    onClick={() => handleDeleteConversation(session.id)}
-                    aria-label={`删除历史对话：${session.title}`}
-                  >
-                    删除
-                  </button>
-                </div>
-              ))}
+                    <button
+                      type="button"
+                      className="conversation-select-button"
+                      onClick={() => handleSelectConversation(session)}
+                    >
+                      <strong>{session.title}</strong>
+                      <span>{session.childContext || '默认小学阶段健康饮食原则'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="conversation-delete-button"
+                      onClick={() => handleDeleteConversation(session.id)}
+                      aria-label={`删除历史对话：${session.title}`}
+                    >
+                      删除
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="conversation-empty">暂无历史对话</p>
+              )}
             </div>
           </aside>
         </div>

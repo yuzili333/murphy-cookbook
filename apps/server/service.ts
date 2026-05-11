@@ -5,6 +5,7 @@ import {
   recipeCatalog,
   summarizeRecipe,
   type RecipeRecommendation,
+  type RecipeDetailRecipeInput,
   type ChildProfile,
   type IngredientItem,
   type RecipeDetail,
@@ -52,7 +53,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   });
 }
 
-function isRecipeDetailPayload(recipe: RecipeRecommendation | RecipeDetail): recipe is RecipeDetail {
+function isRecipeDetailPayload(recipe: RecipeRecommendation | RecipeDetailRecipeInput | RecipeDetail): recipe is RecipeDetail {
   const candidate = recipe as Partial<RecipeDetail>;
   return (
     Array.isArray(candidate.ingredients) &&
@@ -120,6 +121,42 @@ function validateRecommendationInput(
   }
 
   return { profile };
+}
+
+function validateDetailInput(
+  profileId: string,
+  profileInput?: Partial<ChildProfile> | null,
+): { profile: ChildProfile } | { error: RecommendationError } {
+  const profile = resolveProfile(profileId, profileInput);
+  if (!profile) {
+    return {
+      error: { code: 'PROFILE_NOT_FOUND', message: '无法生成默认儿童推荐档案。' },
+    };
+  }
+
+  return { profile };
+}
+
+function buildDetailIngredients(input: {
+  ingredients: IngredientItem[];
+  recipe: RecipeDetailRecipeInput | RecipeDetail;
+}) {
+  if (input.ingredients.length > 0) {
+    return input.ingredients;
+  }
+
+  const fallbackNames = [
+    input.recipe.name,
+    ...(input.recipe.extraIngredients ?? []),
+  ]
+    .flatMap((item) => String(item).split(/[，,、\s]+/))
+    .map((item) => item.replace(/\d+(\.\d+)?\s*(个|份|根|把|克|g|ml|毫升|平勺|勺)?/gi, '').trim())
+    .filter(Boolean)
+    .slice(0, 8);
+
+  return fallbackNames.length > 0
+    ? fallbackNames.map((name) => createIngredient(name, 'manual'))
+    : [createIngredient(input.recipe.name, 'manual')];
 }
 
 export function getMockRecipeRecommendations(profile: ChildProfile, ingredients: IngredientItem[]): RecommendationResult {
@@ -223,10 +260,10 @@ export async function recommendRecipes(
 export async function getRecipeDetailForRecommendation(input: {
   profileId: string;
   ingredients: IngredientItem[];
-  recipe: RecipeRecommendation | RecipeDetail;
+  recipe: RecipeDetailRecipeInput | RecipeDetail;
   profileInput?: Partial<ChildProfile> | null;
 }): Promise<{ data: RecipeDetail } | { error: RecommendationError }> {
-  const validation = validateRecommendationInput(input.profileId, input.ingredients, input.profileInput);
+  const validation = validateDetailInput(input.profileId, input.profileInput);
 
   if ('error' in validation) {
     return { error: validation.error };
@@ -242,6 +279,10 @@ export async function getRecipeDetailForRecommendation(input: {
   }
 
   const { profile } = validation;
+  const detailIngredients = buildDetailIngredients({
+    ingredients: input.ingredients,
+    recipe: input.recipe,
+  });
   if (!isSiliconFlowConfigured()) {
     return {
       error: {
@@ -254,7 +295,7 @@ export async function getRecipeDetailForRecommendation(input: {
   try {
     return {
       data: await withTimeout(
-        generateRecipeDetail(profile, input.ingredients, input.recipe),
+        generateRecipeDetail(profile, detailIngredients, input.recipe),
         recipeDetailModelTimeoutMs,
         '菜谱详情生成超时，请稍后重试。',
       ),

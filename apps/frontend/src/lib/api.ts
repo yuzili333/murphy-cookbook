@@ -148,6 +148,7 @@ export function fetchGeneratedRecipeDetail(payload: {
   ingredients: IngredientItem[];
   recipe: RecipeDetail | RecipeRecommendation;
 }) {
+  const recipe = payload.recipe;
   const requestPayload = {
     profileId: payload.profileId,
     profile: payload.profile,
@@ -157,7 +158,20 @@ export function fetchGeneratedRecipeDetail(payload: {
       quantity: ingredient.quantity,
       source: ingredient.source,
     })),
-    recipe: payload.recipe,
+    recipe: {
+      id: recipe.id,
+      name: recipe.name,
+      namePinyin: recipe.namePinyin,
+      englishName: recipe.englishName,
+      ageRange: recipe.ageRange,
+      difficulty: recipe.difficulty,
+      estimatedTimeMinutes: recipe.estimatedTimeMinutes,
+      fitReasons: recipe.fitReasons,
+      riskAlerts: recipe.riskAlerts,
+      nutritionSummary: recipe.nutritionSummary,
+      extraIngredients: recipe.extraIngredients,
+      canCookWithCurrentIngredients: recipe.canCookWithCurrentIngredients,
+    },
   };
 
   return request<RecipeDetail>('/recipes/detail', {

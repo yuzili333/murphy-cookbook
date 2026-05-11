@@ -441,6 +441,7 @@ button {
 
 .recipe-carousel {
   display: flex;
+  align-items: flex-start;
   gap: 10px;
   width: min(100vw - 32px, 980px);
   overflow-x: auto;
@@ -458,6 +459,7 @@ button {
 
 .carousel-recipe-card {
   flex: 0 0 min(340px, 88vw);
+  align-self: flex-start;
   display: grid;
   gap: 8px;
   scroll-snap-align: start;
@@ -1749,6 +1751,15 @@ button {
   margin: 0 0 4px;
   color: var(--text-soft);
   font-size: 0.88rem;
+}
+
+.conversation-empty {
+  margin: 0;
+  padding: 16px 14px;
+  border: 1px dashed rgba(22, 49, 58, 0.16);
+  border-radius: 16px;
+  color: var(--text-soft);
+  font-size: 0.9rem;
 }
 
 .conversation-item {

@@ -585,6 +585,39 @@ test('getRecipeDetailForRecommendation generates model detail for summary-only g
   }
 });
 
+test('getRecipeDetailForRecommendation does not reject empty ingredients as invalid argument', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  delete process.env.SILICONFLOW_API_KEY;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'cp_001',
+    ingredients: [],
+    recipe: {
+      id: `recipe_empty_ingredients_${Date.now()}`,
+      name: '鸡蛋羹',
+      englishName: 'Steamed Egg',
+      ageRange: '7-12 岁',
+      difficulty: 'easy' as const,
+      estimatedTimeMinutes: 12,
+      fitReasons: ['清淡软嫩'],
+      riskAlerts: ['蒸锅需家长陪同'],
+      nutritionSummary: '蛋白质丰富。',
+      extraIngredients: ['鸡蛋'],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if (!('error' in result)) {
+    assert.fail('expected provider configuration error when model is not configured');
+  }
+
+  assert.notEqual(result.error.code, 'INVALID_ARGUMENT');
+
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  }
+});
+
 test('generateCookingFeedback returns parsed feedback fields', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
