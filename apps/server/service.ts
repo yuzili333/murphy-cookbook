@@ -28,7 +28,7 @@ export type RecommendationResult =
   | { error: RecommendationError };
 
 const recipeRecommendationModelTimeoutMs = Number(process.env.RECIPE_RECOMMENDATION_MODEL_TIMEOUT_MS ?? 120000);
-const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 120000);
+const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 60000);
 const defaultRecommendationProfile: ChildProfile = {
   id: 'chat_context_profile',
   nickname: '小学阶段学生',

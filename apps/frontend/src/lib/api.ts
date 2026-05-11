@@ -166,30 +166,6 @@ export function fetchGeneratedRecipeDetail(payload: {
   });
 }
 
-export function fetchGeneratedRecipeDetails(payload: {
-  profileId: string;
-  profile: ChildProfile;
-  ingredients: IngredientItem[];
-  recipes: Array<RecipeDetail | RecipeRecommendation>;
-}) {
-  const requestPayload = {
-    profileId: payload.profileId,
-    profile: payload.profile,
-    ingredients: payload.ingredients.map((ingredient) => ({
-      name: ingredient.name,
-      normalizedName: ingredient.normalizedName ?? ingredient.name,
-      quantity: ingredient.quantity,
-      source: ingredient.source,
-    })),
-    recipes: payload.recipes,
-  };
-
-  return request<RecipeDetail[]>('/recipes/details', {
-    method: 'POST',
-    body: JSON.stringify(requestPayload),
-  });
-}
-
 export function submitCookingFeedback(payload: {
   profileId: string;
   profile: ChildProfile;

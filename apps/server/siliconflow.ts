@@ -894,13 +894,13 @@ export async function generateRecipeDetails(
     ingredients,
   );
 
-  const generatedDetails = missingRecipes.map((recipe) => {
+  const generatedDetails = missingRecipes.reduce<RecipeDetail[]>((details, recipe) => {
     const matched = detailPayload.recipeDetails.find((detail) => detail.id === recipe.id || detail.name === recipe.name);
     if (!matched) {
-      throw new Error(`菜谱详情生成失败：${recipe.name}`);
+      return details;
     }
 
-    return {
+    details.push({
       ...matched,
       id: recipe.id || matched.id,
       imageUrl: recipe.imageUrl ?? matched.imageUrl,
@@ -919,8 +919,10 @@ export async function generateRecipeDetails(
         typeof recipe.canCookWithCurrentIngredients === 'boolean'
           ? recipe.canCookWithCurrentIngredients
           : matched.canCookWithCurrentIngredients,
-    } satisfies RecipeDetail;
-  });
+    } satisfies RecipeDetail);
+
+    return details;
+  }, []);
 
   return [...catalogDetails, ...generatedDetails];
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type TouchEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type TouchEvent } from 'react';
 import { AppShell } from './components/AppShell';
 import { RecipeName } from './components/RecipeName';
 import audioPlayIcon from './assets/audio-play.svg';
@@ -8,7 +8,6 @@ import sendMessageIcon from './assets/send-message.svg';
 import { defaultIngredientVisual, getIngredientVisual } from './data/ingredientVisuals';
 import {
   fetchGeneratedRecipeDetail,
-  fetchGeneratedRecipeDetails,
   fetchRecommendations,
   fetchSeasonalIngredientSuggestions,
   parseIngredientText,
@@ -525,13 +524,8 @@ export default function App() {
   const chatInputRef = useRef<HTMLInputElement>(null);
   const chatThreadEndRef = useRef<HTMLDivElement>(null);
   const skipNextChatAutoScrollRef = useRef(false);
+  const requestedRecipeDetailKeysRef = useRef<Set<string>>(new Set());
   const ingredientSwipeRef = useRef({
-    startX: 0,
-    startY: 0,
-    scrollLeft: 0,
-    isHorizontal: false,
-  });
-  const recipeSwipeRef = useRef({
     startX: 0,
     startY: 0,
     scrollLeft: 0,
@@ -556,7 +550,7 @@ export default function App() {
   const [isConversationDrawerOpen, setIsConversationDrawerOpen] = useState(false);
   const [isFavoriteDrawerOpen, setIsFavoriteDrawerOpen] = useState(false);
   const [pendingScrollRecipeId, setPendingScrollRecipeId] = useState('');
-  const [pendingRecipeMessageId, setPendingRecipeMessageId] = useState('');
+  const [pendingIngredientMessageId, setPendingIngredientMessageId] = useState('');
   const [childContext, setChildContext] = useState('');
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [recipeDetailLoadingById, setRecipeDetailLoadingById] = useState<Record<string, boolean>>({});
@@ -571,6 +565,7 @@ export default function App() {
   const [activeSpeechKey, setActiveSpeechKey] = useState('');
   const [error, setError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
+  const [favoriteConfettiRecipeId, setFavoriteConfettiRecipeId] = useState('');
   const isRecognizingIngredients = isParsingText || isUploadingImage;
 
   const speakText = (text: string, lang = 'zh-CN', speechKey = '') => {
@@ -679,11 +674,6 @@ export default function App() {
   const handleIngredientTouchMove = (event: TouchEvent<HTMLDivElement>) =>
     handleHorizontalTouchMove(event, ingredientSwipeRef);
   const handleIngredientTouchEnd = () => handleHorizontalTouchEnd(ingredientSwipeRef);
-  const handleRecipeTouchStart = (event: TouchEvent<HTMLDivElement>) =>
-    handleHorizontalTouchStart(event, recipeSwipeRef);
-  const handleRecipeTouchMove = (event: TouchEvent<HTMLDivElement>) =>
-    handleHorizontalTouchMove(event, recipeSwipeRef);
-  const handleRecipeTouchEnd = () => handleHorizontalTouchEnd(recipeSwipeRef);
 
   useEffect(() => {
     async function bootstrap() {
@@ -777,24 +767,24 @@ export default function App() {
   }, [isBootstrapping, lastChatMessageId]);
 
   useEffect(() => {
-    if (!pendingRecipeMessageId) {
+    if (!pendingIngredientMessageId) {
       return;
     }
 
     const timeoutId = window.setTimeout(() => {
       const target = document.querySelector<HTMLElement>(
-        `[data-chat-message-id="${pendingRecipeMessageId}"] .recipe-carousel`,
+        `[data-chat-message-id="${pendingIngredientMessageId}"]`,
       );
       target?.scrollIntoView({
         block: 'start',
         inline: 'nearest',
         behavior: 'smooth',
       });
-      setPendingRecipeMessageId('');
+      setPendingIngredientMessageId('');
     }, 120);
 
     return () => window.clearTimeout(timeoutId);
-  }, [pendingRecipeMessageId, lastChatMessageId]);
+  }, [pendingIngredientMessageId, lastChatMessageId]);
 
   useEffect(() => {
     if (isBootstrapping || !activeChatSessionId) {
@@ -838,6 +828,15 @@ export default function App() {
     const timeoutId = window.setTimeout(() => setToastMessage(''), 3600);
     return () => window.clearTimeout(timeoutId);
   }, [toastMessage]);
+
+  useEffect(() => {
+    if (!favoriteConfettiRecipeId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setFavoriteConfettiRecipeId(''), 620);
+    return () => window.clearTimeout(timeoutId);
+  }, [favoriteConfettiRecipeId]);
 
   useEffect(() => {
     if (!pendingScrollRecipeId) {
@@ -897,6 +896,28 @@ export default function App() {
     setRecipeDetailErrorsById({});
     persistActiveChatSessionId(session.id);
     setIsConversationDrawerOpen(false);
+  };
+
+  const handleDeleteConversation = (sessionId: string) => {
+    setChatSessions((current) => {
+      const remaining = current.filter((session) => session.id !== sessionId);
+      const nextSessions = remaining.length > 0 ? remaining : [createChatSession()];
+      persistChatSessions(nextSessions);
+
+      if (sessionId === activeChatSessionId) {
+        const nextActiveSession = nextSessions[0];
+        setActiveChatSessionId(nextActiveSession.id);
+        setChildContext(nextActiveSession.childContext);
+        setIngredients(nextActiveSession.ingredients);
+        setChatMessages(nextActiveSession.messages);
+        setRecipeDetailsById(buildRecipeDetailsMap(nextActiveSession.messages.flatMap((message) => message.recipeDetails ?? [])));
+        setRecipeDetailLoadingById({});
+        setRecipeDetailErrorsById({});
+        persistActiveChatSessionId(nextActiveSession.id);
+      }
+
+      return nextSessions;
+    });
   };
 
   const handleOpenFavoriteRecipe = (recipe: RecipeRecommendation) => {
@@ -978,86 +999,67 @@ export default function App() {
     }
   };
 
-  const loadRecipeDetailsForCards = (
-    recipes: RecipeRecommendation[],
-    nextIngredients: IngredientItem[],
-    profile: ChildProfile,
-    messageId: string,
-  ) => {
-    const ingredientsKey = buildIngredientsKey(nextIngredients);
-    const missingRecipes: RecipeRecommendation[] = [];
-
-    for (const recipe of recipes) {
-      const cacheKey = buildRecipeDetailCacheKey(profile, ingredientsKey, recipe);
-      const cachedDetail = readCachedValue<RecipeDetail>(recipeDetailCacheStorageKey, cacheKey);
-
-      if (cachedDetail) {
-        setRecipeDetailsById((current) => ({ ...current, [cachedDetail.id]: cachedDetail, [recipe.id]: cachedDetail }));
-        mergeRecipeDetailIntoCurrentSession(messageId, cachedDetail);
-      } else {
-        missingRecipes.push(recipe);
-      }
-    }
-
-    if (missingRecipes.length === 0) {
+  useEffect(() => {
+    if (isBootstrapping || typeof window === 'undefined' || !('IntersectionObserver' in window)) {
       return;
     }
 
-    setRecipeDetailLoadingById((current) => ({
-      ...current,
-      ...Object.fromEntries(missingRecipes.map((recipe) => [recipe.id, true])),
-    }));
-    setRecipeDetailErrorsById((current) => {
-      const next = { ...current };
-      for (const recipe of missingRecipes) {
-        delete next[recipe.id];
-      }
-      return next;
-    });
+    const recipeCards = Array.from(document.querySelectorAll<HTMLElement>('.carousel-recipe-card[data-recipe-card-id]'));
+    if (recipeCards.length === 0) {
+      return;
+    }
 
-    void (async () => {
-      try {
-        const details = await fetchGeneratedRecipeDetails({
-          profileId: profile.id,
-          profile,
-          ingredients: nextIngredients,
-          recipes: missingRecipes,
-        });
-        const detailByRecipe = new Map<string, RecipeDetail>();
-        for (const detail of details) {
-          detailByRecipe.set(detail.id, detail);
-          detailByRecipe.set(detail.name, detail);
-        }
-
-        for (const recipe of missingRecipes) {
-          const detail = detailByRecipe.get(recipe.id) ?? detailByRecipe.get(recipe.name);
-          if (!detail) {
-            setRecipeDetailErrorsById((current) => ({ ...current, [recipe.id]: '菜谱步骤获取失败。' }));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) {
             continue;
           }
 
-          const cacheKey = buildRecipeDetailCacheKey(profile, ingredientsKey, recipe);
-          writeCachedValue(recipeDetailCacheStorageKey, cacheKey, detail);
-          setRecipeDetailsById((current) => ({ ...current, [detail.id]: detail, [recipe.id]: detail }));
-          mergeRecipeDetailIntoCurrentSession(messageId, detail);
-        }
-      } catch (detailError) {
-        const message = detailError instanceof Error ? detailError.message : '菜谱步骤获取失败。';
-        setRecipeDetailErrorsById((current) => ({
-          ...current,
-          ...Object.fromEntries(missingRecipes.map((recipe) => [recipe.id, message])),
-        }));
-        setToastMessage('烹饪步骤获取失败，请稍后重试。');
-      } finally {
-        setRecipeDetailLoadingById((current) => ({
-          ...current,
-          ...Object.fromEntries(missingRecipes.map((recipe) => [recipe.id, false])),
-        }));
-      }
-    })();
-  };
+          const card = entry.target as HTMLElement;
+          const recipeId = card.dataset.recipeCardId ?? '';
+          const messageId = card.closest<HTMLElement>('[data-chat-message-id]')?.dataset.chatMessageId ?? '';
+          const message = chatMessages.find((item) => item.id === messageId);
+          const recipe = message?.recipes?.find((item) => item.id === recipeId);
+          const nextIngredients = message?.ingredients?.length ? message.ingredients : ingredients;
 
-  const requestChatRecommendations = async (prompt: string, nextIngredients: IngredientItem[]) => {
+          if (!recipe || !messageId || nextIngredients.length === 0) {
+            observer.unobserve(card);
+            continue;
+          }
+
+          const requestKey = `${messageId}:${recipe.id}:${buildIngredientsKey(nextIngredients)}`;
+          if (
+            recipeDetailsById[recipe.id] ||
+            recipeDetailLoadingById[recipe.id] ||
+            requestedRecipeDetailKeysRef.current.has(requestKey)
+          ) {
+            observer.unobserve(card);
+            continue;
+          }
+
+          requestedRecipeDetailKeysRef.current.add(requestKey);
+          observer.unobserve(card);
+          void loadRecipeDetailForCard(recipe, nextIngredients, selectedProfile, messageId);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '140px 0px 180px 0px',
+        threshold: 0.18,
+      },
+    );
+
+    recipeCards.forEach((card) => observer.observe(card));
+
+    return () => observer.disconnect();
+  }, [chatMessages, ingredients, isBootstrapping, recipeDetailLoadingById, recipeDetailsById, selectedProfile]);
+
+  const requestChatRecommendations = async (
+    prompt: string,
+    nextIngredients: IngredientItem[],
+    sourceIngredientMessageId = '',
+  ) => {
     if (nextIngredients.length === 0) {
       addChatMessage({
         role: 'assistant',
@@ -1067,6 +1069,12 @@ export default function App() {
     }
 
     const ingredientsKey = buildIngredientsKey(nextIngredients);
+    const ingredientMessageId =
+      sourceIngredientMessageId ||
+      [...chatMessages]
+        .reverse()
+        .find((message) => message.ingredients?.length && buildIngredientsKey(message.ingredients) === ingredientsKey)?.id ||
+      '';
     setIsFetchingRecommendations(true);
     setError('');
 
@@ -1111,8 +1119,7 @@ export default function App() {
         recipes,
         recipeDetails,
       });
-      loadRecipeDetailsForCards(recipes, nextIngredients, selectedProfile, recipeMessage.id);
-      setPendingRecipeMessageId(recipeMessage.id);
+      setPendingIngredientMessageId(ingredientMessageId || recipeMessage.id);
       setManualIngredient('');
     } catch (recommendationError) {
       setError(recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。');
@@ -1123,6 +1130,39 @@ export default function App() {
     } finally {
       setIsFetchingRecommendations(false);
     }
+  };
+
+  const handleSeasonalIngredientClick = (suggestion: SeasonalIngredientSuggestion) => {
+    if (isRecognizingIngredients) {
+      return;
+    }
+
+    const selectedIngredient: IngredientItem = {
+      id: `ingredient_${crypto.randomUUID()}`,
+      name: suggestion.name,
+      normalizedName: suggestion.name,
+      quantity: '适量',
+      source: 'manual',
+      confidence: 1,
+    };
+    const nextIngredients = [selectedIngredient];
+
+    setError('');
+    setIngredients(nextIngredients);
+    setManualIngredient('');
+    if (chatInputRef.current) {
+      chatInputRef.current.value = '';
+    }
+
+    addChatMessage({
+      role: 'user',
+      text: suggestion.name,
+    });
+    addChatMessage({
+      role: 'assistant',
+      text: `已选择时令食材：${suggestion.name}。你可以继续补充食材，也可以直接搜索菜谱。`,
+      ingredients: nextIngredients,
+    });
   };
 
   const handleChatSubmit = async (text?: string) => {
@@ -1364,8 +1404,8 @@ export default function App() {
     );
   };
 
-  const handleSearchWithCurrentIngredients = async (sourceIngredients?: IngredientItem[]) => {
-    const nextIngredients = ingredients.length > 0 ? ingredients : sourceIngredients ?? [];
+  const handleSearchWithCurrentIngredients = async (sourceIngredients?: IngredientItem[], sourceMessageId = '') => {
+    const nextIngredients = sourceIngredients?.length ? sourceIngredients : ingredients;
     if (nextIngredients.length > 10) {
       setError('一次最多支持 10 个食材，请减少食材后再获取推荐菜谱。');
       addChatMessage({
@@ -1376,7 +1416,7 @@ export default function App() {
     }
 
     setIngredients((current) => mergeIngredientItems(current, sourceIngredients ?? []));
-    await requestChatRecommendations('请根据当前已识别食材推荐菜谱', nextIngredients);
+    await requestChatRecommendations('请根据当前已识别食材推荐菜谱', nextIngredients, sourceMessageId);
   };
 
   const toggleFavoriteRecipe = (recipe: RecipeRecommendation) => {
@@ -1396,6 +1436,10 @@ export default function App() {
         [selectedProfileId]: nextGroup,
       };
       persistFavoriteRecipes(next);
+      if (!exists) {
+        setFavoriteConfettiRecipeId(recipe.id);
+        setToastMessage(`已收藏 ${recipe.name}`);
+      }
       return next;
     });
   };
@@ -1461,15 +1505,27 @@ export default function App() {
             <div className="conversation-list">
               <p className="conversation-group-title">最近</p>
               {chatSessions.map((session) => (
-                <button
+                <div
                   key={session.id}
-                  type="button"
                   className={session.id === activeChatSessionId ? 'conversation-item active' : 'conversation-item'}
-                  onClick={() => handleSelectConversation(session)}
                 >
-                  <strong>{session.title}</strong>
-                  <span>{session.childContext || '默认小学阶段健康饮食原则'}</span>
-                </button>
+                  <button
+                    type="button"
+                    className="conversation-select-button"
+                    onClick={() => handleSelectConversation(session)}
+                  >
+                    <strong>{session.title}</strong>
+                    <span>{session.childContext || '默认小学阶段健康饮食原则'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="conversation-delete-button"
+                    onClick={() => handleDeleteConversation(session.id)}
+                    aria-label={`删除历史对话：${session.title}`}
+                  >
+                    删除
+                  </button>
+                </div>
               ))}
             </div>
           </aside>
@@ -1654,7 +1710,7 @@ export default function App() {
                             ? 'ingredient-recommend-button recommended'
                             : 'ingredient-recommend-button attention'
                         }
-                        onClick={() => void handleSearchWithCurrentIngredients(message.ingredients)}
+                        onClick={() => void handleSearchWithCurrentIngredients(message.ingredients, message.id)}
                         disabled={isRecognizingIngredients || isFetchingRecommendations}
                       >
                         {isFetchingRecommendations ? (
@@ -1677,10 +1733,6 @@ export default function App() {
                   <div
                     className="recipe-carousel"
                     aria-label="推荐菜谱"
-                    onTouchStart={handleRecipeTouchStart}
-                    onTouchMove={handleRecipeTouchMove}
-                    onTouchEnd={handleRecipeTouchEnd}
-                    onTouchCancel={handleRecipeTouchEnd}
                   >
                     {message.recipes.map((recipe) => {
                       const recipeDetail = recipeDetailsById[recipe.id];
@@ -1932,8 +1984,16 @@ export default function App() {
                                 type="button"
                                 className="secondary-button"
                                 onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
+                                disabled={recipeDetailLoadingById[recipe.id]}
                               >
-                                再次获取
+                                {recipeDetailLoadingById[recipe.id] ? (
+                                  <>
+                                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                                    正在重新获取...
+                                  </>
+                                ) : (
+                                  '再次获取'
+                                )}
                               </button>
                             </div>
                           ) : (
@@ -1946,9 +2006,26 @@ export default function App() {
                         <div className="carousel-actions single-action">
                           <button
                             type="button"
-                            className="ghost-button"
+                            className="ghost-button favorite-card-button"
                             onClick={() => toggleFavoriteRecipe(recipe)}
                           >
+                            {favoriteConfettiRecipeId === recipe.id ? (
+                              <span className="button-confetti" aria-hidden="true">
+                                {Array.from({ length: 18 }).map((_, index) => (
+                                  <span
+                                    key={`${recipe.id}_confetti_${index}`}
+                                    className="button-confetti-piece"
+                                    style={{
+                                      '--x': `${((index % 6) - 2.5) * 13}px`,
+                                      '--y': `${-24 - (index % 4) * 8}px`,
+                                      '--r': `${index * 31}deg`,
+                                      '--delay': `${(index % 4) * 18}ms`,
+                                      '--color': ['#8cff00', '#ff7a1a', '#ffe066', '#4dd8ff', '#ff4fb8'][index % 5],
+                                    } as CSSProperties}
+                                  />
+                                ))}
+                              </span>
+                            ) : null}
                             {favoriteRecipes.some((item) => item.id === recipe.id) ? '已收藏' : '收藏'}
                           </button>
                         </div>
@@ -1973,7 +2050,7 @@ export default function App() {
                   <button
                     key={`${item.name}_${item.reason}`}
                     type="button"
-                    onClick={() => void handleChatSubmit(item.name)}
+                    onClick={() => handleSeasonalIngredientClick(item)}
                     disabled={isRecognizingIngredients}
                     title={item.reason}
                   >
