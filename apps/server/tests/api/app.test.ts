@@ -140,6 +140,15 @@ test('resolveRecipeDetailRequestPayload accepts nested serverless payload shape'
   assert.equal(payload.recipe?.id, '1');
 });
 
+test('resolveRecipeDetailRequestPayload accepts raw buffer body', () => {
+  const payload = resolveRecipeDetailRequestPayload(Buffer.from(JSON.stringify(broadBeanDetailPayload), 'utf8'));
+
+  assert.equal(payload.profileId, 'chat_context_profile');
+  assert.equal(payload.ingredients[0]?.name, '蚕豆');
+  assert.equal(payload.recipe?.id, '1');
+  assert.equal(payload.recipe?.name, '清煮鲜蚕豆');
+});
+
 test('stripRecipeDetailImageFields removes recipe and ingredient image urls', () => {
   const detail = stripRecipeDetailImageFields({
     id: 'recipe_with_images',

@@ -551,6 +551,13 @@ test('getRecipeDetailForRecommendation generates model detail for summary-only g
         quantity: '1个',
         source: 'manual' as const,
       },
+      {
+        id: 'ing_unavailable_2',
+        name: '鸡蛋',
+        normalizedName: '鸡蛋',
+        quantity: '1个',
+        source: 'manual' as const,
+      },
     ],
     recipe: {
       id: `recipe_summary_only_${Date.now()}`,
@@ -576,6 +583,178 @@ test('getRecipeDetailForRecommendation generates model detail for summary-only g
 
   assert.equal(result.data.name, '番茄鸡蛋软面');
   assert.equal(result.data.steps[0].title, '番茄鸡蛋');
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('getRecipeDetailForRecommendation strips step ingredients outside submitted list', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: 'recipe_generated_broad_bean',
+              name: '清煮鲜蚕豆',
+              namePinyin: 'qīng zhǔ xiān cán dòu',
+              englishName: 'Boiled Fresh Broad Beans',
+              ageRange: '7-12 岁',
+              difficulty: 'medium',
+              estimatedTimeMinutes: 15,
+              fitReasons: ['清淡简单'],
+              riskAlerts: ['开水需家长陪同'],
+              nutritionSummary: '富含植物蛋白。',
+              extraIngredients: ['少许盐'],
+              canCookWithCurrentIngredients: true,
+              prepTimeMinutes: 5,
+              cookTimeMinutes: 10,
+              ingredients: [{ name: '蚕豆', quantity: '1小碗' }, { name: '盐', quantity: '半勺' }],
+              steps: [{
+                title: '蚕豆加盐煮',
+                description: '把蚕豆放进锅里，加入少许盐一起煮。',
+                tip: '盐不要放太多。',
+                childAction: '观察蚕豆变软，不要碰热锅和盐罐。',
+                parentAction: '家长负责开火、加盐和倒热水。',
+                expectedResult: '蚕豆带一点盐味并变软。',
+                riskLevel: 'high',
+                requiresParentAssist: true,
+              }],
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'chat_context_profile',
+    profileInput: {
+      id: 'chat_context_profile',
+      nickname: '小学阶段学生',
+      age: 8,
+      tastePreferences: ['低油脂', '轻口味'],
+      allergens: [],
+      dietaryHabits: ['膳食均衡'],
+    },
+    ingredients: [{ id: 'ing_broad_bean', name: '蚕豆', normalizedName: '蚕豆', quantity: '1小碗', source: 'manual' }],
+    recipe: {
+      id: `recipe_generated_broad_bean_${Date.now()}`,
+      name: '清煮鲜蚕豆',
+      namePinyin: 'qīng zhǔ xiān cán dòu',
+      englishName: 'Boiled Fresh Broad Beans',
+      ageRange: '7-12 岁',
+      difficulty: 'medium' as const,
+      estimatedTimeMinutes: 15,
+      fitReasons: ['清淡简单'],
+      riskAlerts: ['开水需家长陪同'],
+      nutritionSummary: '富含植物蛋白。',
+      extraIngredients: ['少许盐'],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if ('error' in result) {
+    assert.fail(`expected generated detail data, got ${result.error.code}`);
+  }
+
+  assert.deepEqual(result.data.extraIngredients, []);
+  assert.deepEqual(result.data.ingredients.map((item) => item.name), ['蚕豆']);
+  assert.equal(JSON.stringify(result.data.steps).includes('盐'), false);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('getRecipeDetailForRecommendation ensures each detail ingredient appears in cooking steps', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: 'recipe_generated_tomato_egg',
+              name: '番茄鸡蛋',
+              namePinyin: 'fān qié jī dàn',
+              englishName: 'Tomato Egg',
+              ageRange: '7-12 岁',
+              difficulty: 'medium',
+              estimatedTimeMinutes: 12,
+              fitReasons: ['营养均衡'],
+              riskAlerts: ['热锅需家长陪同'],
+              nutritionSummary: '蛋白质和维生素搭配。',
+              extraIngredients: [],
+              canCookWithCurrentIngredients: true,
+              prepTimeMinutes: 5,
+              cookTimeMinutes: 7,
+              ingredients: [{ name: '番茄', quantity: '1个' }, { name: '鸡蛋', quantity: '1个' }],
+              steps: [{
+                title: '处理番茄',
+                description: '本步骤食材：番茄；操作：把番茄洗干净切小块。',
+                tip: '刀具交给家长。',
+                childAction: '把番茄递给家长。',
+                parentAction: '家长负责切番茄。',
+                expectedResult: '番茄变成小块。',
+                riskLevel: 'medium',
+                requiresParentAssist: true,
+              }],
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'cp_001',
+    ingredients: [
+      { id: 'ing_tomato', name: '番茄', normalizedName: '番茄', quantity: '1个', source: 'manual' },
+      { id: 'ing_egg', name: '鸡蛋', normalizedName: '鸡蛋', quantity: '1个', source: 'manual' },
+    ],
+    recipe: {
+      id: `recipe_generated_tomato_egg_${Date.now()}`,
+      name: '番茄鸡蛋',
+      namePinyin: 'fān qié jī dàn',
+      englishName: 'Tomato Egg',
+      ageRange: '7-12 岁',
+      difficulty: 'medium' as const,
+      estimatedTimeMinutes: 12,
+      fitReasons: ['营养均衡'],
+      riskAlerts: ['热锅需家长陪同'],
+      nutritionSummary: '蛋白质和维生素搭配。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if ('error' in result) {
+    assert.fail(`expected generated detail data, got ${result.error.code}`);
+  }
+
+  const stepText = JSON.stringify(result.data.steps);
+  assert.equal(stepText.includes('番茄'), true);
+  assert.equal(stepText.includes('鸡蛋'), true);
+  assert.match(stepText, /清洗|整理|加入|切小/);
 
   global.fetch = originalFetch;
   if (originalKey) {

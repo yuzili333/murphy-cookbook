@@ -27,6 +27,10 @@ import {
   understandIngredientsFromText,
 } from './siliconflow.js';
 
+interface RequestWithRawBody {
+  rawBody?: string;
+}
+
 function normalizeTextInputValue(value: unknown) {
   return Array.isArray(value) ? value.join(' ').trim() : String(value ?? '').trim();
 }
@@ -140,6 +144,14 @@ export function stripRecipeDetailImageFields(detail: RecipeDetail) {
 }
 
 function normalizeRequestRecord(value: unknown) {
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) {
+    return parseJsonInput<Record<string, unknown>>(value.toString('utf8'), {});
+  }
+
+  if (value instanceof Uint8Array) {
+    return parseJsonInput<Record<string, unknown>>(Buffer.from(value).toString('utf8'), {});
+  }
+
   if (typeof value === 'string') {
     return parseJsonInput<Record<string, unknown>>(value, {});
   }
@@ -254,7 +266,11 @@ export function createApp(): Express {
   });
 
   app.use(cors());
-  app.use(express.json());
+  app.use(express.json({
+    verify: (req, _res, buffer) => {
+      (req as RequestWithRawBody).rawBody = buffer.toString('utf8');
+    },
+  }));
   app.use((req, _res, next) => {
     if (req.url.startsWith('/.netlify/functions/api/')) {
       req.url = req.url.replace('/.netlify/functions/api', '/api');
@@ -526,7 +542,15 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/recipes/detail', async (req, res) => {
-    const { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
+    let { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
+
+    if (!isRecipeRecommendationInput(recipe)) {
+      const fallbackPayload = resolveRecipeDetailRequestPayload((req as RequestWithRawBody).rawBody, req.query);
+      profileId = fallbackPayload.profileId;
+      ingredients = fallbackPayload.ingredients;
+      profile = fallbackPayload.profile;
+      recipe = fallbackPayload.recipe;
+    }
 
     if (!isRecipeRecommendationInput(recipe)) {
       res.status(400).json({

@@ -396,6 +396,151 @@ function normalizeGeneratedRecipeSummaries(
   } satisfies GeneratedRecommendationPayload;
 }
 
+const commonUnlistedCookingIngredientNames = [
+  '食盐',
+  '盐',
+  '食用油',
+  '油',
+  '白糖',
+  '糖',
+  '酱油',
+  '生抽',
+  '老抽',
+  '醋',
+  '香油',
+  '料酒',
+  '蚝油',
+  '鸡精',
+  '味精',
+  '胡椒粉',
+  '淀粉',
+  '面粉',
+  '葱',
+  '姜',
+  '蒜',
+  '牛奶',
+  '黄油',
+  '芝士',
+];
+
+function buildAllowedIngredientNameSet(ingredients: IngredientItem[]) {
+  const names = new Set<string>();
+
+  ingredients.forEach((item) => {
+    [item.name, item.normalizedName].forEach((name) => {
+      if (name) {
+        names.add(normalizeIngredientName(name));
+      }
+    });
+  });
+
+  return names;
+}
+
+function isAllowedIngredientName(name: string, allowedNames: Set<string>) {
+  if (allowedNames.size === 0) {
+    return true;
+  }
+
+  return allowedNames.has(normalizeIngredientName(name));
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildDisallowedIngredientNames(
+  recipe: Partial<RecipeDetail>,
+  generatedIngredients: Array<{ name?: string }>,
+  allowedNames: Set<string>,
+) {
+  const names = new Set<string>();
+  const candidates = [
+    ...generatedIngredients.map((item) => item.name),
+    ...(Array.isArray(recipe.extraIngredients) ? recipe.extraIngredients : []),
+    ...commonUnlistedCookingIngredientNames,
+  ];
+
+  candidates.forEach((candidate) => {
+    const name = String(candidate ?? '').trim();
+    if (name && !isAllowedIngredientName(name, allowedNames)) {
+      names.add(name);
+    }
+  });
+
+  return [...names].sort((left, right) => right.length - left.length);
+}
+
+function removeDisallowedIngredientMentions(value: string, disallowedNames: string[]) {
+  let next = value;
+
+  disallowedNames.forEach((name) => {
+    next = next.replace(new RegExp(escapeRegExp(name), 'g'), '');
+  });
+
+  return next
+    .replace(/加入(少许|适量|一点|半勺|一勺)?([，。、；;])/g, '继续$2')
+    .replace(/放入(少许|适量|一点|半勺|一勺)?([，。、；;])/g, '继续$2')
+    .replace(/[，、]\s*[，、]/g, '，')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeAllowedExtraIngredients(value: unknown, allowedNames: Set<string>) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(String)
+    .filter((name) => isAllowedIngredientName(name, allowedNames));
+}
+
+function getRecipeStepText(step: RecipeDetail['steps'][number]) {
+  return [
+    step.title,
+    step.description,
+    step.tip,
+    step.childAction,
+    step.parentAction,
+    step.expectedResult,
+  ].join(' ');
+}
+
+function ensureIngredientOperationsInSteps(
+  steps: RecipeDetail['steps'],
+  recipeIngredients: RecipeDetail['ingredients'],
+) {
+  if (steps.length === 0 || recipeIngredients.length === 0) {
+    return steps;
+  }
+
+  const missingIngredientNames = recipeIngredients
+    .map((ingredient) => ingredient.name)
+    .filter((name) => !steps.some((step) => getRecipeStepText(step).includes(name)));
+
+  if (missingIngredientNames.length === 0) {
+    return steps;
+  }
+
+  const targetStepIndex = steps.findIndex((step) => step.riskLevel === 'low');
+  const fallbackStepIndex = targetStepIndex >= 0 ? targetStepIndex : 0;
+  const missingNamesText = missingIngredientNames.join('、');
+
+  return steps.map((step, index) => {
+    if (index !== fallbackStepIndex) {
+      return step;
+    }
+
+    return {
+      ...step,
+      description: `${step.description} 补充食材操作：把${missingNamesText}清洗或整理好，需要时切小，再按这一步一起加入。`,
+      childAction: `${step.childAction} 也要确认${missingNamesText}已经准备好并放到操作台旁。`,
+      expectedResult: `${step.expectedResult} ${missingNamesText}也完成清洗、整理或加入。`,
+    };
+  });
+}
+
 function normalizeGeneratedRecipeDetails(
   payload: {
     recipes?: Array<Partial<RecipeDetail>>;
@@ -403,12 +548,20 @@ function normalizeGeneratedRecipeDetails(
   profile: ChildProfile,
   ingredients: IngredientItem[],
 ) {
-  const inputIngredients = new Set(ingredients.map((item) => normalizeIngredientName(item.normalizedName ?? item.name)));
+  const inputIngredients = buildAllowedIngredientNameSet(ingredients);
 
   const recipeDetails = (payload.recipes ?? [])
     .filter((recipe) => recipe.name)
     .map((recipe, index) => {
-      const normalizedIngredients = (recipe.ingredients ?? []).filter((item) => item?.name);
+      const rawIngredients = (recipe.ingredients ?? []).filter((item) => item?.name);
+      const disallowedIngredientNames = buildDisallowedIngredientNames(recipe, rawIngredients, inputIngredients);
+      const normalizedIngredients = rawIngredients.filter((item) =>
+        isAllowedIngredientName(String(item.name ?? ''), inputIngredients),
+      );
+      const normalizedIngredientItems = normalizedIngredients.map((item) => ({
+        name: String(item.name),
+        quantity: normalizeChildFriendlyQuantity(String(item.quantity ?? '1平勺')),
+      }));
       const prepTimeMinutes = Math.max(1, Number(recipe.prepTimeMinutes ?? 5));
       const cookTimeMinutes = Math.max(1, Number(recipe.cookTimeMinutes ?? 10));
       const estimatedTimeMinutes = Math.max(
@@ -416,10 +569,40 @@ function normalizeGeneratedRecipeDetails(
         Number(recipe.estimatedTimeMinutes ?? prepTimeMinutes + cookTimeMinutes),
       );
       const canCookWithCurrentIngredients = normalizedIngredients.every((item) =>
-        inputIngredients.has(normalizeIngredientName(item.name ?? '')),
+        isAllowedIngredientName(String(item.name ?? ''), inputIngredients),
       );
       const name = String(recipe.name);
       const namePinyin = String((recipe as { namePinyin?: string }).namePinyin ?? '');
+      const normalizedSteps = Array.isArray(recipe.steps)
+        ? recipe.steps
+            .filter((step) => step?.title && step?.description)
+            .map((step, stepIndex) => ({
+              id: String(step.id ?? `step_${index + 1}_${stepIndex + 1}`),
+              title: removeDisallowedIngredientMentions(String(step.title), disallowedIngredientNames),
+              description: removeDisallowedIngredientMentions(String(step.description), disallowedIngredientNames),
+              tip: removeDisallowedIngredientMentions(
+                String(step.tip ?? '慢慢来，先确认安全再动手。'),
+                disallowedIngredientNames,
+              ),
+              childAction: removeDisallowedIngredientMentions(
+                String((step as { childAction?: string }).childAction ?? step.description ?? ''),
+                disallowedIngredientNames,
+              ),
+              parentAction: removeDisallowedIngredientMentions(
+                String(
+                  (step as { parentAction?: string }).parentAction ??
+                    (step.requiresParentAssist ? '这一小步建议家长在旁边陪着一起完成。' : ''),
+                ),
+                disallowedIngredientNames,
+              ),
+              expectedResult: removeDisallowedIngredientMentions(String(
+                (step as { expectedResult?: string }).expectedResult ??
+                  '完成这一步后，先停下来看看食材颜色和形状有没有变化。',
+              ), disallowedIngredientNames),
+              riskLevel: normalizeRiskLevel(String(step.riskLevel ?? 'medium')),
+              requiresParentAssist: Boolean(step.requiresParentAssist),
+            }))
+        : [];
 
       return {
         id: String(recipe.id ?? `recipe_gen_${slugifyRecipeName(name)}_${index + 1}`),
@@ -433,38 +616,15 @@ function normalizeGeneratedRecipeDetails(
         fitReasons: Array.isArray(recipe.fitReasons) ? recipe.fitReasons.map(String).slice(0, 4) : ['适合当前儿童档案'],
         riskAlerts: Array.isArray(recipe.riskAlerts) ? recipe.riskAlerts.map(String).slice(0, 4) : [],
         nutritionSummary: String(recipe.nutritionSummary ?? '营养搭配均衡，适合作为儿童一餐。'),
-        extraIngredients: Array.isArray(recipe.extraIngredients) ? recipe.extraIngredients.map(String) : [],
+        extraIngredients: normalizeAllowedExtraIngredients(recipe.extraIngredients, inputIngredients),
         canCookWithCurrentIngredients:
           typeof recipe.canCookWithCurrentIngredients === 'boolean'
             ? recipe.canCookWithCurrentIngredients
             : canCookWithCurrentIngredients,
         prepTimeMinutes,
         cookTimeMinutes,
-        ingredients: normalizedIngredients.map((item) => ({
-          name: String(item.name),
-          quantity: normalizeChildFriendlyQuantity(String(item.quantity ?? '1平勺')),
-        })),
-        steps: Array.isArray(recipe.steps)
-          ? recipe.steps
-              .filter((step) => step?.title && step?.description)
-              .map((step, stepIndex) => ({
-                id: String(step.id ?? `step_${index + 1}_${stepIndex + 1}`),
-                title: String(step.title),
-                description: String(step.description),
-                tip: String(step.tip ?? '慢慢来，先确认安全再动手。'),
-                childAction: String((step as { childAction?: string }).childAction ?? step.description ?? ''),
-                parentAction: String(
-                  (step as { parentAction?: string }).parentAction ??
-                    (step.requiresParentAssist ? '这一小步建议家长在旁边陪着一起完成。' : ''),
-                ),
-                expectedResult: String(
-                  (step as { expectedResult?: string }).expectedResult ??
-                    '完成这一步后，先停下来看看食材颜色和形状有没有变化。',
-                ),
-                riskLevel: normalizeRiskLevel(String(step.riskLevel ?? 'medium')),
-                requiresParentAssist: Boolean(step.requiresParentAssist),
-              }))
-          : [],
+        ingredients: normalizedIngredientItems,
+        steps: ensureIngredientOperationsInSteps(normalizedSteps, normalizedIngredientItems),
       } satisfies RecipeDetail;
     })
     .filter((recipe) => recipe.ingredients.length > 0 && recipe.steps.length > 0);
@@ -537,25 +697,31 @@ function buildRecipeDetailUserPrompt(
     `预计总时长: ${recipe.estimatedTimeMinutes ?? 20} 分钟`,
     `适配原因: ${recipe.fitReasons?.join('、') || '无'}`,
     `风险提醒: ${recipe.riskAlerts?.join('、') || '无'}`,
-    `额外食材: ${recipe.extraIngredients?.join('、') || '无'}`,
   ].join('\n');
 
   return [
     '为儿童生成 1 道菜谱详情，严格 JSON，不要解释。',
     '儿童:',
     profileLines,
-    '食材:',
+    '允许使用食材清单:',
     ingredientLines,
     '菜谱卡片:',
     recipeLines,
     '规则:',
     '1. 只生成这一道菜。',
-    '2. 输出字段: id,name,namePinyin,englishName,ageRange,difficulty,estimatedTimeMinutes,fitReasons,riskAlerts,nutritionSummary,extraIngredients,canCookWithCurrentIngredients,prepTimeMinutes,cookTimeMinutes,ingredients,steps。',
-    '3. 不要输出 nameLearning、imageUrl、imageSearchQuery。',
-    '4. ingredients 写食材名和儿童可理解用量，不要写“适量/少许”。',
-    '5. steps 4-8 步，每步写清本步骤食材和关键动作，适合卡通分镜。',
-    '6. 每步包含 title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。',
-    '7. 涉及开水、热锅、明火、电器、刀具时 riskLevel=medium/high，requiresParentAssist=true，parentAction 写家长全程陪同或由家长操作。',
+    `2. 返回的 id/name/namePinyin/englishName 必须与菜谱卡片完全一致: ${recipe.id} / ${recipe.name} / ${recipe.namePinyin || ''} / ${recipe.englishName || ''}。`,
+    `3. steps 必须全部围绕“${recipe.name}”制作，不要改成其他菜谱或其他主食。`,
+    '4. 输出字段: id,name,namePinyin,englishName,ageRange,difficulty,estimatedTimeMinutes,fitReasons,riskAlerts,nutritionSummary,extraIngredients,canCookWithCurrentIngredients,prepTimeMinutes,cookTimeMinutes,ingredients,steps。',
+    '5. 不要输出 nameLearning、imageUrl、imageSearchQuery。',
+    '6. ingredients 只能从“允许使用食材清单”中选择，写食材名和儿童可理解用量，不要写“适量/少许”。',
+    '7. steps 里的 title、description、tip、childAction、expectedResult 只能出现“允许使用食材清单”中的食材，禁止新增盐、油、糖、葱姜蒜、酱油、牛奶、面粉等未传入食材。',
+    '8. 水、锅、碗、炉具、刀具等可以作为操作工具或介质描述；调味料必须在允许食材清单中才可使用。',
+    '9. extraIngredients 必须返回 []，不要补充任何不在允许食材清单中的食材。',
+    '10. steps 4-8 步，每步写清本步骤食材和关键动作，适合卡通分镜。',
+    '11. ingredients 中列出的每一种食材都必须至少出现在一个 step 的 title、description、childAction 或 expectedResult 中，并说明如何清洗、切分、加入、搅拌、蒸煮或装盘。',
+    '12. description 建议采用“本步骤食材：A、B；操作：……”格式，确保孩子能看懂每种食材在哪一步加入和怎么处理。',
+    '13. 每步包含 title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。',
+    '14. 涉及开水、热锅、明火、电器、刀具时 riskLevel=medium/high，requiresParentAssist=true，parentAction 写家长全程陪同或由家长操作。',
   ].join('\n');
 }
 
@@ -586,7 +752,6 @@ function buildRecipeDetailsUserPrompt(
       `预计总时长: ${recipe.estimatedTimeMinutes} 分钟`,
       `适配原因: ${recipe.fitReasons.join('、') || '无'}`,
       `风险提醒: ${recipe.riskAlerts.join('、') || '无'}`,
-      `额外食材: ${recipe.extraIngredients.join('、') || '无'}`,
     ].join('\n'))
     .join('\n\n');
 
@@ -601,14 +766,17 @@ function buildRecipeDetailsUserPrompt(
     '生成要求:',
     `1. 必须为上述 ${recipes.length} 道菜各生成 1 个详情，输出顺序和目标推荐卡片列表一致，不要新增其他菜。`,
     '2. 每道菜输出完整字段：id、name、namePinyin、englishName、nameLearning、ageRange、difficulty、estimatedTimeMinutes、fitReasons、riskAlerts、nutritionSummary、extraIngredients、canCookWithCurrentIngredients、prepTimeMinutes、cookTimeMinutes、ingredients、steps。',
-    '3. 尽量沿用目标推荐卡片的 id、name、englishName、ageRange、difficulty、fitReasons、riskAlerts、nutritionSummary、extraIngredients、canCookWithCurrentIngredients。',
-    '4. 不要输出 imageUrl、imageSearchQuery 或任何图片相关字段；任何调味料和近似量不要写“适量/少许/微量”，统一改成儿童可理解的勺数。',
-    '5. steps 控制在 4-8 个步骤，适合前端按步骤生成卡通手绘风分镜插画。',
-    '6. 每一步都要明确写出本步骤需要的食材清单，并把食材名称写进 title 或 description。',
-    '7. 每一步都要包含食材处理或烹饪动作的简短细节，描述精炼易懂但不能只有标签。',
-    '8. 每一步除了 title、description、tip、riskLevel、requiresParentAssist，必须补充 childAction、parentAction、expectedResult。',
-    '9. 如果步骤涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskLevel 必须是 medium 或 high，requiresParentAssist 必须是 true，parentAction 必须明确“家长全程陪同/由家长操作”。',
-    '10. 输出字段必须完整，不要输出任何解释文字。',
+    '3. 尽量沿用目标推荐卡片的 id、name、englishName、ageRange、difficulty、fitReasons、riskAlerts、nutritionSummary、canCookWithCurrentIngredients。',
+    '4. ingredients 和 steps 只能使用“现有食材清单”中的食材，禁止新增盐、油、糖、葱姜蒜、酱油、牛奶、面粉等未传入食材；extraIngredients 必须返回 []。',
+    '5. 不要输出 imageUrl、imageSearchQuery 或任何图片相关字段；任何调味料和近似量不要写“适量/少许/微量”，统一改成儿童可理解的勺数。',
+    '6. steps 控制在 4-8 个步骤，适合前端按步骤生成卡通手绘风分镜插画。',
+    '7. 每一步都要明确写出本步骤需要的食材清单，并把食材名称写进 title 或 description，且食材范围必须属于“现有食材清单”。',
+    '8. ingredients 中列出的每一种食材都必须至少出现在一个 step 的 title、description、childAction 或 expectedResult 中，并说明如何清洗、切分、加入、搅拌、蒸煮或装盘。',
+    '9. description 建议采用“本步骤食材：A、B；操作：……”格式，确保孩子能看懂每种食材在哪一步加入和怎么处理。',
+    '10. 每一步都要包含食材处理或烹饪动作的简短细节，描述精炼易懂但不能只有标签。',
+    '11. 每一步除了 title、description、tip、riskLevel、requiresParentAssist，必须补充 childAction、parentAction、expectedResult。',
+    '12. 如果步骤涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskLevel 必须是 medium 或 high，requiresParentAssist 必须是 true，parentAction 必须明确“家长全程陪同/由家长操作”。',
+    '13. 输出字段必须完整，不要输出任何解释文字。',
   ].join('\n');
 }
 
@@ -774,7 +942,7 @@ export async function generateRecipeDetail(
     {
       role: 'system',
       content:
-        '你是儿童菜谱详情生成器。只输出 JSON：{"recipes":[{"id":"","name":"","namePinyin":"","englishName":"","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":[],"riskAlerts":[],"nutritionSummary":"","extraIngredients":[],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"","quantity":""}],"steps":[{"title":"","description":"","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。禁止输出 nameLearning、imageUrl、imageSearchQuery。',
+        '你是儿童菜谱详情生成器。必须只为用户指定的同一道菜生成步骤，禁止改菜名、换菜谱或生成相似菜。烹饪步骤和配料只能使用用户传入的允许食材清单，禁止添加任何未传入食材或调味料。ingredients 中每个食材都必须在 steps 中说明在哪一步加入和如何处理。只输出 JSON：{"recipes":[{"id":"","name":"","namePinyin":"","englishName":"","ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":[],"riskAlerts":[],"nutritionSummary":"","extraIngredients":[],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"","quantity":""}],"steps":[{"title":"","description":"","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。禁止输出 nameLearning、imageUrl、imageSearchQuery。',
     },
     {
       role: 'user',
@@ -815,7 +983,7 @@ export async function generateRecipeDetail(
     fitReasons: recipe.fitReasons?.length ? recipe.fitReasons : matched.fitReasons,
     riskAlerts: recipe.riskAlerts?.length ? recipe.riskAlerts : matched.riskAlerts,
     nutritionSummary: recipe.nutritionSummary || matched.nutritionSummary,
-    extraIngredients: recipe.extraIngredients?.length ? recipe.extraIngredients : matched.extraIngredients,
+    extraIngredients: matched.extraIngredients,
     canCookWithCurrentIngredients:
       typeof recipe.canCookWithCurrentIngredients === 'boolean'
         ? recipe.canCookWithCurrentIngredients
@@ -841,7 +1009,7 @@ export async function generateRecipeDetails(
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和推荐卡片列表，为每道菜生成完整儿童菜谱详情。steps 必须适合前端生成卡通手绘风分镜插画：总步数 4-8 步，每步必须明确写出该步骤需要的食材清单，并用短句写清关键食材处理或烹饪动作。如涉及明火、热源、电器、开水或锋利刀具，必须在 riskAlerts 和对应 step 中高亮提醒需家长全程陪同。输出严格 JSON：{"recipes":[{"id":"沿用推荐卡片id","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺"}],"steps":[{"id":"可选","title":"步骤标题","description":"本步骤食材和动作短句","tip":"短句提示","childAction":"孩子关键动作","parentAction":"家长何时介入","expectedResult":"完成状态短句","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出 imageUrl、imageSearchQuery 或额外说明。',
+        '你是儿童烹饪菜谱智能体。请根据儿童档案、现有食材和推荐卡片列表，为每道菜生成完整儿童菜谱详情。steps 必须适合前端生成卡通手绘风分镜插画：总步数 4-8 步，每步必须明确写出该步骤需要的食材清单，并用短句写清关键食材处理或烹饪动作。ingredients 中每个食材都必须在 steps 中说明在哪一步加入和如何处理。烹饪步骤和配料只能使用用户传入的现有食材清单，禁止添加任何未传入食材或调味料。如涉及明火、热源、电器、开水或锋利刀具，必须在 riskAlerts 和对应 step 中高亮提醒需家长全程陪同。输出严格 JSON：{"recipes":[{"id":"沿用推荐卡片id","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":[],"canCookWithCurrentIngredients":true,"prepTimeMinutes":5,"cookTimeMinutes":15,"ingredients":[{"name":"食材名","quantity":"1平勺"}],"steps":[{"id":"可选","title":"步骤标题","description":"本步骤食材和动作短句","tip":"短句提示","childAction":"孩子关键动作","parentAction":"家长何时介入","expectedResult":"完成状态短句","riskLevel":"low|medium|high","requiresParentAssist":false}]}]}。不要输出 imageUrl、imageSearchQuery 或额外说明。',
     },
     {
       role: 'user',
@@ -884,7 +1052,7 @@ export async function generateRecipeDetails(
       fitReasons: recipe.fitReasons.length > 0 ? recipe.fitReasons : matched.fitReasons,
       riskAlerts: recipe.riskAlerts.length > 0 ? recipe.riskAlerts : matched.riskAlerts,
       nutritionSummary: recipe.nutritionSummary || matched.nutritionSummary,
-      extraIngredients: recipe.extraIngredients.length > 0 ? recipe.extraIngredients : matched.extraIngredients,
+      extraIngredients: matched.extraIngredients,
       canCookWithCurrentIngredients:
         typeof recipe.canCookWithCurrentIngredients === 'boolean'
           ? recipe.canCookWithCurrentIngredients
