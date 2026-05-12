@@ -764,6 +764,93 @@ test('getRecipeDetailForRecommendation ensures each detail ingredient appears in
   }
 });
 
+test('getRecipeDetailForRecommendation rejects model detail with mismatched recipe name', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: 'recipe_wrong_name',
+              name: '蚕豆炒饭',
+              namePinyin: 'cán dòu chǎo fàn',
+              englishName: 'Broad Bean Fried Rice',
+              ageRange: '7-12 岁',
+              difficulty: 'medium',
+              estimatedTimeMinutes: 15,
+              fitReasons: ['清淡简单'],
+              riskAlerts: ['热锅需家长陪同'],
+              nutritionSummary: '富含植物蛋白。',
+              extraIngredients: [],
+              canCookWithCurrentIngredients: true,
+              prepTimeMinutes: 5,
+              cookTimeMinutes: 10,
+              ingredients: [{ name: '蚕豆', quantity: '1小碗' }],
+              steps: [{
+                title: '炒蚕豆',
+                description: '本步骤食材：蚕豆；操作：把蚕豆放进锅里翻炒。',
+                tip: '热锅交给家长。',
+                childAction: '观察蚕豆颜色。',
+                parentAction: '家长负责开火。',
+                expectedResult: '完成蚕豆炒饭。',
+                riskLevel: 'high',
+                requiresParentAssist: true,
+              }],
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'chat_context_profile',
+    profileInput: {
+      id: 'chat_context_profile',
+      nickname: '小学阶段学生',
+      age: 8,
+      tastePreferences: ['低油脂', '轻口味'],
+      allergens: [],
+      dietaryHabits: ['膳食均衡'],
+    },
+    ingredients: [{ id: 'ing_broad_bean', name: '蚕豆', normalizedName: '蚕豆', quantity: '1小碗', source: 'manual' }],
+    recipe: {
+      id: `recipe_expected_broad_bean_${Date.now()}`,
+      name: '清煮鲜蚕豆',
+      namePinyin: 'qīng zhǔ xiān cán dòu',
+      englishName: 'Boiled Fresh Broad Beans',
+      ageRange: '7-12 岁',
+      difficulty: 'medium' as const,
+      estimatedTimeMinutes: 15,
+      fitReasons: ['清淡简单'],
+      riskAlerts: ['开水需家长陪同'],
+      nutritionSummary: '富含植物蛋白。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if (!('error' in result)) {
+    assert.fail('expected mismatched model detail to be rejected');
+  }
+
+  assert.equal(result.error.code, 'RECIPE_DETAIL_FAILED');
+  assert.match(result.error.message, /不一致/);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
 test('getRecipeDetailForRecommendation does not reject empty ingredients as invalid argument', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   delete process.env.SILICONFLOW_API_KEY;

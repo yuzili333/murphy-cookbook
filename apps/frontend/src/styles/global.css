@@ -439,13 +439,62 @@ button {
   box-shadow: 0 0 18px rgba(140, 255, 0, 0.42);
 }
 
+.recipe-carousel-shell {
+  position: relative;
+  width: min(100vw - 32px, 980px);
+  padding: 10px 0 0;
+  border-radius: 26px;
+  touch-action: pan-y pinch-zoom;
+}
+
+.recipe-carousel-shell::before,
+.recipe-carousel-shell::after {
+  position: absolute;
+  top: 42px;
+  bottom: 14px;
+  z-index: 2;
+  width: 28px;
+  content: "";
+  pointer-events: none;
+}
+
+.recipe-carousel-shell::before {
+  left: 0;
+  border-radius: 24px 0 0 24px;
+  background: linear-gradient(90deg, rgba(255, 248, 220, 0.96), transparent);
+}
+
+.recipe-carousel-shell::after {
+  right: 0;
+  border-radius: 0 24px 24px 0;
+  background: linear-gradient(270deg, rgba(255, 248, 220, 0.96), transparent);
+}
+
+.recipe-carousel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 2px 8px;
+  padding: 0 2px;
+  color: #21a833;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.recipe-carousel-header b {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
 .recipe-carousel {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  width: min(100vw - 32px, 980px);
+  width: 100%;
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   overscroll-behavior-inline: contain;
   padding: 2px 2px 12px;
   scroll-margin-top: 88px;

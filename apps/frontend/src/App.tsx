@@ -1825,14 +1825,23 @@ export default function App() {
                   </section>
                 ) : null}
                 {message.recipes?.length ? (
-                  <div
-                    className="recipe-carousel"
-                    aria-label="推荐菜谱"
-                    onTouchStart={handleRecipeTouchStart}
-                    onTouchMove={handleRecipeTouchMove}
-                    onTouchEnd={handleRecipeTouchEnd}
-                    onTouchCancel={handleRecipeTouchEnd}
+                  <section
+                    className="recipe-carousel-shell"
+                    aria-label="推荐菜谱走马灯"
+                    aria-roledescription="carousel"
                   >
+                    <div className="recipe-carousel-header">
+                      <span>推荐菜谱</span>
+                      <b>左右滑动查看 {message.recipes.length} 道</b>
+                    </div>
+                    <div
+                      className="recipe-carousel"
+                      aria-label="推荐菜谱"
+                      onTouchStart={handleRecipeTouchStart}
+                      onTouchMove={handleRecipeTouchMove}
+                      onTouchEnd={handleRecipeTouchEnd}
+                      onTouchCancel={handleRecipeTouchEnd}
+                    >
                     {message.recipes.map((recipe) => {
                       const recipeDetail = recipeDetailsById[recipe.id];
                       const recipeStoryboardPanels = recipeDetail ? groupStepsForStoryboard(recipeDetail.steps) : [];
@@ -2132,7 +2141,8 @@ export default function App() {
                       </article>
                       );
                     })}
-                  </div>
+                    </div>
+                  </section>
                 ) : null}
               </article>
               );
