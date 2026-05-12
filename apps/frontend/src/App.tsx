@@ -308,6 +308,57 @@ function shouldAskAllergyFollowup(text: string) {
   return mentionsSevereAllergy || (mentionsRiskIngredient && asksAllergy);
 }
 
+const highRiskAllergenIngredientKeywords = [
+  '花生',
+  '坚果',
+  '腰果',
+  '核桃',
+  '杏仁',
+  '榛子',
+  '开心果',
+  '虾',
+  '蟹',
+  '贝类',
+  '海鲜',
+  '鱼',
+  '牛奶',
+  '乳制品',
+  '芝士',
+  '奶酪',
+  '鸡蛋',
+  '小麦',
+  '麸质',
+  '大豆',
+  '黄豆',
+  '芝麻',
+];
+
+const highRiskAllergyAlertKeywords = [
+  '高危过敏原',
+  '严重过敏',
+  '重度过敏',
+  '急性过敏',
+  '过敏性休克',
+  '喉头水肿',
+  '呼吸困难',
+  '危及生命',
+];
+
+function hasHighRiskAllergyAlert(alertText: string, recipeIngredients: IngredientItem[]) {
+  const normalized = alertText.trim();
+  if (highRiskAllergyAlertKeywords.some((word) => normalized.includes(word))) {
+    return true;
+  }
+
+  if (!normalized.includes('过敏')) {
+    return false;
+  }
+
+  return recipeIngredients.some((ingredient) =>
+    highRiskAllergenIngredientKeywords.some((keyword) => ingredient.name.includes(keyword)),
+  );
+}
+
 function mergeIngredientItems(current: IngredientItem[], nextItems: IngredientItem[]) {
   const merged = [...current];
 
@@ -547,6 +598,12 @@ export default function App() {
     scrollLeft: 0,
     isHorizontal: false,
   });
+  const recipeSwipeRef = useRef({
+    startX: 0,
+    startY: 0,
+    scrollLeft: 0,
+    isHorizontal: false,
+  });
   const chatboxSwipeRef = useRef({
     startX: 0,
     startY: 0,
@@ -690,6 +747,11 @@ export default function App() {
   const handleIngredientTouchMove = (event: TouchEvent<HTMLDivElement>) =>
     handleHorizontalTouchMove(event, ingredientSwipeRef);
   const handleIngredientTouchEnd = () => handleHorizontalTouchEnd(ingredientSwipeRef);
+  const handleRecipeTouchStart = (event: TouchEvent<HTMLDivElement>) =>
+    handleHorizontalTouchStart(event, recipeSwipeRef);
+  const handleRecipeTouchMove = (event: TouchEvent<HTMLDivElement>) =>
+    handleHorizontalTouchMove(event, recipeSwipeRef);
+  const handleRecipeTouchEnd = () => handleHorizontalTouchEnd(recipeSwipeRef);
 
   useEffect(() => {
     async function bootstrap() {
@@ -1673,7 +1735,7 @@ export default function App() {
                     <PlayInlineIcon />
                   </button>
                 </div>
-                {message.ingredients?.length ? (
+                {message.ingredients?.length && !message.recipes?.length ? (
                   <section className="ingredient-list-card" aria-label="当前食材清单">
                     <div className="ingredient-list-card-header">
                       <div>
@@ -1766,6 +1828,10 @@ export default function App() {
                   <div
                     className="recipe-carousel"
                     aria-label="推荐菜谱"
+                    onTouchStart={handleRecipeTouchStart}
+                    onTouchMove={handleRecipeTouchMove}
+                    onTouchEnd={handleRecipeTouchEnd}
+                    onTouchCancel={handleRecipeTouchEnd}
                   >
                     {message.recipes.map((recipe) => {
                       const recipeDetail = recipeDetailsById[recipe.id];
@@ -1773,6 +1839,7 @@ export default function App() {
                       const fitReasonText = recipe.fitReasons.slice(0, 2).join('；');
                       const extraIngredientText = recipe.extraIngredients.slice(0, 4).join('、');
                       const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
+                      const hasHighRiskAllergy = hasHighRiskAllergyAlert(riskAlertText, message.ingredients ?? ingredients);
 
                       return (
                         <article
@@ -1861,7 +1928,7 @@ export default function App() {
                             </section>
                           ) : null}
                           {recipe.riskAlerts.length > 0 ? (
-                            <section className="recipe-note-panel warning">
+                            <section className={hasHighRiskAllergy ? 'recipe-note-panel warning allergy-warning' : 'recipe-note-panel warning'}>
                               <div className="note-panel-heading">
                                 <strong>烹饪注意</strong>
                                 <button

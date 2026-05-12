@@ -668,7 +668,9 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
     '7. 每道菜都必须包含 nameLearning.characters，逐字覆盖中文菜名中的汉字；每项包含 character、pinyin、strokes、structure、hint，pinyin 必须使用带调号拼音。',
     '8. 不要输出 imageUrl、imageSearchQuery 或任何图片相关字段。',
     '9. 如果菜谱会使用明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮写明“需家长全程陪同”，difficulty 不要标为 easy，canCookWithCurrentIngredients 不能掩盖安全风险。',
-    '10. 输出字段必须完整，不要输出任何解释文字。',
+    '10. 检查“现有食材清单”中是否包含高危过敏原食材，例如花生、坚果、虾、蟹、贝类、海鲜、鱼、牛奶、乳制品、鸡蛋、小麦、大豆、芝麻等。若存在，请在 riskAlerts 增加以“高危过敏原提醒：”开头的醒目提醒，说明该食材可能诱发急性过敏、呼吸困难等危及生命风险，必须由家长确认儿童无相关确诊过敏后再制作。',
+    '11. 如果只是普通常见食材且未命中高危过敏原，不要额外输出过敏原提醒，避免制造不必要焦虑。',
+    '12. 输出字段必须完整，不要输出任何解释文字。',
   ].join('\n');
 }
 
@@ -904,7 +906,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 3-5 个安全、适龄、简单易上手的儿童菜谱推荐卡片摘要。操作者多为小学阶段儿童，优先选择低油、轻口味、步骤清楚、亲子可执行的菜谱；如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮提醒“需家长全程陪同”。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true}]}。不要输出 imageUrl、imageSearchQuery 或额外说明。',
+        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 3-5 个安全、适龄、简单易上手的儿童菜谱推荐卡片摘要。操作者多为小学阶段儿童，优先选择低油、轻口味、步骤清楚、亲子可执行的菜谱；如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮提醒“需家长全程陪同”。如现有食材含花生、坚果、虾、蟹、贝类、海鲜、鱼、牛奶、乳制品、鸡蛋、小麦、大豆、芝麻等高危过敏原食材，riskAlerts 必须增加以“高危过敏原提醒：”开头的提醒，提示可能诱发急性过敏、呼吸困难等危及生命风险，需家长确认无相关确诊过敏后再制作；普通常见食材未命中高危过敏原时不要额外输出过敏提醒。输出严格 JSON：{"recipes":[{"id":"可选","name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true}]}。不要输出 imageUrl、imageSearchQuery 或额外说明。',
     },
     {
       role: 'user',

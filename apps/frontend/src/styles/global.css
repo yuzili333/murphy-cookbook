@@ -396,7 +396,7 @@ button {
   flex: 1 1 auto;
   margin: 0;
   font-size: 0.9rem;
-  line-height: 1.36;
+  line-height: 24px;
   white-space: pre-wrap;
 }
 
@@ -452,7 +452,7 @@ button {
   scroll-snap-type: x mandatory;
   scroll-padding-inline: 2px;
   scrollbar-width: thin;
-  touch-action: pan-x pinch-zoom;
+  touch-action: pan-y pinch-zoom;
   -webkit-overflow-scrolling: touch;
   will-change: scroll-position;
 }
@@ -645,6 +645,23 @@ button {
 
 .recipe-note-panel.warning strong {
   color: #b74427;
+}
+
+.recipe-note-panel.allergy-warning {
+  border-color: rgba(220, 38, 38, 0.54);
+  background: linear-gradient(135deg, rgba(255, 239, 239, 0.98), rgba(255, 246, 218, 0.94));
+  box-shadow:
+    inset 0 0 0 1px rgba(220, 38, 38, 0.16),
+    0 0 0 3px rgba(255, 122, 26, 0.13);
+}
+
+.recipe-note-panel.allergy-warning strong,
+.recipe-note-panel.allergy-warning p {
+  color: #b91c1c;
+}
+
+.recipe-note-panel.allergy-warning p {
+  font-weight: 900;
 }
 
 .inline-recipe-detail {
