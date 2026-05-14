@@ -53,19 +53,27 @@ function parseJsonInput<T>(value: unknown, fallback: T): T {
 }
 
 export function resolveIngredientTextInput(body: unknown, query: unknown = {}) {
-  const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
-  const queryPayload = query && typeof query === 'object' ? query as Record<string, unknown> : {};
+  const textKeys = ['text', 'message', 'prompt', 'transcript', 'content', 'input', 'value', 'q'];
+  const payload = resolveNestedRequestRecord(body, textKeys);
+  const queryPayload = resolveNestedRequestRecord(query, textKeys);
   const rawText =
     payload.text ??
     payload.message ??
     payload.prompt ??
     payload.transcript ??
     payload.content ??
+    payload.input ??
+    payload.value ??
+    payload.q ??
     queryPayload.text ??
     queryPayload.message ??
     queryPayload.prompt ??
     queryPayload.transcript ??
     queryPayload.content ??
+    queryPayload.input ??
+    queryPayload.value ??
+    queryPayload.q ??
+    (typeof body === 'string' ? body : '') ??
     '';
   return normalizeTextInputValue(rawText);
 }
@@ -308,7 +316,9 @@ export function createApp(): Express {
   };
 
   const sendIngredientNormalizeResponse = async (req: Request, res: Response) => {
-    const text = resolveIngredientTextInput(req.body, req.query);
+    const text =
+      resolveIngredientTextInput(req.body, req.query) ||
+      resolveIngredientTextInput((req as RequestWithRawBody).rawBody, req.query);
 
     if (!text) {
       res.status(400).json({
@@ -460,7 +470,9 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/ingredients/parse-text', async (req, res) => {
-    const text = resolveIngredientTextInput(req.body, req.query);
+    const text =
+      resolveIngredientTextInput(req.body, req.query) ||
+      resolveIngredientTextInput((req as RequestWithRawBody).rawBody, req.query);
 
     if (!text) {
       res.status(400).json({

@@ -11,11 +11,19 @@ test('resolveIngredientTextInput accepts mobile fallback fields', () => {
   assert.equal(resolveIngredientTextInput({ message: '鸡蛋 番茄' }), '鸡蛋 番茄');
   assert.equal(resolveIngredientTextInput({ prompt: ' 胡萝卜 ' }), '胡萝卜');
   assert.equal(resolveIngredientTextInput({ transcript: ['土豆', '牛肉'] }), '土豆 牛肉');
+  assert.equal(resolveIngredientTextInput({ input: '西兰花' }), '西兰花');
 });
 
 test('resolveIngredientTextInput falls back to query text when body is empty', () => {
   assert.equal(resolveIngredientTextInput({}, { text: '西红柿 鸡蛋' }), '西红柿 鸡蛋');
   assert.equal(resolveIngredientTextInput(null, { message: ['青菜', '豆腐'] }), '青菜 豆腐');
+});
+
+test('resolveIngredientTextInput accepts deployed string and nested payload shapes', () => {
+  assert.equal(resolveIngredientTextInput('{"text":"鸡蛋 番茄"}'), '鸡蛋 番茄');
+  assert.equal(resolveIngredientTextInput({ body: '{"text":"黄瓜"}' }), '黄瓜');
+  assert.equal(resolveIngredientTextInput({ payload: { message: '土豆 牛肉' } }), '土豆 牛肉');
+  assert.equal(resolveIngredientTextInput('胡萝卜 玉米'), '胡萝卜 玉米');
 });
 
 test('resolveIngredientTextInput returns empty string for missing text', () => {

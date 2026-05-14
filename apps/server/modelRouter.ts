@@ -95,7 +95,7 @@ export class ModelRouter {
         model: this.ingredientTextModel,
         fallbackModels: textFallbackModels,
         maxTokens: 260,
-        temperature: 0,
+        temperature: 0.3,
         enableThinking: false,
       };
     }
@@ -107,7 +107,7 @@ export class ModelRouter {
         model: useBalanced ? this.balancedModel : this.fastModel,
         fallbackModels: useBalanced ? [this.fallbackModel] : [this.balancedModel, this.fallbackModel],
         maxTokens: useBalanced ? 850 : 650,
-        temperature: 0.1,
+        temperature: 0.5,
         enableThinking: false,
       };
     }
@@ -118,7 +118,7 @@ export class ModelRouter {
         model: this.balancedModel,
         fallbackModels: [this.fallbackModel],
         maxTokens: 760,
-        temperature: 0.1,
+        temperature: 0.3,
         enableThinking: false,
       };
     }
@@ -145,12 +145,23 @@ export class ModelRouter {
       };
     }
 
+    if (task === 'seasonal_suggestions') {
+      return {
+        task,
+        model: this.fastModel,
+        fallbackModels: [],
+        maxTokens: 80,
+        temperature: 0.5,
+        enableThinking: false,
+      };
+    }
+
     return {
       task,
       model: this.fastModel,
       fallbackModels: [this.balancedModel, this.fallbackModel],
-      maxTokens: task === 'recipe_nutrition' ? 480 : task === 'seasonal_suggestions' ? 140 : 320,
-      temperature: 0,
+      maxTokens: task === 'recipe_nutrition' ? 480 : 320,
+      temperature: 0.3,
       enableThinking: false,
     };
   }

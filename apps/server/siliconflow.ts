@@ -29,6 +29,7 @@ interface SiliconFlowCallOptions {
   routeContext?: ModelRouteContext;
   metadata?: Record<string, unknown>;
   maxTokens?: number;
+  timeoutMs?: number;
 }
 
 export function isSiliconFlowConfigured() {
@@ -100,9 +101,12 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
   for (const [modelIndex, model] of models.entries()) {
     const attemptStartedAt = Date.now();
     const isFallback = modelIndex > 0;
+    const controller = options.timeoutMs ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
     try {
       const response = await fetch(SILICONFLOW_API_URL, {
         method: 'POST',
+        signal: controller?.signal,
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
@@ -119,6 +123,9 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
           },
         }),
       });
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const text = await response.text();
@@ -167,6 +174,9 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
 
       return content;
     } catch (error) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       lastError = error instanceof Error ? error : new Error('SiliconFlow chat completion failed.');
       if (error instanceof Error && !error.message.startsWith('SiliconFlow chat completion failed:')) {
         writeLocalJsonLog({
@@ -844,22 +854,22 @@ export async function understandIngredientsFromImage(file: {
 
 function getSeasonHint(month: number) {
   if (month === 1 || month === 2) {
-    return '冬季与春节前后，偏暖体温热、清淡年节蔬果、少油少糖';
+    return '冬季春节蔬果';
   }
 
   if (month >= 3 && month <= 5) {
-    return '春季，偏新鲜青菜、应季瓜果、维生素丰富、轻口味';
+    return '春季蔬果';
   }
 
   if (month >= 6 && month <= 8) {
-    return '夏季，偏祛暑补水、牛油果、西瓜、黄瓜、清爽冰沙或酸奶类食材';
+    return '夏季补水蔬果';
   }
 
   if (month >= 9 && month <= 11) {
-    return '秋季，偏润燥、祛湿、温和滋养、梨、山药、南瓜、莲藕等食材';
+    return '秋季润燥蔬果';
   }
 
-  return '冬季，偏暖体、温热、易消化、汤羹粥类适配食材';
+  return '冬季温和蔬果';
 }
 
 export async function generateSeasonalIngredientSuggestions(input: {
@@ -870,26 +880,27 @@ export async function generateSeasonalIngredientSuggestions(input: {
     ? Math.trunc(input.month)
     : new Date().getMonth() + 1;
   const seasonHint = getSeasonHint(month);
-  const childContext = compactText(input.childContext, 80);
+  const childContext = compactText(input.childContext, 40);
 
   const content = await callSiliconFlow([
     {
       role: 'system',
       content:
-        '你是儿童时令蔬果推荐器。任务：输出 3 种当前季节适合小朋友食用的蔬菜或水果品种。只输出一个标准 JSON 对象：{"suggestions":[{"name":"蔬菜或水果名","reason":"8字内"}]}。禁止输出菜名、饮品、零食、解释文字、Markdown。',
+        '输出3种当前季节适合小朋友食用的蔬菜或水果品种。只输出JSON：{"suggestions":[{"name":"名称","reason":"8字内"}]}。不要菜名、饮品、零食、解释、Markdown。',
     },
     {
       role: 'user',
       content: [
         `月份:${month}`,
         `季节:${seasonHint}`,
-        `儿童:${childContext || '小学生，低油轻口味，营养均衡'}`,
-        '要求: 只给3个蔬菜或水果品种；名称短；适合儿童；避开辛辣、高糖、高油。',
+        `儿童:${childContext || '小学生'}`,
+        '只给蔬菜或水果品种；名称短；避开辛辣高糖高油。',
       ].join('\n'),
     },
   ], {
     operation: 'generate_seasonal_ingredient_suggestions',
     task: 'seasonal_suggestions',
+    timeoutMs: 4500,
     metadata: {
       month,
       seasonHint,

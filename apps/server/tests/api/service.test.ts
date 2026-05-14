@@ -431,13 +431,13 @@ test('generateSeasonalIngredientSuggestions uses fast compact model request', as
   assert.deepEqual(result.map((item) => item.name), ['西瓜', '黄瓜', '玉米']);
   assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
   assert.equal(requestBodies[0]?.enable_thinking, false);
-  assert.equal(requestBodies[0]?.max_tokens, 140);
+  assert.equal(requestBodies[0]?.max_tokens, 80);
 
   const requestJson = JSON.stringify(requestBodies[0]);
-  assert.equal(requestJson.includes('x'.repeat(80)), true);
-  assert.equal(requestJson.includes('x'.repeat(81)), false);
+  assert.equal(requestJson.includes('x'.repeat(40)), true);
+  assert.equal(requestJson.includes('x'.repeat(41)), false);
   assert.equal(requestJson.includes('当前季节适合小朋友食用的蔬菜或水果品种'), true);
-  assert.equal(requestJson.includes('只给3个蔬菜或水果品种'), true);
+  assert.equal(requestJson.includes('只给蔬菜或水果品种'), true);
 
   global.fetch = originalFetch;
   if (originalKey) {

@@ -52,9 +52,9 @@ test('ModelRouter routes seasonal suggestions to fast model', () => {
   const route = router.select('seasonal_suggestions');
 
   assert.equal(route.model, 'Qwen/Qwen3.5-9B');
-  assert.deepEqual(route.fallbackModels, ['Qwen/Qwen3.5-27B', 'Pro/zai-org/GLM-5']);
+  assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 140);
+  assert.equal(route.maxTokens, 80);
 });
 
 test('ModelRouter routes text and voice ingredient recognition to small text model', () => {
