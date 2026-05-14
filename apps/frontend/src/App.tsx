@@ -807,7 +807,7 @@ export default function App() {
       try {
         const data = await fetchSeasonalIngredientSuggestions(new Date().getMonth() + 1, childContext.trim() || defaultChildContext);
         if (!isCancelled) {
-          setSeasonalIngredientSuggestions(data.suggestions.filter((item) => item.name).slice(0, 5));
+          setSeasonalIngredientSuggestions(data.suggestions.filter((item) => item.name).slice(0, 3));
         }
       } catch {
         if (!isCancelled) {

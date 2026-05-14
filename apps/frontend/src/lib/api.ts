@@ -73,11 +73,10 @@ export function createChildProfile(payload: CreateChildProfileInput) {
 
 export function parseIngredientText(text: string) {
   const normalizedText = text.trim();
-  const query = new URLSearchParams({ text: normalizedText }).toString();
 
-  return request<{ ingredients: IngredientItem[] }>(`/ingredients/parse-text?${query}`, {
+  return request<{ ingredients: IngredientItem[] }>('/ingredients/parse-text', {
     method: 'POST',
-    body: JSON.stringify({ text: normalizedText, message: normalizedText }),
+    body: JSON.stringify({ text: normalizedText }),
   });
 }
 
@@ -102,12 +101,13 @@ export function uploadVoiceAudio(file: File) {
 }
 
 export function fetchSeasonalIngredientSuggestions(month: number, childContext: string) {
-  const query = new URLSearchParams({
-    month: String(month),
-    childContext,
-  }).toString();
-
-  return request<{ suggestions: SeasonalIngredientSuggestion[] }>(`/ingredients/seasonal-suggestions?${query}`);
+  return request<{ suggestions: SeasonalIngredientSuggestion[] }>('/ingredients/seasonal-suggestions', {
+    method: 'POST',
+    body: JSON.stringify({
+      month,
+      childContext: childContext.trim().slice(0, 120),
+    }),
+  });
 }
 
 export function fetchRecommendations(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
@@ -126,13 +126,8 @@ export function fetchRecommendations(profile: ChildProfile, ingredients: Ingredi
     sortBy: 'balanced',
     allowExtraIngredients: true,
   };
-  const query = new URLSearchParams({
-    profileId: payload.profileId,
-    userPrompt,
-    ingredients: JSON.stringify(normalizedIngredients),
-  }).toString();
 
-  return request<RecommendationResponse>(`/recommendations/recipes?${query}`, {
+  return request<RecommendationResponse>('/recommendations/recipes', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
@@ -151,7 +146,6 @@ export function fetchGeneratedRecipeDetail(payload: {
   const recipe = payload.recipe;
   const requestPayload = {
     profileId: payload.profileId,
-    profile: payload.profile,
     ingredients: payload.ingredients.map((ingredient) => ({
       name: ingredient.name,
       normalizedName: ingredient.normalizedName ?? ingredient.name,

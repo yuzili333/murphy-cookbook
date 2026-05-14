@@ -15,7 +15,7 @@ test('ModelRouter routes simple recipe recommendation to fast model', () => {
   assert.equal(route.model, 'Qwen/Qwen3.5-9B');
   assert.deepEqual(route.fallbackModels, ['Qwen/Qwen3.5-27B', 'Pro/zai-org/GLM-5']);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 900);
+  assert.equal(route.maxTokens, 650);
 });
 
 test('ModelRouter upgrades complex recipe recommendation to balanced model', () => {
@@ -34,7 +34,7 @@ test('ModelRouter upgrades complex recipe recommendation to balanced model', () 
   assert.equal(route.model, 'Qwen/Qwen3.5-27B');
   assert.deepEqual(route.fallbackModels, ['Pro/zai-org/GLM-5']);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 1200);
+  assert.equal(route.maxTokens, 850);
 });
 
 test('ModelRouter keeps GLM-5 as fallback for recipe steps', () => {
@@ -44,7 +44,7 @@ test('ModelRouter keeps GLM-5 as fallback for recipe steps', () => {
   assert.equal(route.model, 'Qwen/Qwen3.5-27B');
   assert.deepEqual(route.fallbackModels, ['Pro/zai-org/GLM-5']);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 1100);
+  assert.equal(route.maxTokens, 760);
 });
 
 test('ModelRouter routes seasonal suggestions to fast model', () => {
@@ -54,7 +54,7 @@ test('ModelRouter routes seasonal suggestions to fast model', () => {
   assert.equal(route.model, 'Qwen/Qwen3.5-9B');
   assert.deepEqual(route.fallbackModels, ['Qwen/Qwen3.5-27B', 'Pro/zai-org/GLM-5']);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 320);
+  assert.equal(route.maxTokens, 140);
 });
 
 test('ModelRouter routes text and voice ingredient recognition to small text model', () => {
@@ -76,8 +76,8 @@ test('ModelRouter routes image ingredient recognition to multimodal model', () =
   const router = new ModelRouter();
   const route = router.select('ingredient_vision');
 
-  assert.equal(route.model, 'Qwen/Qwen2.5-VL-7B-Instruct');
-  assert.deepEqual(route.fallbackModels, ['Qwen/Qwen2.5-VL-32B-Instruct']);
+  assert.equal(route.model, 'Qwen/Qwen3-VL-8B-Instruct');
+  assert.deepEqual(route.fallbackModels, ['Qwen/Qwen3-VL-32B-Instruct']);
   assert.equal(route.enableThinking, false);
   assert.equal(route.maxTokens, 360);
 });

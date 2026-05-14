@@ -32,7 +32,8 @@ interface RequestWithRawBody {
 }
 
 function normalizeTextInputValue(value: unknown) {
-  return Array.isArray(value) ? value.join(' ').trim() : String(value ?? '').trim();
+  const text = Array.isArray(value) ? value.join(' ').trim() : String(value ?? '').trim();
+  return text.slice(0, 500);
 }
 
 function parseJsonInput<T>(value: unknown, fallback: T): T {
@@ -186,13 +187,13 @@ function resolveIngredientItems(value: unknown): IngredientItem[] {
     return [];
   }
 
-  return parsed.reduce<IngredientItem[]>((items, item, index) => {
+  return parsed.slice(0, 10).reduce<IngredientItem[]>((items, item, index) => {
     if (!item || typeof item !== 'object') {
       return items;
     }
 
     const ingredient = item as Partial<IngredientItem>;
-    const name = String(ingredient.name ?? ingredient.normalizedName ?? '').trim();
+    const name = String(ingredient.name ?? ingredient.normalizedName ?? '').trim().slice(0, 32);
     if (!name) {
       return items;
     }
@@ -200,8 +201,8 @@ function resolveIngredientItems(value: unknown): IngredientItem[] {
     items.push({
       id: String(ingredient.id ?? `ing_request_${index + 1}`),
       name,
-      normalizedName: String(ingredient.normalizedName ?? name),
-      quantity: String(ingredient.quantity ?? '1份'),
+      normalizedName: String(ingredient.normalizedName ?? name).trim().slice(0, 32),
+      quantity: String(ingredient.quantity ?? '1份').trim().slice(0, 24),
       source: ingredient.source === 'image' || ingredient.source === 'voice' || ingredient.source === 'manual'
         ? ingredient.source
         : 'manual',
@@ -497,15 +498,15 @@ export function createApp(): Express {
   app.post('/api/ingredients/normalize', sendIngredientNormalizeResponse);
   app.post('/api/v1/ingredients/normalize', sendIngredientNormalizeResponse);
 
-  app.get('/api/v1/ingredients/seasonal-suggestions', async (req, res) => {
+  const sendSeasonalSuggestionsResponse = async (req: Request, res: Response) => {
     if (!isSiliconFlowConfigured()) {
       res.json({ data: { suggestions: [] } });
       return;
     }
 
     try {
-      const month = Number(req.query.month ?? new Date().getMonth() + 1);
-      const childContext = String(req.query.childContext ?? '');
+      const month = Number(req.body?.month ?? new Date().getMonth() + 1);
+      const childContext = normalizeTextInputValue(req.body?.childContext ?? '');
       const suggestions = await generateSeasonalIngredientSuggestions({
         month,
         childContext,
@@ -515,7 +516,9 @@ export function createApp(): Express {
     } catch {
       res.json({ data: { suggestions: [] } });
     }
-  });
+  };
+
+  app.post('/api/v1/ingredients/seasonal-suggestions', sendSeasonalSuggestionsResponse);
 
   app.post('/api/v1/ingredients/recognize-image', upload.single('image'), async (req, res) => {
     if (!req.file) {

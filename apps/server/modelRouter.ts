@@ -8,7 +8,6 @@ export type ModelTask =
   | 'seasonal_suggestions'
   | 'recipe_recommendation'
   | 'recipe_steps'
-  | 'recipe_steps_batch'
   | 'recipe_nutrition'
   | 'cooking_feedback';
 
@@ -16,7 +15,6 @@ export interface ModelRouteContext {
   profile?: ChildProfile;
   ingredients?: IngredientItem[];
   recipe?: RecipeDetailRecipeInput | RecipeRecommendation;
-  recipes?: RecipeRecommendation[];
   userPrompt?: string;
 }
 
@@ -32,8 +30,8 @@ export interface ModelRoute {
 const defaultFastModel = 'Qwen/Qwen3.5-9B';
 const defaultBalancedModel = 'Qwen/Qwen3.5-27B';
 const defaultIngredientTextModel = 'Qwen/Qwen3.5-9B';
-const defaultVisionModel = 'Qwen/Qwen2.5-VL-7B-Instruct';
-const defaultVisionFallbackModel = 'Qwen/Qwen2.5-VL-32B-Instruct';
+const defaultVisionModel = 'Qwen/Qwen3-VL-8B-Instruct';
+const defaultVisionFallbackModel = 'Qwen/Qwen3-VL-32B-Instruct';
 const defaultFallbackModel = 'Pro/zai-org/GLM-5';
 
 function getModelFromEnv(name: string, fallback: string) {
@@ -108,7 +106,7 @@ export class ModelRouter {
         task,
         model: useBalanced ? this.balancedModel : this.fastModel,
         fallbackModels: useBalanced ? [this.fallbackModel] : [this.balancedModel, this.fallbackModel],
-        maxTokens: useBalanced ? 1200 : 900,
+        maxTokens: useBalanced ? 850 : 650,
         temperature: 0.1,
         enableThinking: false,
       };
@@ -119,18 +117,7 @@ export class ModelRouter {
         task,
         model: this.balancedModel,
         fallbackModels: [this.fallbackModel],
-        maxTokens: 1100,
-        temperature: 0.1,
-        enableThinking: false,
-      };
-    }
-
-    if (task === 'recipe_steps_batch') {
-      return {
-        task,
-        model: this.balancedModel,
-        fallbackModels: [this.fallbackModel],
-        maxTokens: Math.min(4800, Math.max(2200, (context.recipes?.length ?? 1) * 1200)),
+        maxTokens: 760,
         temperature: 0.1,
         enableThinking: false,
       };
@@ -152,7 +139,7 @@ export class ModelRouter {
         task,
         model: this.balancedModel,
         fallbackModels: [this.fallbackModel],
-        maxTokens: 520,
+        maxTokens: 300,
         temperature: 0.2,
         enableThinking: false,
       };
@@ -162,7 +149,7 @@ export class ModelRouter {
       task,
       model: this.fastModel,
       fallbackModels: [this.balancedModel, this.fallbackModel],
-      maxTokens: task === 'recipe_nutrition' ? 480 : 320,
+      maxTokens: task === 'recipe_nutrition' ? 480 : task === 'seasonal_suggestions' ? 140 : 320,
       temperature: 0,
       enableThinking: false,
     };

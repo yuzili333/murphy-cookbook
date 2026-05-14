@@ -9,6 +9,7 @@ import {
 } from '../../service.js';
 import {
   generateCookingFeedback,
+  generateSeasonalIngredientSuggestions,
   generateRecipePlan,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
@@ -383,9 +384,60 @@ test('understandIngredientsFromImage posts image message and returns model conte
   });
 
   assert.equal(content, '{"ingredients":[{"name":"番茄","quantity":"1份"}]}');
-  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen2.5-VL-7B-Instruct');
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3-VL-8B-Instruct');
   assert.equal(requestBodies[0]?.enable_thinking, false);
   assert.equal(requestBodies[0]?.max_tokens, 360);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateSeasonalIngredientSuggestions uses fast compact model request', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
+
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            suggestions: [
+              { name: '西瓜', reason: '清爽补水' },
+              { name: '黄瓜', reason: '脆甜清淡' },
+              { name: '玉米', reason: '香甜饱腹' },
+              { name: '辣椒', reason: '多余选项' },
+            ],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await generateSeasonalIngredientSuggestions({
+    month: 7,
+    childContext: 'x'.repeat(300),
+  });
+
+  assert.deepEqual(result.map((item) => item.name), ['西瓜', '黄瓜', '玉米']);
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
+  assert.equal(requestBodies[0]?.enable_thinking, false);
+  assert.equal(requestBodies[0]?.max_tokens, 140);
+
+  const requestJson = JSON.stringify(requestBodies[0]);
+  assert.equal(requestJson.includes('x'.repeat(80)), true);
+  assert.equal(requestJson.includes('x'.repeat(81)), false);
+  assert.equal(requestJson.includes('当前季节适合小朋友食用的蔬菜或水果品种'), true);
+  assert.equal(requestJson.includes('只给3个蔬菜或水果品种'), true);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -455,7 +507,7 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
   const requestBody = requestBodies[0] ?? {};
   assert.equal(requestBody?.model, 'Qwen/Qwen3.5-27B');
   assert.equal(requestBody?.enable_thinking, false);
-  assert.equal(requestBody?.max_tokens, 1200);
+  assert.equal(requestBody?.max_tokens, 850);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -530,7 +582,7 @@ test('generateRecipePlan uses fast model for simple recommendations and falls ba
 
   assert.equal(result.recipes[0].name, '番茄鸡蛋');
   assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B', 'Qwen/Qwen3.5-27B']);
-  assert.deepEqual(requestedMaxTokens, [900, 900]);
+  assert.deepEqual(requestedMaxTokens, [650, 650]);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -935,6 +987,71 @@ test('getRecipeDetailForRecommendation ensures each detail ingredient appears in
   assert.equal(stepText.includes('番茄'), true);
   assert.equal(stepText.includes('鸡蛋'), true);
   assert.match(stepText, /清洗|整理|加入|切小/);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('getRecipeDetailForRecommendation parses standard JSON object when model adds surrounding text', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: [
+            '下面是标准 JSON：',
+            JSON.stringify({
+              steps: [{
+                title: '处理蚕豆',
+                description: '本步骤食材：蚕豆；操作：把蚕豆洗净，放入锅中煮软。',
+                tip: '热锅和开水由家长操作。',
+                childAction: '把洗好的蚕豆递给家长。',
+                parentAction: '家长负责开火和倒热水。',
+                expectedResult: '蚕豆变软，完成清煮鲜蚕豆。',
+                riskLevel: 'high',
+                requiresParentAssist: true,
+              }],
+            }),
+          ].join('\n'),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'chat_context_profile',
+    ingredients: [{ id: 'ing_broad_bean', name: '蚕豆', normalizedName: '蚕豆', quantity: '1小碗', source: 'manual' }],
+    recipe: {
+      id: `recipe_generated_broad_bean_surrounded_${Date.now()}`,
+      name: '清煮鲜蚕豆',
+      namePinyin: 'qīng zhǔ xiān cán dòu',
+      englishName: 'Boiled Fresh Broad Beans',
+      ageRange: '7-12 岁',
+      difficulty: 'medium' as const,
+      estimatedTimeMinutes: 15,
+      fitReasons: ['清淡简单'],
+      riskAlerts: ['开水需家长陪同'],
+      nutritionSummary: '富含植物蛋白。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if ('error' in result) {
+    assert.fail(`expected generated detail data, got ${result.error.code}`);
+  }
+
+  assert.equal(result.data.steps[0].title, '处理蚕豆');
+  assert.equal(result.data.steps[0].description.includes('蚕豆'), true);
 
   global.fetch = originalFetch;
   if (originalKey) {
