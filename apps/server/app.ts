@@ -1,5 +1,5 @@
 import cors from 'cors';
-import express, { type Express } from 'express';
+import express, { type Express, type Request, type Response } from 'express';
 import multer from 'multer';
 import {
   childProfiles,
@@ -281,6 +281,139 @@ export function createApp(): Express {
     next();
   });
 
+  const sendRecommendationResponse = async (req: Request, res: Response) => {
+    const { profileId, ingredients, profile, userPrompt } = resolveRecommendationRequestPayload(req.body, req.query);
+    const result = await recommendRecipes(profileId, ingredients, profile, userPrompt);
+
+    if ('error' in result) {
+      const status =
+        result.error.code === 'PROFILE_NOT_FOUND'
+          ? 404
+          : result.error.code === 'INVALID_ARGUMENT' || result.error.code === 'NO_RECIPE_MATCHED'
+            ? 400
+            : result.error.code === 'MODEL_PROVIDER_NOT_CONFIGURED'
+              ? 500
+              : 502;
+      res.status(status).json({ error: result.error });
+      return;
+    }
+
+    res.json({
+      data: {
+        ...result.data,
+        sortBy: String(req.body?.sortBy ?? result.data.sortBy),
+      },
+    });
+  };
+
+  const sendIngredientNormalizeResponse = async (req: Request, res: Response) => {
+    const text = resolveIngredientTextInput(req.body, req.query);
+
+    if (!text) {
+      res.status(400).json({
+        error: { code: 'INVALID_ARGUMENT', message: '请输入要解析的食材文本。' },
+      });
+      return;
+    }
+
+    try {
+      if (!isSiliconFlowConfigured() && shouldRequireRealModel()) {
+        res.status(500).json({
+          error: {
+            code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+            message: '服务端未配置 SiliconFlow API Key，无法使用生产环境食材理解能力。',
+          },
+        });
+        return;
+      }
+
+      const ingredients = isSiliconFlowConfigured()
+        ? parseIngredientJson(await understandIngredientsFromText(text), 'manual')
+        : parseTextToIngredients(text);
+
+      res.json({ data: { ingredients } });
+    } catch (error) {
+      res.status(502).json({
+        error: {
+          code: 'TEXT_UNDERSTANDING_FAILED',
+          message: error instanceof Error ? error.message : '文本理解失败。',
+        },
+      });
+    }
+  };
+
+  const sendRecipeDetailResponse = async (req: Request, res: Response) => {
+    let { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
+
+    if (!isRecipeRecommendationInput(recipe)) {
+      const fallbackPayload = resolveRecipeDetailRequestPayload((req as RequestWithRawBody).rawBody, req.query);
+      profileId = fallbackPayload.profileId;
+      ingredients = fallbackPayload.ingredients;
+      profile = fallbackPayload.profile;
+      recipe = fallbackPayload.recipe;
+    }
+
+    if (!isRecipeRecommendationInput(recipe) && req.params.recipeId) {
+      const recipeId = String(req.params.recipeId);
+      const catalogRecipe = recipeCatalog.find((item) => item.id === recipeId);
+      recipe = catalogRecipe ?? {
+        id: recipeId,
+        name: String(req.body?.name ?? req.query.name ?? ''),
+      };
+    }
+
+    if (!isRecipeRecommendationInput(recipe)) {
+      res.status(400).json({
+        error: { code: 'INVALID_ARGUMENT', message: '请提供有效的推荐菜谱卡片信息。' },
+      });
+      return;
+    }
+
+    const result = await getRecipeDetailForRecommendation({
+      profileId,
+      ingredients,
+      profileInput: profile,
+      recipe,
+    });
+
+    if ('error' in result) {
+      const status =
+        result.error.code === 'PROFILE_NOT_FOUND'
+          ? 404
+          : result.error.code === 'INVALID_ARGUMENT' || result.error.code === 'RECIPE_DETAIL_UNAVAILABLE'
+            ? 400
+            : result.error.code === 'MODEL_PROVIDER_NOT_CONFIGURED'
+              ? 500
+              : 502;
+      res.status(status).json({ error: result.error });
+      return;
+    }
+
+    res.json({ data: stripRecipeDetailImageFields(result.data) });
+  };
+
+  const sendRecipeNutritionResponse = (req: Request, res: Response) => {
+    const recipeInput = sanitizeRecipeDetailInput(req.body?.recipe ?? null);
+    const recipeId = String(req.params.recipeId);
+    const recipe = recipeCatalog.find((item) => item.id === recipeId) ?? recipeInput;
+
+    if (!recipe?.id || !recipe.name) {
+      res.status(404).json({
+        error: { code: 'RECIPE_NOT_FOUND', message: '未找到对应菜谱，无法生成营养摘要。' },
+      });
+      return;
+    }
+
+    res.json({
+      data: {
+        recipeId: recipe.id,
+        name: recipe.name,
+        nutritionSummary: recipe.nutritionSummary ?? '营养搭配均衡，适合作为儿童一餐。',
+        riskAlerts: recipe.riskAlerts ?? [],
+      },
+    });
+  };
+
   app.get('/api/v1/health', (_req, res) => {
     res.json({ data: { ok: true } });
   });
@@ -360,6 +493,9 @@ export function createApp(): Express {
       });
     }
   });
+
+  app.post('/api/ingredients/normalize', sendIngredientNormalizeResponse);
+  app.post('/api/v1/ingredients/normalize', sendIngredientNormalizeResponse);
 
   app.get('/api/v1/ingredients/seasonal-suggestions', async (req, res) => {
     if (!isSiliconFlowConfigured()) {
@@ -475,7 +611,7 @@ export function createApp(): Express {
       }
 
       const ingredients = isSiliconFlowConfigured()
-        ? parseIngredientJson(await understandIngredientsFromText(transcript), 'voice')
+        ? parseIngredientJson(await understandIngredientsFromText(transcript, 'voice'), 'voice')
         : parseTextToIngredients(transcript).map((item) => ({
             ...item,
             source: 'voice' as const,
@@ -504,30 +640,9 @@ export function createApp(): Express {
     }
   });
 
-  app.post('/api/v1/recommendations/recipes', async (req, res) => {
-    const { profileId, ingredients, profile, userPrompt } = resolveRecommendationRequestPayload(req.body, req.query);
-    const result = await recommendRecipes(profileId, ingredients, profile, userPrompt);
-
-    if ('error' in result) {
-      const status =
-        result.error.code === 'PROFILE_NOT_FOUND'
-          ? 404
-          : result.error.code === 'INVALID_ARGUMENT' || result.error.code === 'NO_RECIPE_MATCHED'
-            ? 400
-            : result.error.code === 'MODEL_PROVIDER_NOT_CONFIGURED'
-              ? 500
-              : 502;
-      res.status(status).json({ error: result.error });
-      return;
-    }
-
-    res.json({
-      data: {
-        ...result.data,
-        sortBy: String(req.body?.sortBy ?? result.data.sortBy),
-      },
-    });
-  });
+  app.post('/api/v1/recommendations/recipes', sendRecommendationResponse);
+  app.post('/api/recipes/recommend', sendRecommendationResponse);
+  app.post('/api/v1/recipes/recommend', sendRecommendationResponse);
 
   app.get('/api/v1/recipes/:recipeId', (req, res) => {
     const recipe = recipeCatalog.find((item) => item.id === req.params.recipeId);
@@ -541,46 +656,12 @@ export function createApp(): Express {
     res.json({ data: recipe });
   });
 
-  app.post('/api/v1/recipes/detail', async (req, res) => {
-    let { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
+  app.post('/api/v1/recipes/detail', sendRecipeDetailResponse);
+  app.post('/api/recipes/:recipeId/steps', sendRecipeDetailResponse);
+  app.post('/api/v1/recipes/:recipeId/steps', sendRecipeDetailResponse);
 
-    if (!isRecipeRecommendationInput(recipe)) {
-      const fallbackPayload = resolveRecipeDetailRequestPayload((req as RequestWithRawBody).rawBody, req.query);
-      profileId = fallbackPayload.profileId;
-      ingredients = fallbackPayload.ingredients;
-      profile = fallbackPayload.profile;
-      recipe = fallbackPayload.recipe;
-    }
-
-    if (!isRecipeRecommendationInput(recipe)) {
-      res.status(400).json({
-        error: { code: 'INVALID_ARGUMENT', message: '请提供有效的推荐菜谱卡片信息。' },
-      });
-      return;
-    }
-
-    const result = await getRecipeDetailForRecommendation({
-      profileId,
-      ingredients,
-      profileInput: profile,
-      recipe,
-    });
-
-    if ('error' in result) {
-      const status =
-        result.error.code === 'PROFILE_NOT_FOUND'
-          ? 404
-          : result.error.code === 'INVALID_ARGUMENT' || result.error.code === 'RECIPE_DETAIL_UNAVAILABLE'
-            ? 400
-            : result.error.code === 'MODEL_PROVIDER_NOT_CONFIGURED'
-              ? 500
-              : 502;
-      res.status(status).json({ error: result.error });
-      return;
-    }
-
-    res.json({ data: stripRecipeDetailImageFields(result.data) });
-  });
+  app.post('/api/recipes/:recipeId/nutrition', sendRecipeNutritionResponse);
+  app.post('/api/v1/recipes/:recipeId/nutrition', sendRecipeNutritionResponse);
 
   app.post('/api/v1/recipes/details', async (req, res) => {
     const { profileId, ingredients, profile, recipes } = resolveRecipeDetailsRequestPayload(req.body, req.query);
@@ -697,7 +778,9 @@ export function createApp(): Express {
         netlify: Boolean(process.env.NETLIFY),
         lambda: Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT),
         nodeEnv: process.env.NODE_ENV ?? '',
-        qwenModel: process.env.SILICONFLOW_QWEN_MODEL ?? '',
+        modelFast: process.env.MODEL_FAST ?? 'Qwen/Qwen3.5-9B',
+        modelBalanced: process.env.MODEL_BALANCED ?? 'Qwen/Qwen3.5-27B',
+        modelFallback: process.env.MODEL_FALLBACK ?? 'Pro/zai-org/GLM-5',
         apiKeyLength: (process.env.SILICONFLOW_API_KEY ?? '').trim().length,
       },
     });

@@ -99,6 +99,61 @@ test('recommendRecipes returns model-generated recipe matches for existing child
   assert.equal(result.data?.recipeDetails.length, 0);
 });
 
+test('recommendRecipes ignores model-provided ids that collide with local catalog recipes', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: 'recipe_001',
+              name: '清炒猪肝片',
+              namePinyin: 'qīng chǎo zhū gān piàn',
+              englishName: 'Stir-Fried Pork Liver Slices',
+              nameLearning: {
+                characters: [{ character: '肝', pinyin: 'gān', strokes: 7, structure: '左右结构', hint: '肝是身体里的一个器官。' }],
+              },
+              ageRange: '7-12 岁',
+              difficulty: 'medium',
+              estimatedTimeMinutes: 18,
+              fitReasons: ['补充铁元素'],
+              riskAlerts: ['热锅需家长全程陪同'],
+              nutritionSummary: '富含铁和蛋白质。',
+              extraIngredients: [],
+              canCookWithCurrentIngredients: true,
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await recommendRecipes('cp_001', [
+    { id: 'ing_liver', name: '猪肝', normalizedName: '猪肝', quantity: '1份', source: 'manual' },
+  ]);
+
+  if ('error' in result) {
+    assert.fail(`expected generated recommendation data, got ${result.error.code}`);
+  }
+
+  assert.equal(result.data.recipes[0].name, '清炒猪肝片');
+  assert.notEqual(result.data.recipes[0].id, 'recipe_001');
+  assert.match(result.data.recipes[0].id, /^recipe_gen_summary_/);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
 test('parseIngredientJson converts LLM json output to ingredient items', () => {
   const ingredients = parseIngredientJson(
     '{"ingredients":[{"name":"鸡蛋","quantity":"2个"},{"name":"番茄","quantity":"1个"}]}',
@@ -247,18 +302,55 @@ test('understandIngredientsFromText posts chat completions request and returns m
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
 
-  global.fetch = (async () =>
-    new Response(JSON.stringify({
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
       choices: [{ message: { content: '{"ingredients":[{"name":"鸡蛋","quantity":"2个"}]}' } }],
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
 
   const content = await understandIngredientsFromText('两个鸡蛋');
 
   assert.equal(content, '{"ingredients":[{"name":"鸡蛋","quantity":"2个"}]}');
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
+  assert.equal(requestBodies[0]?.enable_thinking, false);
+  assert.equal(requestBodies[0]?.max_tokens, 260);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('understandIngredientsFromText uses small text model for voice transcript', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
+
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: '{"ingredients":[{"name":"黄瓜","quantity":"1根"}]}' } }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const content = await understandIngredientsFromText('一根黄瓜', 'voice');
+
+  assert.equal(content, '{"ingredients":[{"name":"黄瓜","quantity":"1根"}]}');
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
+  assert.equal(requestBodies[0]?.enable_thinking, false);
+  assert.equal(requestBodies[0]?.max_tokens, 260);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -272,14 +364,17 @@ test('understandIngredientsFromImage posts image message and returns model conte
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
 
-  global.fetch = (async () =>
-    new Response(JSON.stringify({
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
       choices: [{ message: { content: '{"ingredients":[{"name":"番茄","quantity":"1份"}]}' } }],
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
 
   const content = await understandIngredientsFromImage({
     buffer: Buffer.from('fake-image-binary'),
@@ -288,6 +383,9 @@ test('understandIngredientsFromImage posts image message and returns model conte
   });
 
   assert.equal(content, '{"ingredients":[{"name":"番茄","quantity":"1份"}]}');
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen2.5-VL-7B-Instruct');
+  assert.equal(requestBodies[0]?.enable_thinking, false);
+  assert.equal(requestBodies[0]?.max_tokens, 360);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -301,9 +399,11 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
 
-  global.fetch = (async () =>
-    new Response(JSON.stringify({
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
       choices: [{
         message: {
           content: JSON.stringify({
@@ -334,7 +434,8 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
 
   const result = await generateRecipePlan(
     {
@@ -351,6 +452,85 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
   assert.equal(result.recipes[0].name, '番茄鸡蛋面');
   assert.equal(result.recipeDetails.length, 0);
   assert.equal(result.filteredAllergens[0], '花生');
+  const requestBody = requestBodies[0] ?? {};
+  assert.equal(requestBody?.model, 'Qwen/Qwen3.5-27B');
+  assert.equal(requestBody?.enable_thinking, false);
+  assert.equal(requestBody?.max_tokens, 1200);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateRecipePlan uses fast model for simple recommendations and falls back to balanced model', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestedModels: string[] = [];
+  const requestedMaxTokens: number[] = [];
+
+  global.fetch = (async (_input, init) => {
+    const requestBody = JSON.parse(String(init?.body ?? '{}')) as { model?: string; max_tokens?: number; enable_thinking?: boolean };
+    requestedModels.push(String(requestBody.model ?? ''));
+    requestedMaxTokens.push(Number(requestBody.max_tokens));
+    assert.equal(requestBody.enable_thinking, false);
+
+    if (requestedModels.length === 1) {
+      return new Response('model overloaded', { status: 503 });
+    }
+
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: 'recipe_fallback_001',
+              name: '番茄鸡蛋',
+              englishName: 'Tomato Egg',
+              nameLearning: {
+                characters: [{ character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '鸡蛋的蛋。' }],
+              },
+              ageRange: '7-12 岁',
+              difficulty: 'easy',
+              estimatedTimeMinutes: 12,
+              fitReasons: ['简单'],
+              riskAlerts: [],
+              nutritionSummary: '营养均衡。',
+              extraIngredients: [],
+              canCookWithCurrentIngredients: true,
+            }],
+          }),
+        },
+      }],
+      usage: { total_tokens: 220 },
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await generateRecipePlan(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_tomato', name: '番茄', normalizedName: '番茄', quantity: '1个', source: 'manual' },
+      { id: 'ing_egg', name: '鸡蛋', normalizedName: '鸡蛋', quantity: '1个', source: 'manual' },
+    ],
+    '推荐简单菜谱',
+  );
+
+  assert.equal(result.recipes[0].name, '番茄鸡蛋');
+  assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B', 'Qwen/Qwen3.5-27B']);
+  assert.deepEqual(requestedMaxTokens, [900, 900]);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -842,6 +1022,93 @@ test('getRecipeDetailForRecommendation rejects model detail with mismatched reci
 
   assert.equal(result.error.code, 'RECIPE_DETAIL_FAILED');
   assert.match(result.error.message, /不一致/);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('getRecipeDetailForRecommendation does not return local catalog detail when generated id collides', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  let fetchCalled = false;
+
+  global.fetch = (async () => {
+    fetchCalled = true;
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: 'recipe_001',
+              name: '清炒猪肝片',
+              namePinyin: 'qīng chǎo zhū gān piàn',
+              englishName: 'Stir-Fried Pork Liver Slices',
+              ageRange: '7-12 岁',
+              difficulty: 'medium',
+              estimatedTimeMinutes: 18,
+              fitReasons: ['补充铁元素'],
+              riskAlerts: ['热锅需家长全程陪同'],
+              nutritionSummary: '富含铁和蛋白质。',
+              extraIngredients: [],
+              canCookWithCurrentIngredients: true,
+              prepTimeMinutes: 8,
+              cookTimeMinutes: 10,
+              ingredients: [{ name: '猪肝', quantity: '1份' }],
+              steps: [{
+                title: '处理猪肝',
+                description: '本步骤食材：猪肝；操作：把猪肝冲洗干净并切成薄片。',
+                tip: '刀具由家长操作。',
+                childAction: '观察猪肝颜色，帮忙递盘子。',
+                parentAction: '家长负责切片和热锅。',
+                expectedResult: '猪肝片准备好，最后完成清炒猪肝片。',
+                riskLevel: 'high',
+                requiresParentAssist: true,
+              }],
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'cp_001',
+    ingredients: [
+      { id: 'ing_liver', name: '猪肝', normalizedName: '猪肝', quantity: '1份', source: 'manual' },
+    ],
+    recipe: {
+      id: 'recipe_001',
+      name: '清炒猪肝片',
+      namePinyin: 'qīng chǎo zhū gān piàn',
+      englishName: 'Stir-Fried Pork Liver Slices',
+      ageRange: '7-12 岁',
+      difficulty: 'medium' as const,
+      estimatedTimeMinutes: 18,
+      fitReasons: ['补充铁元素'],
+      riskAlerts: ['热锅需家长全程陪同'],
+      nutritionSummary: '富含铁和蛋白质。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if ('error' in result) {
+    assert.fail(`expected generated detail data, got ${result.error.code}: ${result.error.message}`);
+  }
+
+  assert.equal(fetchCalled, true);
+  assert.equal(result.data.id, 'recipe_001');
+  assert.equal(result.data.name, '清炒猪肝片');
+  assert.equal(result.data.ingredients[0].name, '猪肝');
+  assert.equal(JSON.stringify(result.data.steps).includes('番茄鸡蛋面'), false);
 
   global.fetch = originalFetch;
   if (originalKey) {

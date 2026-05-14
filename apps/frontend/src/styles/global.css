@@ -444,7 +444,7 @@ button {
   width: min(100vw - 32px, 980px);
   padding: 10px 0 0;
   border-radius: 26px;
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-x pan-y pinch-zoom;
 }
 
 .recipe-carousel-shell::before,
@@ -493,17 +493,18 @@ button {
   gap: 10px;
   width: 100%;
   overflow-x: auto;
+  overflow-y: visible;
   overscroll-behavior-x: contain;
   overscroll-behavior-y: auto;
   overscroll-behavior-inline: contain;
   padding: 2px 2px 12px;
   scroll-margin-top: 88px;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   scroll-padding-inline: 2px;
   scrollbar-width: thin;
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-x pan-y pinch-zoom;
   -webkit-overflow-scrolling: touch;
-  will-change: scroll-position;
+  contain: layout paint style;
 }
 
 .carousel-recipe-card {
@@ -522,6 +523,8 @@ button {
     0 16px 36px rgba(48, 217, 67, 0.12),
     0 10px 26px rgba(255, 122, 26, 0.12);
   animation: card-pop-in 220ms ease-out;
+  contain: layout paint style;
+  transform: translateZ(0);
 }
 
 .recipe-card-kicker {

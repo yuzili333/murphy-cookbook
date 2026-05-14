@@ -1,0 +1,172 @@
+import type { ChildProfile, IngredientItem, RecipeDetailRecipeInput, RecipeRecommendation } from './data.js';
+
+export type ModelTask =
+  | 'ingredient_text'
+  | 'ingredient_voice'
+  | 'ingredient_normalize'
+  | 'ingredient_vision'
+  | 'seasonal_suggestions'
+  | 'recipe_recommendation'
+  | 'recipe_steps'
+  | 'recipe_steps_batch'
+  | 'recipe_nutrition'
+  | 'cooking_feedback';
+
+export interface ModelRouteContext {
+  profile?: ChildProfile;
+  ingredients?: IngredientItem[];
+  recipe?: RecipeDetailRecipeInput | RecipeRecommendation;
+  recipes?: RecipeRecommendation[];
+  userPrompt?: string;
+}
+
+export interface ModelRoute {
+  task: ModelTask;
+  model: string;
+  fallbackModels: string[];
+  maxTokens: number;
+  temperature: number;
+  enableThinking: boolean;
+}
+
+const defaultFastModel = 'Qwen/Qwen3.5-9B';
+const defaultBalancedModel = 'Qwen/Qwen3.5-27B';
+const defaultIngredientTextModel = 'Qwen/Qwen3.5-9B';
+const defaultVisionModel = 'Qwen/Qwen2.5-VL-7B-Instruct';
+const defaultVisionFallbackModel = 'Qwen/Qwen2.5-VL-32B-Instruct';
+const defaultFallbackModel = 'Pro/zai-org/GLM-5';
+
+function getModelFromEnv(name: string, fallback: string) {
+  return process.env[name]?.trim() || fallback;
+}
+
+function hasComplexDietContext(context: ModelRouteContext) {
+  if ((context.profile?.allergens.length ?? 0) > 0) {
+    return true;
+  }
+
+  const profileText = [
+    ...(context.profile?.allergens ?? []),
+    ...(context.profile?.tastePreferences ?? []),
+    ...(context.profile?.dietaryHabits ?? []),
+    context.userPrompt ?? '',
+  ].join(' ');
+
+  const riskWords = [
+    '过敏',
+    '急性',
+    '呼吸困难',
+    '喉头水肿',
+    '休克',
+    '禁忌',
+    '不能吃',
+    '严格',
+    '特殊',
+    '疾病',
+  ];
+
+  return riskWords.some((word) => profileText.includes(word));
+}
+
+function hasLargeIngredientSet(context: ModelRouteContext) {
+  return (context.ingredients?.length ?? 0) >= 7;
+}
+
+function shouldUseBalancedRecommendationModel(context: ModelRouteContext) {
+  return hasLargeIngredientSet(context) || hasComplexDietContext(context);
+}
+
+export class ModelRouter {
+  private readonly fastModel = getModelFromEnv('MODEL_FAST', defaultFastModel);
+  private readonly balancedModel = getModelFromEnv('MODEL_BALANCED', defaultBalancedModel);
+  private readonly ingredientTextModel = getModelFromEnv('MODEL_INGREDIENT_TEXT', defaultIngredientTextModel);
+  private readonly visionModel = getModelFromEnv('MODEL_VISION', defaultVisionModel);
+  private readonly visionFallbackModel = getModelFromEnv('MODEL_VISION_FALLBACK', defaultVisionFallbackModel);
+  private readonly fallbackModel = getModelFromEnv('MODEL_FALLBACK', defaultFallbackModel);
+
+  select(task: ModelTask, context: ModelRouteContext = {}): ModelRoute {
+    if (task === 'ingredient_text' || task === 'ingredient_voice' || task === 'ingredient_normalize') {
+      const textFallbackModels = [
+        this.fastModel,
+        this.balancedModel,
+        this.fallbackModel,
+      ].filter((model) => model !== this.ingredientTextModel);
+
+      return {
+        task,
+        model: this.ingredientTextModel,
+        fallbackModels: textFallbackModels,
+        maxTokens: 260,
+        temperature: 0,
+        enableThinking: false,
+      };
+    }
+
+    if (task === 'recipe_recommendation') {
+      const useBalanced = shouldUseBalancedRecommendationModel(context);
+      return {
+        task,
+        model: useBalanced ? this.balancedModel : this.fastModel,
+        fallbackModels: useBalanced ? [this.fallbackModel] : [this.balancedModel, this.fallbackModel],
+        maxTokens: useBalanced ? 1200 : 900,
+        temperature: 0.1,
+        enableThinking: false,
+      };
+    }
+
+    if (task === 'recipe_steps') {
+      return {
+        task,
+        model: this.balancedModel,
+        fallbackModels: [this.fallbackModel],
+        maxTokens: 1100,
+        temperature: 0.1,
+        enableThinking: false,
+      };
+    }
+
+    if (task === 'recipe_steps_batch') {
+      return {
+        task,
+        model: this.balancedModel,
+        fallbackModels: [this.fallbackModel],
+        maxTokens: Math.min(4800, Math.max(2200, (context.recipes?.length ?? 1) * 1200)),
+        temperature: 0.1,
+        enableThinking: false,
+      };
+    }
+
+    if (task === 'ingredient_vision') {
+      return {
+        task,
+        model: this.visionModel,
+        fallbackModels: [this.visionFallbackModel].filter((model) => model !== this.visionModel),
+        maxTokens: 360,
+        temperature: 0,
+        enableThinking: false,
+      };
+    }
+
+    if (task === 'cooking_feedback') {
+      return {
+        task,
+        model: this.balancedModel,
+        fallbackModels: [this.fallbackModel],
+        maxTokens: 520,
+        temperature: 0.2,
+        enableThinking: false,
+      };
+    }
+
+    return {
+      task,
+      model: this.fastModel,
+      fallbackModels: [this.balancedModel, this.fallbackModel],
+      maxTokens: task === 'recipe_nutrition' ? 480 : 320,
+      temperature: 0,
+      enableThinking: false,
+    };
+  }
+}
+
+export const modelRouter = new ModelRouter();

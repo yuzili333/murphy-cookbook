@@ -30,7 +30,7 @@ const childContextStorageKey = 'murphy-cookbook.child-context.v1';
 const chatSessionsStorageKey = 'murphy-cookbook.chat-sessions.v1';
 const activeChatSessionStorageKey = 'murphy-cookbook.active-chat-session.v1';
 const recommendationCacheStorageKey = 'murphy-cookbook.recommendation-cache.v1';
-const recipeDetailCacheStorageKey = 'murphy-cookbook.recipe-detail-cache.v1';
+const legacyRecipeDetailCacheStorageKey = 'murphy-cookbook.recipe-detail-cache.v1';
 const webCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const conversationProfileId = 'chat_context_profile';
 const defaultChildContext =
@@ -59,6 +59,22 @@ interface ChatSession {
   childContext: string;
   ingredients: IngredientItem[];
   messages: ChatMessage[];
+}
+
+function stripRecipeDetailsFromMessage(message: ChatMessage): ChatMessage {
+  const { recipeDetails: _recipeDetails, ...rest } = message;
+  return rest;
+}
+
+function stripRecipeDetailsFromMessages(messages: ChatMessage[]) {
+  return messages.map(stripRecipeDetailsFromMessage);
+}
+
+function stripRecipeDetailsFromSession(session: ChatSession): ChatSession {
+  return {
+    ...session,
+    messages: stripRecipeDetailsFromMessages(session.messages),
+  };
 }
 
 function createWelcomeMessage(childContext = ''): ChatMessage {
@@ -137,7 +153,7 @@ function readChatMessages() {
     const raw = window.localStorage.getItem(chatMessagesStorageKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as ChatMessage[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? stripRecipeDetailsFromMessages(parsed) : [];
   } catch {
     return [];
   }
@@ -148,7 +164,7 @@ function persistChatMessages(messages: ChatMessage[]) {
     return;
   }
 
-  window.localStorage.setItem(chatMessagesStorageKey, JSON.stringify(messages.slice(-40)));
+  window.localStorage.setItem(chatMessagesStorageKey, JSON.stringify(stripRecipeDetailsFromMessages(messages).slice(-40)));
 }
 
 function readLikedRecipeIds() {
@@ -199,7 +215,9 @@ function readChatSessions() {
     const raw = window.localStorage.getItem(chatSessionsStorageKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as ChatSession[];
-    return Array.isArray(parsed) ? parsed.filter(isPersistableChatSession) : [];
+    return Array.isArray(parsed)
+      ? parsed.map(stripRecipeDetailsFromSession).filter(isPersistableChatSession)
+      : [];
   } catch {
     return [];
   }
@@ -210,7 +228,10 @@ function persistChatSessions(sessions: ChatSession[]) {
     return;
   }
 
-  window.localStorage.setItem(chatSessionsStorageKey, JSON.stringify(sessions.filter(isPersistableChatSession).slice(0, 30)));
+  window.localStorage.setItem(
+    chatSessionsStorageKey,
+    JSON.stringify(sessions.map(stripRecipeDetailsFromSession).filter(isPersistableChatSession).slice(0, 30)),
+  );
 }
 
 function readActiveChatSessionId() {
@@ -390,16 +411,6 @@ function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: stri
     dietaryHabits: profile.dietaryHabits,
     ingredientsKey,
     prompt: prompt.trim(),
-  });
-}
-
-function buildRecipeDetailCacheKey(profile: ChildProfile, ingredientsKey: string, recipe: RecipeRecommendation) {
-  return JSON.stringify({
-    profileId: profile.id,
-    age: profile.age,
-    ingredientsKey,
-    recipeId: recipe.id,
-    recipeName: recipe.name,
   });
 }
 
@@ -598,12 +609,6 @@ export default function App() {
     scrollLeft: 0,
     isHorizontal: false,
   });
-  const recipeSwipeRef = useRef({
-    startX: 0,
-    startY: 0,
-    scrollLeft: 0,
-    isHorizontal: false,
-  });
   const chatboxSwipeRef = useRef({
     startX: 0,
     startY: 0,
@@ -747,16 +752,12 @@ export default function App() {
   const handleIngredientTouchMove = (event: TouchEvent<HTMLDivElement>) =>
     handleHorizontalTouchMove(event, ingredientSwipeRef);
   const handleIngredientTouchEnd = () => handleHorizontalTouchEnd(ingredientSwipeRef);
-  const handleRecipeTouchStart = (event: TouchEvent<HTMLDivElement>) =>
-    handleHorizontalTouchStart(event, recipeSwipeRef);
-  const handleRecipeTouchMove = (event: TouchEvent<HTMLDivElement>) =>
-    handleHorizontalTouchMove(event, recipeSwipeRef);
-  const handleRecipeTouchEnd = () => handleHorizontalTouchEnd(recipeSwipeRef);
 
   useEffect(() => {
     async function bootstrap() {
       try {
         setError('');
+        window.localStorage.removeItem(legacyRecipeDetailCacheStorageKey);
         const localFavoriteRecipes = readFavoriteRecipes();
         const localChatMessages = readChatMessages();
         const localLikedRecipeIds = readLikedRecipeIds();
@@ -879,7 +880,7 @@ export default function App() {
 
     setChatSessions((current) => {
       const updatedAt = new Date().toISOString();
-      const nextSession = createChatSession({
+      const nextSession = stripRecipeDetailsFromSession(createChatSession({
         id: activeChatSessionId,
         childContext,
         ingredients,
@@ -887,7 +888,7 @@ export default function App() {
         title: buildSessionTitle(chatMessages, childContext),
         createdAt: current.find((session) => session.id === activeChatSessionId)?.createdAt,
         updatedAt,
-      });
+      }));
       if (!isPersistableChatSession(nextSession)) {
         const next = current.filter((session) => session.id !== activeChatSessionId);
         persistChatSessions(next);
@@ -1052,16 +1053,6 @@ export default function App() {
     messageId: string,
     showToast = false,
   ) => {
-    const ingredientsKey = buildIngredientsKey(nextIngredients);
-    const cacheKey = buildRecipeDetailCacheKey(profile, ingredientsKey, recipe);
-    const cachedDetail = readCachedValue<RecipeDetail>(recipeDetailCacheStorageKey, cacheKey);
-
-    if (cachedDetail) {
-      setRecipeDetailsById((current) => ({ ...current, [cachedDetail.id]: cachedDetail, [recipe.id]: cachedDetail }));
-      mergeRecipeDetailIntoCurrentSession(messageId, cachedDetail);
-      return;
-    }
-
     setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: true }));
     setRecipeDetailErrorsById((current) => {
       const next = { ...current };
@@ -1076,7 +1067,6 @@ export default function App() {
         ingredients: nextIngredients,
         recipe,
       });
-      writeCachedValue(recipeDetailCacheStorageKey, cacheKey, detail);
       setRecipeDetailsById((current) => ({ ...current, [detail.id]: detail, [recipe.id]: detail }));
       mergeRecipeDetailIntoCurrentSession(messageId, detail);
     } catch (detailError) {
@@ -1837,10 +1827,6 @@ export default function App() {
                     <div
                       className="recipe-carousel"
                       aria-label="推荐菜谱"
-                      onTouchStart={handleRecipeTouchStart}
-                      onTouchMove={handleRecipeTouchMove}
-                      onTouchEnd={handleRecipeTouchEnd}
-                      onTouchCancel={handleRecipeTouchEnd}
                     >
                     {message.recipes.map((recipe) => {
                       const recipeDetail = recipeDetailsById[recipe.id];

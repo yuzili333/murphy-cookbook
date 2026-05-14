@@ -65,6 +65,11 @@ function isRecipeDetailPayload(recipe: RecipeRecommendation | RecipeDetailRecipe
   );
 }
 
+function hasSameRecipeIdentity(actualName: string, targetName: string) {
+  return normalizeIngredientName(actualName).replace(/\s+/g, '').toLowerCase() ===
+    normalizeIngredientName(targetName).replace(/\s+/g, '').toLowerCase();
+}
+
 export function parseTextToIngredients(text: string) {
   const parts = text
     .split(/[，,、\s]+/)
@@ -273,7 +278,9 @@ export async function getRecipeDetailForRecommendation(input: {
     return { data: input.recipe };
   }
 
-  const catalogRecipe = recipeCatalog.find((item) => item.id === input.recipe.id);
+  const catalogRecipe = recipeCatalog.find((item) =>
+    item.id === input.recipe.id && hasSameRecipeIdentity(item.name, input.recipe.name),
+  );
   if (catalogRecipe) {
     return { data: catalogRecipe };
   }
@@ -325,7 +332,9 @@ export async function getRecipeDetailsForRecommendations(input: {
   const embeddedDetails = input.recipes.filter(isRecipeDetailPayload);
   const catalogDetails = input.recipes
     .filter((recipe) => !isRecipeDetailPayload(recipe))
-    .map((recipe) => recipeCatalog.find((item) => item.id === recipe.id))
+    .map((recipe) => recipeCatalog.find((item) =>
+      item.id === recipe.id && hasSameRecipeIdentity(item.name, recipe.name),
+    ))
     .filter((recipe): recipe is RecipeDetail => Boolean(recipe));
   const existingDetailIds = new Set([...embeddedDetails, ...catalogDetails].map((recipe) => recipe.id));
   const missingRecipes = input.recipes

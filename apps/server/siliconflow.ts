@@ -10,9 +10,9 @@ import {
   type RecipeDetail,
 } from './data.js';
 import { getLocalLlmLogFilePath, writeLocalJsonLog } from './logger.js';
+import { modelRouter, type ModelRouteContext, type ModelTask } from './modelRouter.js';
 
 const SILICONFLOW_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
-const QWEN_MODEL = process.env.SILICONFLOW_QWEN_MODEL ?? 'Qwen/Qwen3.5-35B-A3B';
 
 interface SiliconFlowMessage {
   role: 'system' | 'user' | 'assistant';
@@ -26,6 +26,8 @@ interface SiliconFlowMessage {
 
 interface SiliconFlowCallOptions {
   operation: string;
+  task: ModelTask;
+  routeContext?: ModelRouteContext;
   metadata?: Record<string, unknown>;
   maxTokens?: number;
 }
@@ -76,12 +78,15 @@ function summarizeMessages(messages: SiliconFlowMessage[]) {
 async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconFlowCallOptions) {
   const apiKey = process.env.SILICONFLOW_API_KEY;
   const startedAt = Date.now();
+  const route = modelRouter.select(options.task, options.routeContext);
+  const models = [route.model, ...route.fallbackModels].filter((model, index, items) => model && items.indexOf(model) === index);
 
   if (!apiKey) {
     writeLocalJsonLog({
       type: 'llm_call',
       operation: options.operation,
-      model: QWEN_MODEL,
+      task: options.task,
+      model: route.model,
       success: false,
       durationMs: Date.now() - startedAt,
       error: 'SILICONFLOW_API_KEY is not configured.',
@@ -91,83 +96,99 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
     throw new Error('SILICONFLOW_API_KEY is not configured.');
   }
 
-  try {
-    const response = await fetch(SILICONFLOW_API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: QWEN_MODEL,
-        messages,
-        stream: false,
-        enable_thinking: false,
-        temperature: 0.1,
-        max_tokens: options.maxTokens ?? 1800,
-        response_format: {
-          type: 'json_object',
+  let lastError: Error | null = null;
+
+  for (const [modelIndex, model] of models.entries()) {
+    const attemptStartedAt = Date.now();
+    const isFallback = modelIndex > 0;
+    try {
+      const response = await fetch(SILICONFLOW_API_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
-      }),
-    });
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: false,
+          enable_thinking: route.enableThinking,
+          temperature: route.temperature,
+          max_tokens: options.maxTokens ?? route.maxTokens,
+          response_format: {
+            type: 'json_object',
+          },
+        }),
+      });
 
-    if (!response.ok) {
-      const text = await response.text();
+      if (!response.ok) {
+        const text = await response.text();
+        writeLocalJsonLog({
+          type: 'llm_call',
+          operation: options.operation,
+          task: options.task,
+          model,
+          fallback: isFallback,
+          success: false,
+          durationMs: Date.now() - attemptStartedAt,
+          totalDurationMs: Date.now() - startedAt,
+          status: response.status,
+          error: `SiliconFlow chat completion failed: ${text}`,
+          requestSummary: summarizeMessages(messages),
+          metadata: options.metadata ?? {},
+          logFile: getLocalLlmLogFilePath(),
+        });
+        throw new Error(`SiliconFlow chat completion failed: ${text}`);
+      }
+
+      const payload = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+        usage?: Record<string, unknown>;
+      };
+
+      const content = payload.choices?.[0]?.message?.content?.trim() ?? '';
+      const finishReason = payload.choices?.[0]?.finish_reason ?? null;
+
       writeLocalJsonLog({
         type: 'llm_call',
         operation: options.operation,
-        model: QWEN_MODEL,
-        success: false,
-        durationMs: Date.now() - startedAt,
-        status: response.status,
-        error: `SiliconFlow chat completion failed: ${text}`,
+        task: options.task,
+        model,
+        fallback: isFallback,
+        success: true,
+        durationMs: Date.now() - attemptStartedAt,
+        totalDurationMs: Date.now() - startedAt,
         requestSummary: summarizeMessages(messages),
+        responsePreview: content.slice(0, 500),
+        finishReason,
+        usage: payload.usage ?? null,
         metadata: options.metadata ?? {},
         logFile: getLocalLlmLogFilePath(),
       });
-      throw new Error(`SiliconFlow chat completion failed: ${text}`);
+
+      return content;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('SiliconFlow chat completion failed.');
+      if (error instanceof Error && !error.message.startsWith('SiliconFlow chat completion failed:')) {
+        writeLocalJsonLog({
+          type: 'llm_call',
+          operation: options.operation,
+          task: options.task,
+          model,
+          fallback: isFallback,
+          success: false,
+          durationMs: Date.now() - attemptStartedAt,
+          totalDurationMs: Date.now() - startedAt,
+          error: error.message,
+          requestSummary: summarizeMessages(messages),
+          metadata: options.metadata ?? {},
+          logFile: getLocalLlmLogFilePath(),
+        });
+      }
     }
-
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
-      usage?: Record<string, unknown>;
-    };
-
-    const content = payload.choices?.[0]?.message?.content?.trim() ?? '';
-    const finishReason = payload.choices?.[0]?.finish_reason ?? null;
-
-    writeLocalJsonLog({
-      type: 'llm_call',
-      operation: options.operation,
-      model: QWEN_MODEL,
-      success: true,
-      durationMs: Date.now() - startedAt,
-      requestSummary: summarizeMessages(messages),
-      responsePreview: content.slice(0, 500),
-      finishReason,
-      usage: payload.usage ?? null,
-      metadata: options.metadata ?? {},
-      logFile: getLocalLlmLogFilePath(),
-    });
-
-    return content;
-  } catch (error) {
-    if (error instanceof Error && !error.message.startsWith('SiliconFlow chat completion failed:')) {
-      writeLocalJsonLog({
-        type: 'llm_call',
-        operation: options.operation,
-        model: QWEN_MODEL,
-        success: false,
-        durationMs: Date.now() - startedAt,
-        error: error.message,
-        requestSummary: summarizeMessages(messages),
-        metadata: options.metadata ?? {},
-        logFile: getLocalLlmLogFilePath(),
-      });
-    }
-
-    throw error;
   }
+
+  throw lastError ?? new Error('SiliconFlow chat completion failed.');
 }
 
 function stripMarkdownCodeFence(content: string) {
@@ -368,7 +389,7 @@ function normalizeGeneratedRecipeSummaries(
       const namePinyin = String((recipe as { namePinyin?: string }).namePinyin ?? '');
 
       return {
-        id: String(recipe.id ?? `recipe_gen_summary_${slugifyRecipeName(name)}_${index + 1}`),
+        id: `recipe_gen_summary_${slugifyRecipeName(name)}_${index + 1}`,
         name,
         namePinyin,
         englishName: String(recipe.englishName ?? buildFallbackEnglishName(name)),
@@ -829,7 +850,7 @@ function buildRecipeDetailsUserPrompt(
   ].join('\n');
 }
 
-export async function understandIngredientsFromText(userText: string) {
+export async function understandIngredientsFromText(userText: string, source: 'manual' | 'voice' = 'manual') {
   const content = await callSiliconFlow([
     {
       role: 'system',
@@ -842,7 +863,9 @@ export async function understandIngredientsFromText(userText: string) {
     },
   ], {
     operation: 'understand_ingredients_text',
+    task: source === 'voice' ? 'ingredient_voice' : 'ingredient_text',
     metadata: {
+      source,
       textLength: userText.length,
     },
   });
@@ -878,6 +901,7 @@ export async function understandIngredientsFromImage(file: {
     },
   ], {
     operation: 'understand_ingredients_image',
+    task: 'ingredient_vision',
     metadata: {
       filename: file.filename,
       mimetype: file.mimetype,
@@ -938,7 +962,7 @@ export async function generateSeasonalIngredientSuggestions(input: {
     },
   ], {
     operation: 'generate_seasonal_ingredient_suggestions',
-    maxTokens: 360,
+    task: 'seasonal_suggestions',
     metadata: {
       month,
       seasonHint,
@@ -961,7 +985,12 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     },
   ], {
     operation: 'generate_recipe_plan',
-    maxTokens: 1600,
+    task: 'recipe_recommendation',
+    routeContext: {
+      profile,
+      ingredients,
+      userPrompt,
+    },
     metadata: {
       profileId: profile.id,
       age: profile.age,
@@ -982,7 +1011,7 @@ export async function generateRecipeDetail(
   ingredients: IngredientItem[],
   recipe: RecipeDetailRecipeInput,
 ) {
-  const catalogRecipe = recipeCatalog.find((item) => item.id === recipe.id);
+  const catalogRecipe = recipeCatalog.find((item) => item.id === recipe.id && hasSameRecipeName(item.name, recipe.name));
   if (catalogRecipe) {
     return catalogRecipe;
   }
@@ -999,7 +1028,12 @@ export async function generateRecipeDetail(
     },
   ], {
     operation: 'generate_recipe_detail',
-    maxTokens: 1200,
+    task: 'recipe_steps',
+    routeContext: {
+      profile,
+      ingredients,
+      recipe,
+    },
     metadata: {
       profileId: profile.id,
       recipeId: recipe.id,
@@ -1048,7 +1082,7 @@ export async function generateRecipeDetails(
   recipes: RecipeRecommendation[],
 ) {
   const catalogDetails = recipes
-    .map((recipe) => recipeCatalog.find((item) => item.id === recipe.id))
+    .map((recipe) => recipeCatalog.find((item) => item.id === recipe.id && hasSameRecipeName(item.name, recipe.name)))
     .filter((recipe): recipe is RecipeDetail => Boolean(recipe));
   const missingRecipes = recipes.filter((recipe) => !catalogDetails.some((detail) => detail.id === recipe.id));
 
@@ -1068,7 +1102,12 @@ export async function generateRecipeDetails(
     },
   ], {
     operation: 'generate_recipe_details',
-    maxTokens: Math.min(8000, Math.max(2600, missingRecipes.length * 1700)),
+    task: 'recipe_steps_batch',
+    routeContext: {
+      profile,
+      ingredients,
+      recipes: missingRecipes,
+    },
     metadata: {
       profileId: profile.id,
       recipeCount: missingRecipes.length,
@@ -1136,6 +1175,11 @@ export async function generateCookingFeedback(input: {
     },
   ], {
     operation: 'generate_cooking_feedback',
+    task: 'cooking_feedback',
+    routeContext: {
+      profile: input.profile,
+      recipe: input.recipe,
+    },
     metadata: {
       profileId: input.profile.id,
       recipeId: input.recipe.id,
