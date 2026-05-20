@@ -146,14 +146,28 @@ function buildDetailIngredients(input: {
   ingredients: IngredientItem[];
   recipe: RecipeDetailRecipeInput | RecipeDetail;
 }) {
-  if (input.ingredients.length > 0) {
-    return input.ingredients;
+  const extraIngredients = (input.recipe.extraIngredients ?? [])
+    .flatMap((item) => String(item).split(/[，,、\s]+/))
+    .map((item) => item.replace(/\d+(\.\d+)?\s*(个|份|根|把|克|g|ml|毫升|平勺|勺)?/gi, '').trim())
+    .filter(Boolean)
+    .map((name) => createIngredient(name, 'manual'));
+  const mergedIngredients = [...input.ingredients];
+
+  for (const extraIngredient of extraIngredients) {
+    const normalizedName = normalizeIngredientName(extraIngredient.name);
+    const exists = mergedIngredients.some((ingredient) =>
+      normalizeIngredientName(ingredient.normalizedName ?? ingredient.name) === normalizedName,
+    );
+    if (!exists) {
+      mergedIngredients.push(extraIngredient);
+    }
   }
 
-  const fallbackNames = [
-    input.recipe.name,
-    ...(input.recipe.extraIngredients ?? []),
-  ]
+  if (mergedIngredients.length > 0) {
+    return mergedIngredients.slice(0, 10);
+  }
+
+  const fallbackNames = [input.recipe.name]
     .flatMap((item) => String(item).split(/[，,、\s]+/))
     .map((item) => item.replace(/\d+(\.\d+)?\s*(个|份|根|把|克|g|ml|毫升|平勺|勺)?/gi, '').trim())
     .filter(Boolean)
@@ -310,7 +324,7 @@ export async function getRecipeDetailForRecommendation(input: {
   } catch (error) {
     return {
       error: {
-        code: 'RECIPE_DETAIL_FAILED',
+        code: 'RECIPE_DETAIL_UNAVAILABLE',
         message: error instanceof Error ? error.message : '菜谱详情生成失败。',
       },
     };
@@ -366,7 +380,7 @@ export async function getRecipeDetailsForRecommendations(input: {
   } catch (error) {
     return {
       error: {
-        code: 'RECIPE_DETAIL_FAILED',
+        code: 'RECIPE_DETAIL_UNAVAILABLE',
         message: error instanceof Error ? error.message : '菜谱详情生成失败。',
       },
     };

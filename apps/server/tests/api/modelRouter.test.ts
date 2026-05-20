@@ -47,16 +47,6 @@ test('ModelRouter keeps GLM-5 as fallback for recipe steps', () => {
   assert.equal(route.maxTokens, 760);
 });
 
-test('ModelRouter routes seasonal suggestions to fast model', () => {
-  const router = new ModelRouter();
-  const route = router.select('seasonal_suggestions');
-
-  assert.equal(route.model, 'Qwen/Qwen3.5-9B');
-  assert.deepEqual(route.fallbackModels, []);
-  assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 80);
-});
-
 test('ModelRouter routes text and voice ingredient recognition to small text model', () => {
   const router = new ModelRouter();
   const textRoute = router.select('ingredient_text');

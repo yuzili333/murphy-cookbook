@@ -5,7 +5,6 @@ export type ModelTask =
   | 'ingredient_voice'
   | 'ingredient_normalize'
   | 'ingredient_vision'
-  | 'seasonal_suggestions'
   | 'recipe_recommendation'
   | 'recipe_steps'
   | 'recipe_nutrition'
@@ -141,17 +140,6 @@ export class ModelRouter {
         fallbackModels: [this.fallbackModel],
         maxTokens: 300,
         temperature: 0.2,
-        enableThinking: false,
-      };
-    }
-
-    if (task === 'seasonal_suggestions') {
-      return {
-        task,
-        model: this.fastModel,
-        fallbackModels: [],
-        maxTokens: 80,
-        temperature: 0.5,
         enableThinking: false,
       };
     }

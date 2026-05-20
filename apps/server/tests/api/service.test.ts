@@ -9,13 +9,16 @@ import {
 } from '../../service.js';
 import {
   generateCookingFeedback,
-  generateSeasonalIngredientSuggestions,
   generateRecipePlan,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
   understandIngredientsFromImage,
   understandIngredientsFromText,
 } from '../../siliconflow.js';
+import {
+  getLocalSeasonalIngredientSuggestions,
+  seasonalIngredientCacheSize,
+} from '../../seasonalIngredients.js';
 
 test('parseTextToIngredients extracts ingredient tokens from chinese text', () => {
   const ingredients = parseTextToIngredients('两个鸡蛋 一个番茄 半根黄瓜');
@@ -31,6 +34,14 @@ test('extractIngredientsFromFilename reads ingredient hints from uploaded image 
 
   assert.ok(ingredients.some((item) => item.name === '番茄'));
   assert.ok(ingredients.some((item) => item.name === '鸡蛋'));
+});
+
+test('getLocalSeasonalIngredientSuggestions returns three items from local seasonal cache', () => {
+  const suggestions = getLocalSeasonalIngredientSuggestions(7, 3);
+
+  assert.equal(seasonalIngredientCacheSize, 300);
+  assert.equal(suggestions.length, 3);
+  assert.ok(suggestions.every((item) => item.name && item.reason));
 });
 
 test('recommendRecipes returns model-generated recipe matches for existing child profile', async () => {
@@ -387,57 +398,6 @@ test('understandIngredientsFromImage posts image message and returns model conte
   assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3-VL-8B-Instruct');
   assert.equal(requestBodies[0]?.enable_thinking, false);
   assert.equal(requestBodies[0]?.max_tokens, 360);
-
-  global.fetch = originalFetch;
-  if (originalKey) {
-    process.env.SILICONFLOW_API_KEY = originalKey;
-  } else {
-    delete process.env.SILICONFLOW_API_KEY;
-  }
-});
-
-test('generateSeasonalIngredientSuggestions uses fast compact model request', async () => {
-  const originalKey = process.env.SILICONFLOW_API_KEY;
-  const originalFetch = global.fetch;
-  process.env.SILICONFLOW_API_KEY = 'test-key';
-  const requestBodies: Array<Record<string, unknown>> = [];
-
-  global.fetch = (async (_input, init) => {
-    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
-    return new Response(JSON.stringify({
-      choices: [{
-        message: {
-          content: JSON.stringify({
-            suggestions: [
-              { name: '西瓜', reason: '清爽补水' },
-              { name: '黄瓜', reason: '脆甜清淡' },
-              { name: '玉米', reason: '香甜饱腹' },
-              { name: '辣椒', reason: '多余选项' },
-            ],
-          }),
-        },
-      }],
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }) as typeof fetch;
-
-  const result = await generateSeasonalIngredientSuggestions({
-    month: 7,
-    childContext: 'x'.repeat(300),
-  });
-
-  assert.deepEqual(result.map((item) => item.name), ['西瓜', '黄瓜', '玉米']);
-  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
-  assert.equal(requestBodies[0]?.enable_thinking, false);
-  assert.equal(requestBodies[0]?.max_tokens, 80);
-
-  const requestJson = JSON.stringify(requestBodies[0]);
-  assert.equal(requestJson.includes('x'.repeat(40)), true);
-  assert.equal(requestJson.includes('x'.repeat(41)), false);
-  assert.equal(requestJson.includes('当前季节适合小朋友食用的蔬菜或水果品种'), true);
-  assert.equal(requestJson.includes('只给蔬菜或水果品种'), true);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -901,8 +861,8 @@ test('getRecipeDetailForRecommendation strips step ingredients outside submitted
   }
 
   assert.deepEqual(result.data.extraIngredients, []);
-  assert.deepEqual(result.data.ingredients.map((item) => item.name), ['蚕豆']);
-  assert.equal(JSON.stringify(result.data.steps).includes('盐'), false);
+  assert.deepEqual(result.data.ingredients.map((item) => item.name), ['蚕豆', '少许盐']);
+  assert.equal(JSON.stringify(result.data.steps).includes('盐'), true);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -1137,7 +1097,7 @@ test('getRecipeDetailForRecommendation rejects model detail with mismatched reci
     assert.fail('expected mismatched model detail to be rejected');
   }
 
-  assert.equal(result.error.code, 'RECIPE_DETAIL_FAILED');
+  assert.equal(result.error.code, 'RECIPE_DETAIL_UNAVAILABLE');
   assert.match(result.error.message, /不一致/);
 
   global.fetch = originalFetch;

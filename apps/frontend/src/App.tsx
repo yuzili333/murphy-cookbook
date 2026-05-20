@@ -30,6 +30,7 @@ const childContextStorageKey = 'murphy-cookbook.child-context.v1';
 const chatSessionsStorageKey = 'murphy-cookbook.chat-sessions.v1';
 const activeChatSessionStorageKey = 'murphy-cookbook.active-chat-session.v1';
 const recommendationCacheStorageKey = 'murphy-cookbook.recommendation-cache.v1';
+const recipeStepCacheStorageKey = 'murphy-cookbook.recipe-step-cache.v1';
 const legacyRecipeDetailCacheStorageKey = 'murphy-cookbook.recipe-detail-cache.v1';
 const webCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const conversationProfileId = 'chat_context_profile';
@@ -412,6 +413,10 @@ function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: stri
     ingredientsKey,
     prompt: prompt.trim(),
   });
+}
+
+function buildRecipeStepCacheKey(recipeName: string) {
+  return recipeName.trim().replace(/\s+/g, '').toLowerCase();
 }
 
 function buildRecipeDetailsMap(details: RecipeDetail[]) {
@@ -1053,6 +1058,19 @@ export default function App() {
     messageId: string,
     showToast = false,
   ) => {
+    const stepCacheKey = buildRecipeStepCacheKey(recipe.name);
+    const cachedDetail = readCachedValue<RecipeDetail>(recipeStepCacheStorageKey, stepCacheKey);
+    if (cachedDetail) {
+      setRecipeDetailsById((current) => ({ ...current, [cachedDetail.id]: cachedDetail, [recipe.id]: cachedDetail }));
+      mergeRecipeDetailIntoCurrentSession(messageId, cachedDetail);
+      setRecipeDetailErrorsById((current) => {
+        const next = { ...current };
+        delete next[recipe.id];
+        return next;
+      });
+      return;
+    }
+
     setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: true }));
     setRecipeDetailErrorsById((current) => {
       const next = { ...current };
@@ -1069,6 +1087,7 @@ export default function App() {
       });
       setRecipeDetailsById((current) => ({ ...current, [detail.id]: detail, [recipe.id]: detail }));
       mergeRecipeDetailIntoCurrentSession(messageId, detail);
+      writeCachedValue(recipeStepCacheStorageKey, stepCacheKey, detail);
     } catch (detailError) {
       const message = detailError instanceof Error ? detailError.message : '菜谱步骤获取失败。';
       setRecipeDetailErrorsById((current) => ({ ...current, [recipe.id]: message }));
@@ -1831,8 +1850,6 @@ export default function App() {
                     {message.recipes.map((recipe) => {
                       const recipeDetail = recipeDetailsById[recipe.id];
                       const recipeStoryboardPanels = recipeDetail ? groupStepsForStoryboard(recipeDetail.steps) : [];
-                      const fitReasonText = recipe.fitReasons.slice(0, 2).join('；');
-                      const extraIngredientText = recipe.extraIngredients.slice(0, 4).join('、');
                       const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
                       const hasHighRiskAllergy = hasHighRiskAllergyAlert(riskAlertText, message.ingredients ?? ingredients);
 
@@ -1892,36 +1909,6 @@ export default function App() {
                           </span>
                         </div>
                         <div className="recipe-note-grid">
-                          <section className="recipe-note-panel">
-                            <div className="note-panel-heading">
-                              <strong>适配原因</strong>
-                              <button
-                                type="button"
-                                className="mini-speech-button"
-                                onClick={() => speak(`适配原因：${fitReasonText}`, 'zh-CN')}
-                                aria-label="朗读适配原因"
-                              >
-                                <PlayInlineIcon />
-                              </button>
-                            </div>
-                            <p>{fitReasonText}</p>
-                          </section>
-                          {recipe.extraIngredients.length > 0 ? (
-                            <section className="recipe-note-panel">
-                              <div className="note-panel-heading">
-                                <strong>补充食材</strong>
-                                <button
-                                  type="button"
-                                  className="mini-speech-button"
-                                  onClick={() => speak(`补充食材：${extraIngredientText}`, 'zh-CN')}
-                                  aria-label="朗读补充食材"
-                                >
-                                  <PlayInlineIcon />
-                                </button>
-                              </div>
-                              <p>{extraIngredientText}</p>
-                            </section>
-                          ) : null}
                           {recipe.riskAlerts.length > 0 ? (
                             <section className={hasHighRiskAllergy ? 'recipe-note-panel warning allergy-warning' : 'recipe-note-panel warning'}>
                               <div className="note-panel-heading">

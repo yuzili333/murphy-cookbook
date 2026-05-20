@@ -20,12 +20,12 @@ import {
 } from './service.js';
 import {
   generateCookingFeedback,
-  generateSeasonalIngredientSuggestions,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
   understandIngredientsFromImage,
   understandIngredientsFromText,
 } from './siliconflow.js';
+import { getLocalSeasonalIngredientSuggestions } from './seasonalIngredients.js';
 
 interface RequestWithRawBody {
   rawBody?: string;
@@ -511,23 +511,10 @@ export function createApp(): Express {
   app.post('/api/v1/ingredients/normalize', sendIngredientNormalizeResponse);
 
   const sendSeasonalSuggestionsResponse = async (req: Request, res: Response) => {
-    if (!isSiliconFlowConfigured()) {
-      res.json({ data: { suggestions: [] } });
-      return;
-    }
+    const month = Number(req.body?.month ?? new Date().getMonth() + 1);
+    const suggestions = getLocalSeasonalIngredientSuggestions(month, 3);
 
-    try {
-      const month = Number(req.body?.month ?? new Date().getMonth() + 1);
-      const childContext = normalizeTextInputValue(req.body?.childContext ?? '');
-      const suggestions = await generateSeasonalIngredientSuggestions({
-        month,
-        childContext,
-      });
-
-      res.json({ data: { suggestions } });
-    } catch {
-      res.json({ data: { suggestions: [] } });
-    }
+    res.json({ data: { suggestions } });
   };
 
   app.post('/api/v1/ingredients/seasonal-suggestions', sendSeasonalSuggestionsResponse);

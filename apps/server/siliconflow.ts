@@ -224,6 +224,13 @@ function extractJsonObjectCandidate(content: string) {
   return normalizedContent.slice(firstBrace, lastBrace + 1).trim();
 }
 
+function repairJsonObjectCandidate(content: string) {
+  return content
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*([}\]])/g, '$1');
+}
+
 function extractRecipesFromPossiblyTruncatedJson(content: string) {
   const recipesKeyIndex = content.indexOf('"recipes"');
   if (recipesKeyIndex === -1) {
@@ -312,7 +319,7 @@ function parseRecipeStepsPayload(content: string) {
   const normalizedContent = extractJsonObjectCandidate(content);
 
   try {
-    const parsed = JSON.parse(normalizedContent) as {
+    const parsed = JSON.parse(repairJsonObjectCandidate(normalizedContent)) as {
       steps?: Array<Partial<RecipeDetail['steps'][number]>>;
       recipes?: Array<{ name?: unknown; steps?: Array<Partial<RecipeDetail['steps'][number]>> }>;
     };
@@ -324,26 +331,6 @@ function parseRecipeStepsPayload(content: string) {
     };
   } catch {
     throw new Error('菜谱步骤模型返回内容无法解析为有效 JSON。');
-  }
-}
-
-function parseSeasonalIngredientSuggestionPayload(content: string) {
-  const normalizedContent = extractJsonObjectCandidate(content);
-
-  try {
-    const parsed = JSON.parse(normalizedContent) as {
-      suggestions?: Array<{ name?: unknown; reason?: unknown }>;
-    };
-
-    return (parsed.suggestions ?? [])
-      .map((item) => ({
-        name: String(item.name ?? '').trim(),
-        reason: String(item.reason ?? '').trim(),
-      }))
-      .filter((item) => item.name)
-      .slice(0, 3);
-  } catch {
-    throw new Error('季节食材推荐模型返回内容无法解析为有效 JSON。');
   }
 }
 
@@ -453,7 +440,7 @@ function normalizeGeneratedRecipeSummaries(
         ageRange: String(recipe.ageRange ?? `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`),
         difficulty: recipe.difficulty === 'hard' || recipe.difficulty === 'medium' ? recipe.difficulty : 'easy',
         estimatedTimeMinutes: Math.max(1, Number(recipe.estimatedTimeMinutes ?? 20)),
-        fitReasons: Array.isArray(recipe.fitReasons) ? recipe.fitReasons.map(String).slice(0, 3) : ['适合当前儿童档案'],
+        fitReasons: Array.isArray(recipe.fitReasons) ? recipe.fitReasons.map(String).slice(0, 3) : [],
         riskAlerts: Array.isArray(recipe.riskAlerts) ? recipe.riskAlerts.map(String).slice(0, 3) : [],
         nutritionSummary: String(recipe.nutritionSummary ?? '营养搭配均衡，适合作为儿童一餐。'),
         extraIngredients: Array.isArray(recipe.extraIngredients) ? recipe.extraIngredients.map(String).slice(0, 4) : [],
@@ -463,7 +450,7 @@ function normalizeGeneratedRecipeSummaries(
             : false,
       } satisfies RecipeRecommendation;
     })
-    .filter((recipe) => recipe.fitReasons.length > 0);
+    .filter((recipe) => recipe.name);
 
   return {
     recipes,
@@ -725,33 +712,21 @@ function buildRecipeDetailFromSteps(
 function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
   const promptIngredients = getPromptIngredients(ingredients);
   const ingredientLines = promptIngredients
-    .map((item, index) => `${index + 1}. ${compactText(item.name, 32)}｜${compactText(item.quantity, 24)}`)
+    .map((item, index) => `${index + 1}.${compactText(item.name, 20)}(${compactText(item.quantity, 12)})`)
     .join('\n');
-  const tastePreferences = compactList(profile.tastePreferences, 4).join('、') || '低油脂、轻口味、膳食均衡';
-  const allergens = compactList(profile.allergens, 5).join('、') || '无';
-  const compactUserPrompt = compactText(userPrompt, 220);
+  const tastePreferences = compactList(profile.tastePreferences, 3, 12).join('、') || '低油、轻口味、均衡';
+  const allergens = compactList(profile.allergens, 4, 12).join('、') || '无';
+  const compactUserPrompt = compactText(userPrompt, 120);
 
   return [
-    '任务: 为儿童生成 1-2 道推荐菜谱卡片摘要，并输出严格 JSON。',
-    '儿童档案:',
-    `年龄:${profile.age}岁；偏好:${tastePreferences}；过敏原:${allergens}`,
-    compactUserPrompt ? '用户本轮对话描述:' : '',
-    compactUserPrompt,
-    '现有食材清单:',
+    '为小学生生成1-2道菜谱卡片，只输出JSON。',
+    `儿童:${profile.age}岁；偏好:${tastePreferences}；过敏:${allergens}`,
+    compactUserPrompt ? `用户:${compactUserPrompt}` : '',
+    '食材:',
     ingredientLines,
-    '生成要求:',
-    '1. 只返回 1-2 道推荐菜谱摘要；优先使用现有食材，并结合用户本轮对话里的口味、场景、时间和限制条件；缺少食材尽量少。',
-    '2. 菜谱要适合儿童年龄、口味和饮食习惯，操作者多为小学阶段儿童，优先推荐简单、低门槛、易上手、步骤清楚、营养均衡的菜谱。',
-    '3. 严格避开过敏原和明显不适宜儿童的做法；避免复杂刀工、长时间油炸、重油重辣和需要精准火候的菜谱。',
-    '4. 这里只生成推荐卡片摘要，不要生成 steps、ingredients、prepTimeMinutes、cookTimeMinutes，烹饪步骤会由详情接口单独生成。',
-    '5. 每道菜都必须包含 namePinyin，使用带声调的汉语拼音，并按词分隔，例如 "fān qié jī dàn miàn"。',
-    '6. 每道菜都必须包含 englishName，使用自然英译名，适合儿童听读，不要机械逐字翻译。',
-    '7. 每道菜都必须包含 nameLearning.characters，逐字覆盖中文菜名中的汉字；每项包含 character、pinyin、strokes、structure、hint，pinyin 必须使用带调号拼音。',
-    '8. 不要输出 imageUrl、imageSearchQuery 或任何图片相关字段。',
-    '9. 如果菜谱会使用明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮写明“需家长全程陪同”，difficulty 不要标为 easy，canCookWithCurrentIngredients 不能掩盖安全风险。',
-    '10. 检查“现有食材清单”中是否包含高危过敏原食材，例如花生、坚果、虾、蟹、贝类、海鲜、鱼、牛奶、乳制品、鸡蛋、小麦、大豆、芝麻等。若存在，请在 riskAlerts 增加以“高危过敏原提醒：”开头的醒目提醒，说明该食材可能诱发急性过敏、呼吸困难等危及生命风险，必须由家长确认儿童无相关确诊过敏后再制作。',
-    '11. 如果只是普通常见食材且未命中高危过敏原，不要额外输出过敏原提醒，避免制造不必要焦虑。',
-    '12. 输出字段必须完整，不要输出任何解释文字。',
+    '规则:简单、低油轻口味、营养均衡；优先用现有食材；不要steps/ingredients/extraIngredients/imageUrl。',
+    '安全:明火/热锅/烤箱/刀具等 riskAlerts 写“需家长全程陪同”；高危过敏原才写“高危过敏原提醒：...”。',
+    '必填:name,namePinyin(带调号),englishName,nameLearning.characters,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients。',
   ].join('\n');
 }
 
@@ -761,32 +736,28 @@ function buildRecipeDetailUserPrompt(
   recipe: RecipeDetailRecipeInput,
 ) {
   const ingredientLines = getPromptIngredients(ingredients)
-    .map((item, index) => `${index + 1}. ${compactText(item.name, 32)}｜${compactText(item.quantity, 24)}`)
+    .map((item, index) => `${index + 1}.${compactText(item.name, 20)}(${compactText(item.quantity, 12)})`)
     .join('\n');
 
   const recipeLines = [
-    `菜名: ${compactText(recipe.name, 40)}`,
-    `风险提醒: ${compactList(recipe.riskAlerts, 3, 36).join('、') || '无'}`,
+    `菜名:${compactText(recipe.name, 32)}`,
+    `风险:${compactList(recipe.riskAlerts, 2, 24).join('、') || '无'}`,
   ].join('\n');
 
   return [
-    '为儿童生成 1 道菜的烹饪步骤。输出必须是标准 JSON 对象，第一字符必须是 {，最后字符必须是 }。',
-    '允许使用食材清单:',
+    '为指定菜名生成儿童烹饪步骤。只输出标准JSON对象，首字符{，尾字符}。',
+    '允许食材:',
     ingredientLines,
-    '菜谱卡片:',
+    '菜谱:',
     recipeLines,
     '规则:',
-    '1. 只输出 {"steps":[...]}，不要返回食材清单、用户档案、口味偏好、菜谱摘要、营养摘要、时间、图片或额外说明。',
-    `2. steps 必须全部围绕“${recipe.name}”制作，禁止改成其他菜谱、其他主食或相似菜。`,
-    '3. steps 里的 title、description、tip、childAction、expectedResult 只能出现“允许使用食材清单”中的食材，禁止新增盐、油、糖、葱姜蒜、酱油、牛奶、面粉等未传入食材。',
-    '4. 水、锅、碗、炉具、刀具等可以作为操作工具或介质描述；调味料必须在允许食材清单中才可使用。',
-    '5. steps 4-8 步，每步写清本步骤食材和关键动作，适合卡通分镜。',
-    '6. description 采用“本步骤食材：A、B；操作：……”格式，说明食材在哪一步加入和怎么处理。',
-    `7. 最后一步 expectedResult 必须明确写出“完成${recipe.name}”。`,
-    '8. 如果无法用允许食材清单为该菜名生成一致步骤，返回 {"steps":[]}，不要编造其他菜谱。',
-    '9. 每步包含 title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。',
-    '10. 涉及开水、热锅、明火、电器、刀具时 riskLevel=medium/high，requiresParentAssist=true，parentAction 写家长全程陪同或由家长操作。',
-    '11. JSON 字符串必须使用双引号；不要使用单引号、注释、尾随逗号、代码块标记。',
+    `1.steps必须制作“${recipe.name}”，禁止换菜名/主食/相似菜。`,
+    '2.只能使用允许食材；水/锅/碗/刀具/炉具可作为工具；未列出的盐油糖葱姜蒜酱油牛奶面粉都禁止。',
+    '3.steps 4-6步；description格式固定为“本步骤食材：A、B；操作：……”。',
+    `4.最后一步 expectedResult 写“完成${recipe.name}”。`,
+    '5.每步必填:title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。',
+    '6.热源/刀具/开水 riskLevel=medium或high，requiresParentAssist=true。',
+    '7.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号，无尾逗号。',
   ].join('\n');
 }
 
@@ -852,70 +823,12 @@ export async function understandIngredientsFromImage(file: {
   return content;
 }
 
-function getSeasonHint(month: number) {
-  if (month === 1 || month === 2) {
-    return '冬季春节蔬果';
-  }
-
-  if (month >= 3 && month <= 5) {
-    return '春季蔬果';
-  }
-
-  if (month >= 6 && month <= 8) {
-    return '夏季补水蔬果';
-  }
-
-  if (month >= 9 && month <= 11) {
-    return '秋季润燥蔬果';
-  }
-
-  return '冬季温和蔬果';
-}
-
-export async function generateSeasonalIngredientSuggestions(input: {
-  month: number;
-  childContext: string;
-}) {
-  const month = Number.isFinite(input.month) && input.month >= 1 && input.month <= 12
-    ? Math.trunc(input.month)
-    : new Date().getMonth() + 1;
-  const seasonHint = getSeasonHint(month);
-  const childContext = compactText(input.childContext, 40);
-
-  const content = await callSiliconFlow([
-    {
-      role: 'system',
-      content:
-        '输出3种当前季节适合小朋友食用的蔬菜或水果品种。只输出JSON：{"suggestions":[{"name":"名称","reason":"8字内"}]}。不要菜名、饮品、零食、解释、Markdown。',
-    },
-    {
-      role: 'user',
-      content: [
-        `月份:${month}`,
-        `季节:${seasonHint}`,
-        `儿童:${childContext || '小学生'}`,
-        '只给蔬菜或水果品种；名称短；避开辛辣高糖高油。',
-      ].join('\n'),
-    },
-  ], {
-    operation: 'generate_seasonal_ingredient_suggestions',
-    task: 'seasonal_suggestions',
-    timeoutMs: 4500,
-    metadata: {
-      month,
-      seasonHint,
-    },
-  });
-
-  return parseSeasonalIngredientSuggestionPayload(content);
-}
-
 export async function generateRecipePlan(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
   const content = await callSiliconFlow([
     {
       role: 'system',
       content:
-        '你是儿童烹饪菜谱智能体。请根据儿童档案和现有食材，生成 1-2 个安全、适龄、简单易上手的儿童菜谱推荐卡片摘要。操作者多为小学阶段儿童，优先选择低油、轻口味、步骤清楚、亲子可执行的菜谱；如涉及明火、天然气灶、电磁炉、微波炉、烤箱、空气炸锅、蒸锅、热锅、热油、开水或锋利刀具，riskAlerts 必须高亮提醒“需家长全程陪同”。如现有食材含花生、坚果、虾、蟹、贝类、海鲜、鱼、牛奶、乳制品、鸡蛋、小麦、大豆、芝麻等高危过敏原食材，riskAlerts 必须增加以“高危过敏原提醒：”开头的提醒。输出严格 JSON：{"recipes":[{"name":"菜名","namePinyin":"带声调拼音","englishName":"自然英文菜名","nameLearning":{"characters":[{"character":"菜","pinyin":"cài","strokes":11,"structure":"上下结构","hint":"儿童可理解的一句话"}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"fitReasons":["原因"],"riskAlerts":["提醒"],"nutritionSummary":"一句话","extraIngredients":["缺少食材"],"canCookWithCurrentIngredients":true}]}。不要输出 steps、ingredients、imageUrl、imageSearchQuery 或额外说明。',
+        '儿童菜谱推荐。只输出JSON：{"recipes":[{"name":"","namePinyin":"","englishName":"","nameLearning":{"characters":[{"character":"","pinyin":"","strokes":1,"structure":"","hint":""}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"riskAlerts":[],"nutritionSummary":"","canCookWithCurrentIngredients":true}]}。返回1-2道；不要fitReasons、extraIngredients、steps、ingredients、imageUrl、解释。',
     },
     {
       role: 'user',
@@ -958,7 +871,7 @@ export async function generateRecipeDetail(
     {
       role: 'system',
       content:
-        '你是儿童菜谱步骤生成器。只为用户指定菜名生成烹饪步骤，禁止改菜名、换菜谱、换主食或生成相似菜。烹饪步骤只能使用用户传入的允许食材清单，禁止添加任何未传入食材或调味料。必须只输出一个可被 JSON.parse 解析的标准 JSON 对象，禁止 Markdown、注释、前后说明、单引号、尾随逗号。固定结构：{"steps":[{"title":"步骤标题","description":"本步骤食材：A；操作：具体动作。","tip":"安全提示","childAction":"孩子可做动作","parentAction":"家长协助动作","expectedResult":"完成状态","riskLevel":"low","requiresParentAssist":false}]}。riskLevel 只能是 "low"、"medium"、"high"，requiresParentAssist 只能是布尔值 true 或 false。',
+        '儿童菜谱步骤生成。只输出可JSON.parse的对象：{"steps":[{"title":"","description":"本步骤食材：A；操作：...","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。禁止Markdown、解释、单引号、尾逗号。',
     },
     {
       role: 'user',
