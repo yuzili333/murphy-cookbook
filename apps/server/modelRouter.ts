@@ -104,9 +104,9 @@ export class ModelRouter {
       return {
         task,
         model: useBalanced ? this.balancedModel : this.fastModel,
-        fallbackModels: useBalanced ? [this.fallbackModel] : [this.balancedModel, this.fallbackModel],
-        maxTokens: useBalanced ? 850 : 650,
-        temperature: 0.5,
+        fallbackModels: [],
+        maxTokens: useBalanced ? 650 : 520,
+        temperature: 0.2,
         enableThinking: false,
       };
     }
@@ -115,9 +115,9 @@ export class ModelRouter {
       return {
         task,
         model: this.balancedModel,
-        fallbackModels: [this.fallbackModel],
-        maxTokens: 760,
-        temperature: 0.3,
+        fallbackModels: [],
+        maxTokens: 900,
+        temperature: 0.2,
         enableThinking: false,
       };
     }

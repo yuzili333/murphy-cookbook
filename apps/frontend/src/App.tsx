@@ -403,7 +403,7 @@ function buildIngredientsKey(items: IngredientItem[]) {
     .join('|');
 }
 
-function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: string, prompt: string) {
+function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: string) {
   return JSON.stringify({
     profileId: profile.id,
     age: profile.age,
@@ -411,7 +411,6 @@ function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: stri
     allergens: profile.allergens,
     dietaryHabits: profile.dietaryHabits,
     ingredientsKey,
-    prompt: prompt.trim(),
   });
 }
 
@@ -1092,7 +1091,7 @@ export default function App() {
       const message = detailError instanceof Error ? detailError.message : '菜谱步骤获取失败。';
       setRecipeDetailErrorsById((current) => ({ ...current, [recipe.id]: message }));
       if (showToast) {
-        setToastMessage(`${recipe.name} 步骤获取失败，请稍后重试。`);
+        setToastMessage(message === '接口数据响应超时' ? message : `${recipe.name} 步骤获取失败，请稍后重试。`);
       }
     } finally {
       setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: false }));
@@ -1183,7 +1182,7 @@ export default function App() {
         `儿童情况：${childContext.trim() || defaultChildContext}`,
         `用户本轮输入：${prompt}`,
       ].join('\n');
-      const recommendationCacheKey = buildRecommendationCacheKey(selectedProfile, ingredientsKey, recommendationPrompt);
+      const recommendationCacheKey = buildRecommendationCacheKey(selectedProfile, ingredientsKey);
       const cachedRecommendation = readCachedValue<RecommendationResponse>(
         recommendationCacheStorageKey,
         recommendationCacheKey,
@@ -1222,10 +1221,11 @@ export default function App() {
       setPendingIngredientMessageId(ingredientMessageId || recipeMessage.id);
       setManualIngredient('');
     } catch (recommendationError) {
-      setError(recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。');
+      const message = recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。';
+      setError(message);
       addChatMessage({
         role: 'assistant',
-        text: recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。',
+        text: message,
       });
     } finally {
       setIsFetchingRecommendations(false);

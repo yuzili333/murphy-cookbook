@@ -722,11 +722,10 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
     '为小学生生成1-2道菜谱卡片，只输出JSON。',
     `儿童:${profile.age}岁；偏好:${tastePreferences}；过敏:${allergens}`,
     compactUserPrompt ? `用户:${compactUserPrompt}` : '',
-    '食材:',
-    ingredientLines,
-    '规则:简单、低油轻口味、营养均衡；优先用现有食材；不要steps/ingredients/extraIngredients/imageUrl。',
-    '安全:明火/热锅/烤箱/刀具等 riskAlerts 写“需家长全程陪同”；高危过敏原才写“高危过敏原提醒：...”。',
-    '必填:name,namePinyin(带调号),englishName,nameLearning.characters,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients。',
+    `食材:${ingredientLines}`,
+    '规则:简单、低油轻口味、营养均衡；优先用现有食材；不输出steps/ingredients/fitReasons/extraIngredients/imageUrl。',
+    '安全:仅明火/高温/热油/爆炒/高压/蒸煮/烤箱等高风险操作写riskAlerts；高危过敏原才写高危提醒。',
+    '字段:name,namePinyin,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients。',
   ].join('\n');
 }
 
@@ -745,19 +744,18 @@ function buildRecipeDetailUserPrompt(
   ].join('\n');
 
   return [
-    '为指定菜名生成儿童烹饪步骤。只输出标准JSON对象，首字符{，尾字符}。',
-    '允许食材:',
-    ingredientLines,
-    '菜谱:',
-    recipeLines,
+    '为指定菜名生成儿童烹饪步骤，只输出JSON对象。',
+    `允许食材:${ingredientLines}`,
+    `菜谱:${recipeLines}`,
     '规则:',
     `1.steps必须制作“${recipe.name}”，禁止换菜名/主食/相似菜。`,
     '2.只能使用允许食材；水/锅/碗/刀具/炉具可作为工具；未列出的盐油糖葱姜蒜酱油牛奶面粉都禁止。',
-    '3.steps 4-6步；description格式固定为“本步骤食材：A、B；操作：……”。',
+    '3.steps 4-8步；description固定为“本步骤食材：A、B；操作：……”，动作细节清楚。',
     `4.最后一步 expectedResult 写“完成${recipe.name}”。`,
     '5.每步必填:title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。',
-    '6.热源/刀具/开水 riskLevel=medium或high，requiresParentAssist=true。',
-    '7.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号，无尾逗号。',
+    '6.小学生可参与清洗、剥皮、撕菜、搅拌、摆盘、递冷食材、冷锅/碗中加食材等低风险动作。',
+    '7.只有明火、高温、热油、爆炒、高压、蒸煮、烤箱、开水等高风险操作 requiresParentAssist=true，parentAction写家长完成。',
+    '8.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号。',
   ].join('\n');
 }
 
@@ -837,6 +835,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
   ], {
     operation: 'generate_recipe_plan',
     task: 'recipe_recommendation',
+    timeoutMs: 30000,
     routeContext: {
       profile,
       ingredients,
@@ -871,7 +870,7 @@ export async function generateRecipeDetail(
     {
       role: 'system',
       content:
-        '儿童菜谱步骤生成。只输出可JSON.parse的对象：{"steps":[{"title":"","description":"本步骤食材：A；操作：...","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。禁止Markdown、解释、单引号、尾逗号。',
+        '儿童菜谱步骤生成。只输出JSON：{"steps":[{"title":"","description":"本步骤食材：A；操作：...","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。小学生可主动参与低风险步骤；仅高风险热源/高温/热油/爆炒/高压/蒸煮要求家长完成。禁止Markdown和解释。',
     },
     {
       role: 'user',
@@ -880,6 +879,7 @@ export async function generateRecipeDetail(
   ], {
     operation: 'generate_recipe_detail',
     task: 'recipe_steps',
+    timeoutMs: 30000,
     routeContext: {
       profile,
       ingredients,

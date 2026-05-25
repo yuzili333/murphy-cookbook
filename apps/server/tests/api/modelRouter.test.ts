@@ -13,9 +13,9 @@ test('ModelRouter routes simple recipe recommendation to fast model', () => {
   });
 
   assert.equal(route.model, 'Qwen/Qwen3.5-9B');
-  assert.deepEqual(route.fallbackModels, ['Qwen/Qwen3.5-27B', 'Pro/zai-org/GLM-5']);
+  assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 650);
+  assert.equal(route.maxTokens, 520);
 });
 
 test('ModelRouter upgrades complex recipe recommendation to balanced model', () => {
@@ -32,19 +32,19 @@ test('ModelRouter upgrades complex recipe recommendation to balanced model', () 
   });
 
   assert.equal(route.model, 'Qwen/Qwen3.5-27B');
-  assert.deepEqual(route.fallbackModels, ['Pro/zai-org/GLM-5']);
+  assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 850);
+  assert.equal(route.maxTokens, 650);
 });
 
-test('ModelRouter keeps GLM-5 as fallback for recipe steps', () => {
+test('ModelRouter routes recipe steps to balanced model without slow fallback', () => {
   const router = new ModelRouter();
   const route = router.select('recipe_steps');
 
   assert.equal(route.model, 'Qwen/Qwen3.5-27B');
-  assert.deepEqual(route.fallbackModels, ['Pro/zai-org/GLM-5']);
+  assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 760);
+  assert.equal(route.maxTokens, 900);
 });
 
 test('ModelRouter routes text and voice ingredient recognition to small text model', () => {

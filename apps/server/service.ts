@@ -28,8 +28,8 @@ export type RecommendationResult =
   | { data: GeneratedRecommendationPayload }
   | { error: RecommendationError };
 
-const recipeRecommendationModelTimeoutMs = Number(process.env.RECIPE_RECOMMENDATION_MODEL_TIMEOUT_MS ?? 120000);
-const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 60000);
+const recipeRecommendationModelTimeoutMs = Number(process.env.RECIPE_RECOMMENDATION_MODEL_TIMEOUT_MS ?? 30000);
+const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 30000);
 const defaultRecommendationProfile: ChildProfile = {
   id: 'chat_context_profile',
   nickname: '小学阶段学生',
@@ -198,14 +198,13 @@ export function getMockRecipeRecommendations(profile: ChildProfile, ingredients:
       };
     })
     .filter((entry) => entry.matchedCount > 0)
+    .filter((entry) => entry.canCookWithCurrentIngredients)
     .sort((left, right) => right.matchedCount - left.matchedCount)
-    .slice(0, 5)
+    .slice(0, 2)
     .map((entry) => ({
       ...summarizeRecipe(entry.recipe),
       canCookWithCurrentIngredients: entry.canCookWithCurrentIngredients,
-      extraIngredients: entry.recipe.ingredients
-        .filter((ingredient) => !normalizedInputs.has(normalizeIngredientName(ingredient.name)))
-        .map((ingredient) => ingredient.name),
+      extraIngredients: [],
     }));
 
   if (recipes.length === 0) {
@@ -239,7 +238,10 @@ export async function recommendRecipes(
   }
 
   const { profile } = validation;
-  const fallbackResult = getMockRecipeRecommendations(profile, ingredients);
+  const localRecommendationResult = getMockRecipeRecommendations(profile, ingredients);
+  if ('data' in localRecommendationResult) {
+    return localRecommendationResult;
+  }
 
   if (!isSiliconFlowConfigured()) {
     if (shouldRequireRealModel()) {
@@ -251,7 +253,7 @@ export async function recommendRecipes(
       };
     }
 
-    return fallbackResult;
+    return localRecommendationResult;
   }
 
   try {
@@ -259,12 +261,12 @@ export async function recommendRecipes(
       data: await withTimeout(
         generateRecipePlan(profile, ingredients, userPrompt),
         recipeRecommendationModelTimeoutMs,
-        '菜谱推荐生成超时，请稍后重试。',
+        '接口数据响应超时',
       ),
     };
   } catch (error) {
     if (!shouldRequireRealModel()) {
-      return fallbackResult;
+      return localRecommendationResult;
     }
 
     return {
@@ -318,7 +320,7 @@ export async function getRecipeDetailForRecommendation(input: {
       data: await withTimeout(
         generateRecipeDetail(profile, detailIngredients, input.recipe),
         recipeDetailModelTimeoutMs,
-        '菜谱详情生成超时，请稍后重试。',
+        '接口数据响应超时',
       ),
     };
   } catch (error) {
@@ -372,7 +374,7 @@ export async function getRecipeDetailsForRecommendations(input: {
     const generatedDetails = await withTimeout(
       generateRecipeDetails(validation.profile, input.ingredients, missingRecipes),
       recipeDetailModelTimeoutMs,
-      '菜谱详情生成超时，请稍后重试。',
+      '接口数据响应超时',
     );
     return {
       data: [...embeddedDetails, ...catalogDetails, ...generatedDetails],

@@ -19,6 +19,7 @@ import {
   getLocalSeasonalIngredientSuggestions,
   seasonalIngredientCacheSize,
 } from '../../seasonalIngredients.js';
+import { generatedHomeRecipeCatalog, recipeCatalog } from '../../data.js';
 
 test('parseTextToIngredients extracts ingredient tokens from chinese text', () => {
   const ingredients = parseTextToIngredients('两个鸡蛋 一个番茄 半根黄瓜');
@@ -42,6 +43,88 @@ test('getLocalSeasonalIngredientSuggestions returns three items from local seaso
   assert.equal(seasonalIngredientCacheSize, 300);
   assert.equal(suggestions.length, 3);
   assert.ok(suggestions.every((item) => item.name && item.reason));
+});
+
+test('local home recipe catalog provides at least 500 generated recipes', () => {
+  assert.equal(generatedHomeRecipeCatalog.length, 500);
+  assert.ok(recipeCatalog.length >= 500);
+  assert.ok(recipeCatalog.some((recipe) => recipe.name === '番茄炒鸡蛋'));
+  assert.ok(recipeCatalog.some((recipe) => recipe.name === '草莓奶昔'));
+});
+
+test('generated local recipes follow model prompt output constraints', () => {
+  for (const recipe of generatedHomeRecipeCatalog) {
+    assert.equal(recipe.fitReasons.length, 0);
+    assert.equal(recipe.extraIngredients.length, 0);
+    assert.ok(recipe.steps.length >= 4);
+    assert.ok(recipe.steps.length <= 8);
+    assert.equal(recipe.steps.at(-1)?.expectedResult, `完成${recipe.name}`);
+
+    const ingredientNames = recipe.ingredients.map((item) => item.name);
+    for (const step of recipe.steps) {
+      assert.ok(step.title);
+      assert.match(step.description, /^本步骤食材：.+；操作：.+/);
+      assert.ok(step.tip);
+      assert.ok(step.childAction);
+      assert.ok(step.parentAction);
+      assert.ok(step.expectedResult);
+      assert.ok(['low', 'medium', 'high'].includes(step.riskLevel));
+      assert.equal(typeof step.requiresParentAssist, 'boolean');
+
+      for (const forbidden of ['盐', '油', '糖', '葱', '姜', '蒜', '酱油', '面粉']) {
+        if (!ingredientNames.some((name) => name.includes(forbidden))) {
+          assert.equal(step.description.includes(forbidden), false);
+        }
+      }
+    }
+  }
+});
+
+test('recommendRecipes prefers local recipe catalog before model and ignores ingredient order', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  let fetchCalls = 0;
+  global.fetch = (async () => {
+    fetchCalls += 1;
+    throw new Error('model should not be called for local recipe matches');
+  }) as typeof fetch;
+
+  const startedAt = performance.now();
+  const first = await recommendRecipes('cp_001', [
+    { id: 'ing_tomato', name: '番茄', normalizedName: '番茄', quantity: '1个', source: 'manual' },
+    { id: 'ing_egg', name: '鸡蛋', normalizedName: '鸡蛋', quantity: '2个', source: 'manual' },
+  ]);
+  const second = await recommendRecipes('cp_001', [
+    { id: 'ing_egg', name: '鸡蛋', normalizedName: '鸡蛋', quantity: '2个', source: 'manual' },
+    { id: 'ing_tomato', name: '番茄', normalizedName: '番茄', quantity: '1个', source: 'manual' },
+  ]);
+  const elapsedMs = performance.now() - startedAt;
+
+  if ('error' in first) {
+    assert.fail(`expected local recommendation data, got ${first.error.code}`);
+  }
+  if ('error' in second) {
+    assert.fail(`expected local recommendation data, got ${second.error.code}`);
+  }
+
+  assert.equal(fetchCalls, 0);
+  assert.ok(elapsedMs < 500);
+  assert.ok(first.data.recipes.length <= 2);
+  assert.equal('imageUrl' in first.data.recipes[0], false);
+  assert.deepEqual(first.data.recipes[0].fitReasons, []);
+  assert.deepEqual(first.data.recipes[0].extraIngredients, []);
+  assert.deepEqual(
+    first.data.recipes.map((recipe) => recipe.name),
+    second.data.recipes.map((recipe) => recipe.name),
+  );
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
 });
 
 test('recommendRecipes returns model-generated recipe matches for existing child profile', async () => {
@@ -87,7 +170,7 @@ test('recommendRecipes returns model-generated recipe matches for existing child
       headers: { 'Content-Type': 'application/json' },
     })) as typeof fetch;
 
-  const ingredients = parseTextToIngredients('鸡蛋 番茄');
+  const ingredients = parseTextToIngredients('神秘菜');
   const result = await recommendRecipes('cp_001', ingredients);
 
   assert.ok('data' in result);
@@ -147,7 +230,7 @@ test('recommendRecipes ignores model-provided ids that collide with local catalo
     })) as typeof fetch;
 
   const result = await recommendRecipes('cp_001', [
-    { id: 'ing_liver', name: '猪肝', normalizedName: '猪肝', quantity: '1份', source: 'manual' },
+    { id: 'ing_unknown', name: '神秘菜', normalizedName: '神秘菜', quantity: '1份', source: 'manual' },
   ]);
 
   if ('error' in result) {
@@ -216,7 +299,7 @@ test('recommendRecipes uses provided profile snapshot when profileId is not foun
       headers: { 'Content-Type': 'application/json' },
     })) as typeof fetch;
 
-  const ingredients = parseTextToIngredients('鸡蛋 番茄');
+  const ingredients = parseTextToIngredients('神秘菜');
   const result = await recommendRecipes('local_profile_001', ingredients, {
     id: 'local_profile_001',
     nickname: '小米',
@@ -467,7 +550,7 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
   const requestBody = requestBodies[0] ?? {};
   assert.equal(requestBody?.model, 'Qwen/Qwen3.5-27B');
   assert.equal(requestBody?.enable_thinking, false);
-  assert.equal(requestBody?.max_tokens, 850);
+  assert.equal(requestBody?.max_tokens, 650);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -477,7 +560,7 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
   }
 });
 
-test('generateRecipePlan uses fast model for simple recommendations and falls back to balanced model', async () => {
+test('generateRecipePlan uses fast model for simple recommendations without slow fallback', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
@@ -489,10 +572,6 @@ test('generateRecipePlan uses fast model for simple recommendations and falls ba
     requestedModels.push(String(requestBody.model ?? ''));
     requestedMaxTokens.push(Number(requestBody.max_tokens));
     assert.equal(requestBody.enable_thinking, false);
-
-    if (requestedModels.length === 1) {
-      return new Response('model overloaded', { status: 503 });
-    }
 
     return new Response(JSON.stringify({
       choices: [{
@@ -541,8 +620,8 @@ test('generateRecipePlan uses fast model for simple recommendations and falls ba
   );
 
   assert.equal(result.recipes[0].name, '番茄鸡蛋');
-  assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B', 'Qwen/Qwen3.5-27B']);
-  assert.deepEqual(requestedMaxTokens, [650, 650]);
+  assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B']);
+  assert.deepEqual(requestedMaxTokens, [520]);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -614,8 +693,8 @@ test('recommendRecipes uses salvaged model recipes when recipe JSON is truncated
   const result = await recommendRecipes('cp_001', [
     {
       id: 'ing_1',
-      name: '西兰花',
-      normalizedName: '西兰花',
+      name: '神秘菜',
+      normalizedName: '神秘菜',
       quantity: '1份',
       source: 'image',
     },

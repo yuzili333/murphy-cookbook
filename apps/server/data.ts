@@ -498,7 +498,7 @@ export function createIngredient(name: string, source: IngredientItem['source'],
   };
 }
 
-export const recipeCatalog: RecipeDetail[] = [
+const curatedRecipeCatalog: RecipeDetail[] = [
   {
     id: 'recipe_001',
     name: '番茄鸡蛋面',
@@ -630,21 +630,389 @@ export const recipeCatalog: RecipeDetail[] = [
   },
 ];
 
+type GeneratedRecipeKind = 'stir' | 'soup' | 'congee' | 'fruit' | 'milkshake' | 'smoothie' | 'juice' | 'salad';
+
+interface GeneratedRecipeSeed {
+  name: string;
+  ingredients: string[];
+  kind: GeneratedRecipeKind;
+}
+
+const vegetableSeeds = [
+  '番茄', '土豆', '胡萝卜', '黄瓜', '西兰花', '菠菜', '白菜', '生菜', '南瓜', '冬瓜',
+  '丝瓜', '玉米', '豌豆', '毛豆', '山药', '莲藕', '蘑菇', '香菇', '金针菇', '豆腐',
+  '蒜苗', '青菜', '芹菜', '茄子', '彩椒', '秋葵', '莴笋', '小白菜', '黄豆芽', '绿豆芽',
+];
+const proteinSeeds = ['鸡蛋', '鸡胸肉', '牛肉', '虾仁', '鱼肉', '猪肉', '猪肝', '豆腐', '牛奶', '酸奶'];
+const grainSeeds = ['小米', '大米', '燕麦', '面条', '米粉', '糙米', '玉米粒', '红薯', '南瓜', '山药'];
+const fruitSeeds = [
+  '苹果', '香蕉', '橙子', '梨', '葡萄', '草莓', '蓝莓', '猕猴桃', '芒果', '菠萝',
+  '西瓜', '哈密瓜', '木瓜', '牛油果', '桃子', '石榴', '柠檬', '火龙果', '樱桃', '桑葚',
+];
+
+const recipeEnglishKeywordMap: Record<GeneratedRecipeKind, string> = {
+  stir: 'Home Stir Fry',
+  soup: 'Gentle Soup',
+  congee: 'Soft Congee',
+  fruit: 'Fruit Plate',
+  milkshake: 'Milkshake',
+  smoothie: 'Smoothie',
+  juice: 'Fresh Juice',
+  salad: 'Light Salad',
+};
+
+const recipeKindRisk: Record<GeneratedRecipeKind, string[]> = {
+  stir: ['热锅和翻炒步骤需要家长陪同'],
+  soup: ['煮汤和热水步骤需要家长陪同'],
+  congee: ['煮粥和热锅步骤需要家长陪同'],
+  fruit: [],
+  milkshake: ['使用料理机时需要家长确认盖紧并陪同'],
+  smoothie: ['使用料理机时需要家长确认盖紧并陪同'],
+  juice: ['使用榨汁机时需要家长陪同'],
+  salad: [],
+};
+
+const quantityByIngredient: Record<string, string> = {
+  鸡蛋: '2个',
+  牛奶: '200毫升',
+  酸奶: '1杯',
+  小米: '半碗',
+  大米: '半碗',
+  燕麦: '3平勺',
+  面条: '1小把',
+  米粉: '1小把',
+  糙米: '半碗',
+  猪肝: '80克',
+  牛肉: '80克',
+  鸡胸肉: '100克',
+  虾仁: '80克',
+  鱼肉: '100克',
+  猪肉: '80克',
+};
+
+function getGeneratedQuantity(name: string) {
+  if (quantityByIngredient[name]) return quantityByIngredient[name];
+  if (fruitSeeds.includes(name)) return '1份';
+  if (vegetableSeeds.includes(name)) return '1小碗';
+  return '适量';
+}
+
+function buildGeneratedNameLearning(name: string): RecipeRecommendation['nameLearning'] {
+  return {
+    characters: Array.from(name).slice(0, 8).map((character) => ({
+      character,
+      pinyin: '',
+      strokes: 0,
+      structure: '常见汉字',
+      hint: `在“${name}”里认一认“${character}”。`,
+    })),
+  };
+}
+
+function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: string[], recipeName: string): CookingStep[] {
+  const ingredientText = ingredients.join('、');
+  if (kind === 'fruit' || kind === 'salad') {
+    return [
+      {
+        id: 'step_1',
+        title: '清洗食材',
+        description: `本步骤食材：${ingredientText}；操作：把食材放在流动水下冲洗干净，沥干水分。`,
+        tip: '小朋友可以负责冲洗和摆放。',
+        riskLevel: 'low',
+        requiresParentAssist: false,
+        childAction: '清洗、擦干、摆盘。',
+        parentAction: '在旁边确认食材洗净。',
+        expectedResult: '食材干净清爽。',
+      },
+      {
+        id: 'step_2',
+        title: '切成小块',
+        description: `本步骤食材：${ingredientText}；操作：把较大的食材切成方便入口的小块，动作慢一点。`,
+        tip: '常规切菜可以在家长看护下参与，手指要离刀刃远一点。',
+        riskLevel: 'low',
+        requiresParentAssist: false,
+        childAction: '在家长看护下切软水果或把小块食材分类。',
+        parentAction: '在旁边看护并处理较硬食材。',
+        expectedResult: '大小适合小朋友咀嚼。',
+      },
+      {
+        id: 'step_3',
+        title: '组合摆盘',
+        description: `本步骤食材：${ingredientText}；操作：把不同颜色的食材交错摆放，做成彩色小餐盘。`,
+        tip: '颜色搭配越丰富，看起来越有食欲。',
+        riskLevel: 'low',
+        requiresParentAssist: false,
+        childAction: '按颜色摆盘。',
+        parentAction: '检查食材大小和摆盘稳定。',
+        expectedResult: '食材颜色分布均匀。',
+      },
+      {
+        id: 'step_4',
+        title: '分装享用',
+        description: `本步骤食材：${ingredientText}；操作：把摆好的食材分到小碗或小盘中，准备品尝。`,
+        tip: '先少量品尝，冰凉水果不要吃太快。',
+        riskLevel: 'low',
+        requiresParentAssist: false,
+        childAction: '分装到自己的小碗里。',
+        parentAction: '确认入口大小合适。',
+        expectedResult: `完成${recipeName}`,
+      },
+    ];
+  }
+
+  if (kind === 'milkshake' || kind === 'smoothie' || kind === 'juice') {
+    return [
+      {
+        id: 'step_1',
+        title: '洗净处理',
+        description: `本步骤食材：${ingredientText}；操作：把水果洗干净，较大的水果由家长切成小块。`,
+        tip: '水果块越小，搅打越顺滑。',
+        riskLevel: 'medium',
+        requiresParentAssist: true,
+        childAction: '清洗水果、把小块放入杯中。',
+        parentAction: '切块或去核。',
+        expectedResult: '食材适合放入料理机。',
+      },
+      {
+        id: 'step_2',
+        title: '加入杯中',
+        description: `本步骤食材：${ingredientText}；操作：把水果块和奶类或少量水放进料理杯，不要超过最高刻度。`,
+        tip: '盖子盖紧后再启动。',
+        riskLevel: 'low',
+        requiresParentAssist: false,
+        childAction: '倒入冷食材并检查刻度。',
+        parentAction: '确认杯盖和刻度安全。',
+        expectedResult: '料理杯装好食材。',
+      },
+      {
+        id: 'step_3',
+        title: '搅打顺滑',
+        description: `本步骤食材：${ingredientText}；操作：家长确认盖子盖紧后启动料理机，打到顺滑。`,
+        tip: '机器工作时不要把手靠近刀头区域。',
+        riskLevel: 'high',
+        requiresParentAssist: true,
+        childAction: '站在旁边观察变化。',
+        parentAction: '启动和关闭料理机。',
+        expectedResult: '饮品细腻顺滑。',
+      },
+      {
+        id: 'step_4',
+        title: '倒杯品尝',
+        description: `本步骤食材：${ingredientText}；操作：把饮品倒入杯中，先少量品尝甜度和温度。`,
+        tip: '冰饮不要一次喝太快。',
+        riskLevel: 'low',
+        requiresParentAssist: false,
+        childAction: '选择杯子并贴上小标签。',
+        parentAction: '确认饮品温度和杯口安全。',
+        expectedResult: `完成${recipeName}`,
+      },
+    ];
+  }
+
+  if (kind === 'congee' || kind === 'soup') {
+    return [
+      {
+        id: 'step_1',
+        title: '清洗准备',
+        description: `本步骤食材：${ingredientText}；操作：把食材洗净，谷物提前淘洗，蔬菜切成小块。`,
+        tip: '小朋友可以淘洗冷水里的谷物。',
+        riskLevel: 'medium',
+        requiresParentAssist: true,
+        childAction: '淘洗、分类、递冷食材。',
+        parentAction: '切块。',
+        expectedResult: '食材处理成适合煮软的大小。',
+      },
+      {
+        id: 'step_2',
+        title: '加水入锅',
+        description: `本步骤食材：${ingredientText}；操作：把食材和清水放入锅中，水量没过食材。`,
+        tip: '冷锅时小朋友可以参与放食材。',
+        riskLevel: 'low',
+        requiresParentAssist: false,
+        childAction: '把冷食材放入锅中。',
+        parentAction: '确认锅具放稳、水量合适。',
+        expectedResult: '锅里食材和水量合适。',
+      },
+      {
+        id: 'step_3',
+        title: '煮到软糯',
+        description: `本步骤食材：${ingredientText}；操作：家长开火加热，煮到食材变软，中途轻轻搅动防粘锅。`,
+        tip: '热气明显时要离锅远一点。',
+        riskLevel: 'high',
+        requiresParentAssist: true,
+        childAction: '观察颜色和形状变化。',
+        parentAction: '开火、搅拌和关火。',
+        expectedResult: kind === 'congee' ? '粥变得软糯浓稠。' : '汤味清淡鲜甜。',
+      },
+      {
+        id: 'step_4',
+        title: '放温享用',
+        description: `本步骤食材：${ingredientText}；操作：盛出后放到温热，再小口品尝。`,
+        tip: '入口前先吹一吹。',
+        riskLevel: 'low',
+        requiresParentAssist: false,
+        childAction: '摆勺子和餐垫。',
+        parentAction: '确认已经放到适口温度。',
+        expectedResult: `完成${recipeName}`,
+      },
+    ];
+  }
+
+  return [
+    {
+      id: 'step_1',
+      title: '处理食材',
+      description: `本步骤食材：${ingredientText}；操作：把食材洗净，切成薄片或小段，鸡蛋类先打散。`,
+      tip: '切菜由家长完成，小朋友可以洗菜和分装。',
+      riskLevel: 'medium',
+      requiresParentAssist: false,
+      childAction: '洗菜、打蛋、递冷食材。',
+      parentAction: '在旁边看护切配动作。',
+      expectedResult: '食材大小均匀。',
+    },
+    {
+      id: 'step_2',
+      title: '下锅加热',
+      description: `本步骤食材：${ingredientText}；操作：家长热锅后放入食材，先放不易熟的，再放易熟的。`,
+      tip: '热锅时小朋友站在安全距离外。',
+      riskLevel: 'high',
+      requiresParentAssist: true,
+      childAction: '观察食材颜色变化。',
+      parentAction: '开火、下锅、翻炒。',
+      expectedResult: '食材开始变软出香味。',
+    },
+    {
+      id: 'step_3',
+      title: '翻拌成熟',
+      description: `本步骤食材：${ingredientText}；操作：沿锅边加入少量清水，继续翻拌到食材熟透。`,
+      tip: '不额外添加未列出的调味料，保持食材本味。',
+      riskLevel: 'high',
+      requiresParentAssist: true,
+      childAction: '帮忙准备餐盘。',
+      parentAction: '翻拌、确认熟透并关火。',
+      expectedResult: '菜品熟透且味道清淡。',
+    },
+    {
+      id: 'step_4',
+      title: '装盘',
+      description: `本步骤食材：${ingredientText}；操作：关火后装盘，稍微放凉再吃。`,
+      tip: '热菜刚出锅不要急着入口。',
+      riskLevel: 'low',
+      requiresParentAssist: false,
+      childAction: '摆餐具和装饰餐盘。',
+      parentAction: '确认餐盘不烫手。',
+      expectedResult: `完成${recipeName}`,
+    },
+  ];
+}
+
+function buildGeneratedRecipe(seed: GeneratedRecipeSeed, index: number): RecipeDetail {
+  const ingredients = Array.from(new Set(seed.ingredients.map(normalizeIngredientName))).slice(0, 5);
+  const cookTime = seed.kind === 'fruit' || seed.kind === 'salad' ? 0 : seed.kind === 'milkshake' || seed.kind === 'smoothie' || seed.kind === 'juice' ? 3 : 12;
+  const prepTime = seed.kind === 'congee' ? 8 : 5;
+
+  return {
+    id: `local_recipe_${String(index + 1).padStart(3, '0')}`,
+    name: seed.name,
+    namePinyin: '',
+    imageUrl: buildRecipeImageUrl(seed.name, undefined, ingredients),
+    englishName: `${seed.name} ${recipeEnglishKeywordMap[seed.kind]}`,
+    nameLearning: buildGeneratedNameLearning(seed.name),
+    ageRange: '7-12 岁',
+    difficulty: seed.kind === 'stir' ? 'medium' : 'easy',
+    estimatedTimeMinutes: prepTime + cookTime,
+    fitReasons: [],
+    riskAlerts: recipeKindRisk[seed.kind],
+    nutritionSummary: '结合蔬果、谷物或蛋白质，适合作为儿童日常均衡饮食的一部分。',
+    extraIngredients: [],
+    canCookWithCurrentIngredients: true,
+    prepTimeMinutes: prepTime,
+    cookTimeMinutes: cookTime,
+    ingredients: ingredients.map((name) => ({
+      name,
+      quantity: getGeneratedQuantity(name),
+      imageUrl: buildIngredientImageUrl(name),
+    })),
+    steps: buildGeneratedRecipeSteps(seed.kind, ingredients, seed.name),
+  };
+}
+
+function buildGeneratedRecipeSeeds() {
+  const seeds: GeneratedRecipeSeed[] = [
+    { name: '番茄炒鸡蛋', ingredients: ['番茄', '鸡蛋'], kind: 'stir' },
+    { name: '清爽土豆丝', ingredients: ['土豆', '胡萝卜'], kind: 'stir' },
+    { name: '小米粥', ingredients: ['小米'], kind: 'congee' },
+    { name: '彩虹水果拼盘', ingredients: ['苹果', '香蕉', '草莓', '蓝莓'], kind: 'fruit' },
+    { name: '西瓜冰粉杯', ingredients: ['西瓜'], kind: 'fruit' },
+    { name: '草莓奶昔', ingredients: ['草莓', '牛奶'], kind: 'milkshake' },
+  ];
+
+  for (const vegetable of vegetableSeeds) {
+    seeds.push({ name: `清炒${vegetable}`, ingredients: [vegetable], kind: 'stir' });
+    seeds.push({ name: `${vegetable}鸡蛋汤`, ingredients: [vegetable, '鸡蛋'], kind: 'soup' });
+  }
+
+  for (const vegetable of vegetableSeeds.slice(0, 24)) {
+    for (const protein of proteinSeeds.slice(0, 7)) {
+      seeds.push({ name: `${vegetable}炒${protein}`, ingredients: [vegetable, protein], kind: 'stir' });
+    }
+  }
+
+  for (const grain of grainSeeds) {
+    for (const vegetable of vegetableSeeds.slice(0, 12)) {
+      seeds.push({ name: `${vegetable}${grain}粥`, ingredients: [vegetable, grain], kind: 'congee' });
+    }
+  }
+
+  for (const fruit of fruitSeeds) {
+    seeds.push({ name: `${fruit}果汁`, ingredients: [fruit], kind: 'juice' });
+    seeds.push({ name: `${fruit}奶昔`, ingredients: [fruit, '牛奶'], kind: 'milkshake' });
+    seeds.push({ name: `${fruit}酸奶杯`, ingredients: [fruit, '酸奶'], kind: 'smoothie' });
+  }
+
+  for (const first of fruitSeeds.slice(0, 14)) {
+    for (const second of fruitSeeds.slice(6, 20)) {
+      if (first !== second) {
+        seeds.push({ name: `${first}${second}水果拼盘`, ingredients: [first, second], kind: 'fruit' });
+      }
+    }
+  }
+
+  const unique = new Map<string, GeneratedRecipeSeed>();
+  for (const seed of seeds) {
+    if (!unique.has(seed.name)) {
+      unique.set(seed.name, seed);
+    }
+    if (unique.size >= 500) {
+      break;
+    }
+  }
+
+  return Array.from(unique.values());
+}
+
+export const generatedHomeRecipeCatalog: RecipeDetail[] = buildGeneratedRecipeSeeds()
+  .map((seed, index) => buildGeneratedRecipe(seed, index));
+
+export const recipeCatalog: RecipeDetail[] = [
+  ...curatedRecipeCatalog,
+  ...generatedHomeRecipeCatalog,
+];
+
 export function summarizeRecipe(recipe: RecipeDetail): RecipeRecommendation {
   return {
     id: recipe.id,
     name: recipe.name,
     namePinyin: recipe.namePinyin,
-    imageUrl: recipe.imageUrl,
     englishName: recipe.englishName,
     nameLearning: recipe.nameLearning,
     ageRange: recipe.ageRange,
     difficulty: recipe.difficulty,
     estimatedTimeMinutes: recipe.estimatedTimeMinutes,
-    fitReasons: recipe.fitReasons,
+    fitReasons: [],
     riskAlerts: recipe.riskAlerts,
     nutritionSummary: recipe.nutritionSummary,
-    extraIngredients: recipe.extraIngredients,
+    extraIngredients: [],
     canCookWithCurrentIngredients: recipe.canCookWithCurrentIngredients,
   };
 }
