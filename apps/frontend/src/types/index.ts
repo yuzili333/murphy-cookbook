@@ -128,3 +128,24 @@ export interface LlmLogQueryResult {
   };
   logFile: string;
 }
+
+export type MessageNode =
+  | { id: string; type: 'text'; content: string }
+  | { id: string; type: 'markdown'; content: string }
+  | { id: string; type: 'code'; language: string; content: string }
+  | { id: string; type: 'card'; cardType: string; props: Record<string, unknown> }
+  | { id: string; type: 'mermaid'; content: string };
+
+export type StreamEvent =
+  | { type: 'text-delta'; id: string; delta: string }
+  | { type: 'text-done'; id: string }
+  | { type: 'markdown-delta'; id: string; delta: string }
+  | { type: 'code-start'; id: string; language: string }
+  | { type: 'code-delta'; id: string; delta: string }
+  | { type: 'code-done'; id: string }
+  | { type: 'card'; id: string; cardType: string; props: Record<string, unknown> }
+  | { type: 'mermaid'; id: string; content: string }
+  | { type: 'tool-call'; id: string; name: string; args?: Record<string, unknown> }
+  | { type: 'tool-result'; id: string; result: unknown }
+  | { type: 'error'; id?: string; message: string }
+  | { type: 'finish' };

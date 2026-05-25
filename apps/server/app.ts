@@ -31,6 +31,47 @@ interface RequestWithRawBody {
   rawBody?: string;
 }
 
+type StreamEvent =
+  | { type: 'text-delta'; id: string; delta: string }
+  | { type: 'card'; id: string; cardType: string; props: Record<string, unknown> }
+  | { type: 'error'; id?: string; message: string }
+  | { type: 'finish' };
+
+function beginSse(res: Response) {
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+}
+
+function writeStreamEvent(res: Response, event: StreamEvent) {
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function endSse(res: Response) {
+  writeStreamEvent(res, { type: 'finish' });
+  res.end();
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function writeTypewriterText(res: Response, id: string, text: string, delayMs = 22, chunkSize = 6) {
+  const characters = Array.from(text);
+  for (let index = 0; index < characters.length; index += chunkSize) {
+    writeStreamEvent(res, {
+      type: 'text-delta',
+      id,
+      delta: characters.slice(index, index + chunkSize).join(''),
+    });
+    await sleep(delayMs);
+  }
+}
+
 function normalizeTextInputValue(value: unknown) {
   const text = Array.isArray(value) ? value.join(' ').trim() : String(value ?? '').trim();
   return text.slice(0, 500);
@@ -315,6 +356,50 @@ export function createApp(): Express {
     });
   };
 
+  const streamRecommendationResponse = async (req: Request, res: Response) => {
+    beginSse(res);
+    const { profileId, ingredients, profile, userPrompt } = resolveRecommendationRequestPayload(req.body, req.query);
+    const textNodeId = `text_${Date.now()}`;
+    await writeTypewriterText(res, textNodeId, '正在分析食材清单，准备生成儿童友好的菜谱卡片...');
+
+    try {
+      const result = await recommendRecipes(profileId, ingredients, profile, userPrompt);
+      if ('error' in result) {
+        writeStreamEvent(res, { type: 'error', message: result.error.message });
+        endSse(res);
+        return;
+      }
+
+      const leadText = result.data.recipes
+        .map((recipe, index) => {
+          const risk = recipe.riskAlerts.length ? `注意：${recipe.riskAlerts.slice(0, 2).join('；')}` : '整体风险较低';
+          return `\n${index + 1}. ${recipe.name}：${recipe.nutritionSummary}。推荐原因：适合当前食材、口味清淡、步骤适合小学阶段参与。${risk}。`;
+        })
+        .join('');
+      await writeTypewriterText(res, textNodeId, leadText);
+      await sleep(260);
+
+      writeStreamEvent(res, {
+        type: 'card',
+        id: `recipe_card_${Date.now()}`,
+        cardType: 'recipe-card',
+        props: {
+          data: {
+            ...result.data,
+            sortBy: String(req.body?.sortBy ?? result.data.sortBy),
+          },
+        },
+      });
+      endSse(res);
+    } catch (error) {
+      writeStreamEvent(res, {
+        type: 'error',
+        message: error instanceof Error ? error.message : '菜谱推荐失败，请稍后重试。',
+      });
+      endSse(res);
+    }
+  };
+
   const sendIngredientNormalizeResponse = async (req: Request, res: Response) => {
     const text =
       resolveIngredientTextInput(req.body, req.query) ||
@@ -401,6 +486,58 @@ export function createApp(): Express {
     }
 
     res.json({ data: stripRecipeDetailImageFields(result.data) });
+  };
+
+  const streamRecipeDetailResponse = async (req: Request, res: Response) => {
+    beginSse(res);
+    let { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
+
+    if (!isRecipeRecommendationInput(recipe)) {
+      const fallbackPayload = resolveRecipeDetailRequestPayload((req as RequestWithRawBody).rawBody, req.query);
+      profileId = fallbackPayload.profileId;
+      ingredients = fallbackPayload.ingredients;
+      profile = fallbackPayload.profile;
+      recipe = fallbackPayload.recipe;
+    }
+
+    if (!isRecipeRecommendationInput(recipe)) {
+      writeStreamEvent(res, { type: 'error', message: '请提供有效的推荐菜谱卡片信息。' });
+      endSse(res);
+      return;
+    }
+
+    const textNodeId = `text_${Date.now()}`;
+    await writeTypewriterText(res, textNodeId, `正在生成《${recipe.name}》的儿童版烹饪步骤...`);
+
+    try {
+      const result = await getRecipeDetailForRecommendation({
+        profileId,
+        ingredients,
+        profileInput: profile,
+        recipe,
+      });
+
+      if ('error' in result) {
+        writeStreamEvent(res, { type: 'error', message: result.error.message });
+        endSse(res);
+        return;
+      }
+
+      await sleep(220);
+      writeStreamEvent(res, {
+        type: 'card',
+        id: `recipe_detail_${recipe.id}`,
+        cardType: 'recipe-detail',
+        props: { data: stripRecipeDetailImageFields(result.data) },
+      });
+      endSse(res);
+    } catch (error) {
+      writeStreamEvent(res, {
+        type: 'error',
+        message: error instanceof Error ? error.message : '菜谱步骤获取失败。',
+      });
+      endSse(res);
+    }
   };
 
   const sendRecipeNutritionResponse = (req: Request, res: Response) => {
@@ -643,8 +780,10 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/recommendations/recipes', sendRecommendationResponse);
+  app.post('/api/v1/recommendations/recipes/stream', streamRecommendationResponse);
   app.post('/api/recipes/recommend', sendRecommendationResponse);
   app.post('/api/v1/recipes/recommend', sendRecommendationResponse);
+  app.post('/api/v1/recipes/recommend/stream', streamRecommendationResponse);
 
   app.get('/api/v1/recipes/:recipeId', (req, res) => {
     const recipe = recipeCatalog.find((item) => item.id === req.params.recipeId);
@@ -659,8 +798,10 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/recipes/detail', sendRecipeDetailResponse);
+  app.post('/api/v1/recipes/detail/stream', streamRecipeDetailResponse);
   app.post('/api/recipes/:recipeId/steps', sendRecipeDetailResponse);
   app.post('/api/v1/recipes/:recipeId/steps', sendRecipeDetailResponse);
+  app.post('/api/v1/recipes/:recipeId/steps/stream', streamRecipeDetailResponse);
 
   app.post('/api/recipes/:recipeId/nutrition', sendRecipeNutritionResponse);
   app.post('/api/v1/recipes/:recipeId/nutrition', sendRecipeNutritionResponse);

@@ -9,8 +9,10 @@ import type {
   RecipeRecommendation,
   RecommendationResponse,
   SeasonalIngredientSuggestion,
+  StreamEvent,
   VoiceParseResponse,
 } from '../types';
+import { parseSseChunk } from './streamAst';
 
 function resolveDefaultApiBase() {
   if (typeof window !== 'undefined' && window.location.hostname.endsWith('netlify.app')) {
@@ -58,6 +60,47 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const payload = (await response.json()) as ApiEnvelope<T>;
   return payload.data;
+}
+
+async function streamRequest(path: string, init: RequestInit, onEvent: (event: StreamEvent) => void) {
+  const headers = new Headers(init.headers ?? {});
+  if (!(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+  });
+
+  if (!response.ok || !response.body) {
+    let message = '请求失败，请稍后再试。';
+    try {
+      const payload = (await response.json()) as { error?: { message?: string } };
+      message = payload.error?.message ?? message;
+    } catch {
+      // Keep default message.
+    }
+    throw new Error(message);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const parsed = parseSseChunk(buffer);
+    buffer = parsed.rest;
+    for (const event of parsed.events) {
+      onEvent(event);
+    }
+  }
 }
 
 export function fetchChildProfiles() {
@@ -133,6 +176,33 @@ export function fetchRecommendations(profile: ChildProfile, ingredients: Ingredi
   });
 }
 
+export function streamRecommendations(
+  profile: ChildProfile,
+  ingredients: IngredientItem[],
+  userPrompt: string,
+  onEvent: (event: StreamEvent) => void,
+) {
+  const normalizedIngredients = ingredients.map((ingredient) => ({
+    id: ingredient.id,
+    name: ingredient.name,
+    normalizedName: ingredient.normalizedName ?? ingredient.name,
+    quantity: ingredient.quantity,
+    source: ingredient.source,
+  }));
+
+  return streamRequest('/recommendations/recipes/stream', {
+    method: 'POST',
+    body: JSON.stringify({
+      profileId: profile.id,
+      profile,
+      userPrompt,
+      ingredients: normalizedIngredients,
+      sortBy: 'balanced',
+      allowExtraIngredients: true,
+    }),
+  }, onEvent);
+}
+
 export function fetchRecipeDetail(recipeId: string) {
   return request<RecipeDetail>(`/recipes/${recipeId}`);
 }
@@ -172,6 +242,44 @@ export function fetchGeneratedRecipeDetail(payload: {
     method: 'POST',
     body: JSON.stringify(requestPayload),
   });
+}
+
+export function streamGeneratedRecipeDetail(
+  payload: {
+    profileId: string;
+    profile: ChildProfile;
+    ingredients: IngredientItem[];
+    recipe: RecipeDetail | RecipeRecommendation;
+  },
+  onEvent: (event: StreamEvent) => void,
+) {
+  const recipe = payload.recipe;
+  return streamRequest('/recipes/detail/stream', {
+    method: 'POST',
+    body: JSON.stringify({
+      profileId: payload.profileId,
+      ingredients: payload.ingredients.map((ingredient) => ({
+        name: ingredient.name,
+        normalizedName: ingredient.normalizedName ?? ingredient.name,
+        quantity: ingredient.quantity,
+        source: ingredient.source,
+      })),
+      recipe: {
+        id: recipe.id,
+        name: recipe.name,
+        namePinyin: recipe.namePinyin,
+        englishName: recipe.englishName,
+        ageRange: recipe.ageRange,
+        difficulty: recipe.difficulty,
+        estimatedTimeMinutes: recipe.estimatedTimeMinutes,
+        fitReasons: recipe.fitReasons,
+        riskAlerts: recipe.riskAlerts,
+        nutritionSummary: recipe.nutritionSummary,
+        extraIngredients: recipe.extraIngredients,
+        canCookWithCurrentIngredients: recipe.canCookWithCurrentIngredients,
+      },
+    }),
+  }, onEvent);
 }
 
 export function submitCookingFeedback(payload: {

@@ -15,7 +15,8 @@ test('ModelRouter routes simple recipe recommendation to fast model', () => {
   assert.equal(route.model, 'Qwen/Qwen3.5-9B');
   assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 520);
+  assert.equal(route.stream, false);
+  assert.equal(route.maxTokens, 500);
 });
 
 test('ModelRouter upgrades complex recipe recommendation to balanced model', () => {
@@ -34,7 +35,8 @@ test('ModelRouter upgrades complex recipe recommendation to balanced model', () 
   assert.equal(route.model, 'Qwen/Qwen3.5-27B');
   assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 650);
+  assert.equal(route.stream, false);
+  assert.equal(route.maxTokens, 620);
 });
 
 test('ModelRouter routes recipe steps to balanced model without slow fallback', () => {
@@ -44,7 +46,8 @@ test('ModelRouter routes recipe steps to balanced model without slow fallback', 
   assert.equal(route.model, 'Qwen/Qwen3.5-27B');
   assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
-  assert.equal(route.maxTokens, 900);
+  assert.equal(route.stream, false);
+  assert.equal(route.maxTokens, 1200);
 });
 
 test('ModelRouter routes text and voice ingredient recognition to small text model', () => {

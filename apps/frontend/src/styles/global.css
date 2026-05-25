@@ -2662,6 +2662,38 @@ button {
   margin-top: 0;
 }
 
+.stream-node-list {
+  display: grid;
+  gap: 6px;
+}
+
+.stream-node-list p {
+  margin: 0;
+}
+
+.stream-code-node,
+.stream-mermaid-node {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(24, 24, 24, 0.08);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.stream-card-placeholder {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(140, 255, 0, 0.18);
+  color: #315800;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 @media (min-width: 768px) {
   .sidebar {
     padding: 10px 22px;

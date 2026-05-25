@@ -7,12 +7,13 @@ import newChatIcon from './assets/new-chat.svg';
 import sendMessageIcon from './assets/send-message.svg';
 import { defaultIngredientVisual, getIngredientVisual } from './data/ingredientVisuals';
 import {
-  fetchGeneratedRecipeDetail,
-  fetchRecommendations,
   fetchSeasonalIngredientSuggestions,
   parseIngredientText,
+  streamGeneratedRecipeDetail,
+  streamRecommendations,
   uploadIngredientImage,
 } from './lib/api';
+import { applyStreamEvent } from './lib/streamAst';
 import { buildCharacterSpeech, formatPinyin, speak, stopSpeaking } from './lib/speech';
 import type {
   ChildProfile,
@@ -21,6 +22,8 @@ import type {
   RecipeRecommendation,
   RecommendationResponse,
   SeasonalIngredientSuggestion,
+  MessageNode,
+  StreamEvent,
 } from './types';
 
 const favoriteRecipesStorageKey = 'murphy-cookbook.favorite-recipes.v1';
@@ -46,6 +49,7 @@ interface ChatMessage {
   createdAt: string;
   imageDataUrl?: string;
   imageAlt?: string;
+  nodes?: MessageNode[];
   ingredientsKey?: string;
   ingredients?: IngredientItem[];
   recipes?: RecipeRecommendation[];
@@ -418,6 +422,74 @@ function buildRecipeStepCacheKey(recipeName: string) {
   return recipeName.trim().replace(/\s+/g, '').toLowerCase();
 }
 
+function getRecommendationDataFromStreamEvent(event: StreamEvent) {
+  if (event.type !== 'card' || event.cardType !== 'recipe-card') {
+    return null;
+  }
+
+  const data = event.props.data;
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  return data as RecommendationResponse;
+}
+
+function getRecipeDetailFromStreamEvent(event: StreamEvent) {
+  if (event.type !== 'card' || event.cardType !== 'recipe-detail') {
+    return null;
+  }
+
+  const data = event.props.data;
+  if (!data || typeof data !== 'object') {
+    return null;
+  }
+
+  return data as RecipeDetail;
+}
+
+function StreamNodeRenderer({ node }: { node: MessageNode }) {
+  if (node.type === 'text' || node.type === 'markdown') {
+    if (!node.content.trim()) {
+      return null;
+    }
+
+    return <p>{node.content}</p>;
+  }
+
+  if (node.type === 'code') {
+    return (
+      <pre className="stream-code-node">
+        <code>{node.content}</code>
+      </pre>
+    );
+  }
+
+  if (node.type === 'mermaid') {
+    return <pre className="stream-mermaid-node">{node.content}</pre>;
+  }
+
+  if (node.type === 'card') {
+    return null;
+  }
+
+  return null;
+}
+
+function StreamNodesRenderer({ nodes }: { nodes?: MessageNode[] }) {
+  if (!nodes?.length) {
+    return null;
+  }
+
+  return (
+    <div className="stream-node-list">
+      {nodes.map((node) => (
+        <StreamNodeRenderer key={node.id} node={node} />
+      ))}
+    </div>
+  );
+}
+
 function buildRecipeDetailsMap(details: RecipeDetail[]) {
   return details.reduce<Record<string, RecipeDetail>>((map, detail) => {
     map[detail.id] = detail;
@@ -637,6 +709,7 @@ export default function App() {
   const [recipeDetailsById, setRecipeDetailsById] = useState<Record<string, RecipeDetail>>({});
   const [recipeDetailLoadingById, setRecipeDetailLoadingById] = useState<Record<string, boolean>>({});
   const [recipeDetailErrorsById, setRecipeDetailErrorsById] = useState<Record<string, string>>({});
+  const [recipeDetailStreamNodesById, setRecipeDetailStreamNodesById] = useState<Record<string, MessageNode[]>>({});
   const [learningRecipe, setLearningRecipe] = useState<RecipeRecommendation | null>(null);
   const [manualIngredient, setManualIngredient] = useState('');
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -965,6 +1038,23 @@ export default function App() {
     return nextMessage;
   };
 
+  const patchChatMessageNodes = (messageId: string, event: StreamEvent) => {
+    setChatMessages((current) =>
+      current.map((message) =>
+        message.id === messageId
+          ? { ...message, nodes: applyStreamEvent(message.nodes ?? [], event) }
+          : message,
+      ),
+    );
+  };
+
+  const patchRecipeDetailStreamNodes = (recipeId: string, event: StreamEvent) => {
+    setRecipeDetailStreamNodesById((current) => ({
+      ...current,
+      [recipeId]: applyStreamEvent(current[recipeId] ?? [], event),
+    }));
+  };
+
   const handleNewConversation = () => {
     const session = createChatSession();
     setActiveChatSessionId(session.id);
@@ -1078,12 +1168,31 @@ export default function App() {
     });
 
     try {
-      const detail = await fetchGeneratedRecipeDetail({
+      setRecipeDetailStreamNodesById((current) => ({ ...current, [recipe.id]: [] }));
+      let streamedDetail: RecipeDetail | null = null;
+      let streamErrorMessage = '';
+      await streamGeneratedRecipeDetail({
         profileId: profile.id,
         profile,
         ingredients: nextIngredients,
         recipe,
+      }, (event) => {
+        patchRecipeDetailStreamNodes(recipe.id, event);
+        const detailFromEvent = getRecipeDetailFromStreamEvent(event);
+        if (detailFromEvent) {
+          streamedDetail = detailFromEvent;
+        }
+        if (event.type === 'error') {
+          streamErrorMessage = event.message;
+        }
       });
+      if (!streamedDetail && streamErrorMessage) {
+        throw new Error(streamErrorMessage);
+      }
+      if (!streamedDetail) {
+        throw new Error(streamErrorMessage || '菜谱步骤流式响应未返回有效卡片。');
+      }
+      const detail = streamedDetail as RecipeDetail;
       setRecipeDetailsById((current) => ({ ...current, [detail.id]: detail, [recipe.id]: detail }));
       mergeRecipeDetailIntoCurrentSession(messageId, detail);
       writeCachedValue(recipeStepCacheStorageKey, stepCacheKey, detail);
@@ -1187,12 +1296,6 @@ export default function App() {
         recommendationCacheStorageKey,
         recommendationCacheKey,
       );
-      const data = cachedRecommendation ?? await fetchRecommendations(selectedProfile, nextIngredients, recommendationPrompt);
-      if (!cachedRecommendation) {
-        writeCachedValue(recommendationCacheStorageKey, recommendationCacheKey, data);
-      }
-      const recipes = data.recipes;
-      const recipeDetails = data.recipeDetails ?? [];
       setChatMessages((current) =>
         current.filter((message) => {
           if (!message.recipes?.length) {
@@ -1206,19 +1309,55 @@ export default function App() {
           return !nextIngredients.every((item) => message.text.includes(item.name));
         }),
       );
+      skipNextChatAutoScrollRef.current = true;
+      const streamingRecipeMessage = addChatMessage({
+        role: 'assistant',
+        text: '正在生成菜谱推荐...',
+        nodes: [{ id: 'recommendation_stream_intro', type: 'text', content: '' }],
+        ingredientsKey,
+        ingredients: nextIngredients,
+      });
+      let data = cachedRecommendation;
+      let streamErrorMessage = '';
+      if (!data) {
+        await streamRecommendations(selectedProfile, nextIngredients, recommendationPrompt, (event) => {
+          patchChatMessageNodes(streamingRecipeMessage.id, event);
+          const streamData = getRecommendationDataFromStreamEvent(event);
+          if (streamData) {
+            data = streamData;
+          }
+          if (event.type === 'error') {
+            streamErrorMessage = event.message;
+          }
+        });
+      }
+      if (!data && streamErrorMessage) {
+        throw new Error(streamErrorMessage);
+      }
+      if (!data) {
+        throw new Error(streamErrorMessage || '菜谱推荐流式响应未返回有效卡片。');
+      }
+      if (!cachedRecommendation) {
+        writeCachedValue(recommendationCacheStorageKey, recommendationCacheKey, data);
+      }
+      const recipes = data.recipes;
+      const recipeDetails = data.recipeDetails ?? [];
       setRecipeDetailsById(buildRecipeDetailsMap(recipeDetails));
       setRecipeDetailLoadingById({});
       setRecipeDetailErrorsById({});
-      skipNextChatAutoScrollRef.current = true;
-      const recipeMessage = addChatMessage({
-        role: 'assistant',
-        text: `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
-        ingredientsKey,
-        ingredients: nextIngredients,
-        recipes,
-        recipeDetails,
-      });
-      setPendingIngredientMessageId(ingredientMessageId || recipeMessage.id);
+      setChatMessages((current) =>
+        current.map((message) =>
+          message.id === streamingRecipeMessage.id
+            ? {
+                ...message,
+                text: `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
+                recipes,
+                recipeDetails,
+              }
+            : message,
+        ),
+      );
+      setPendingIngredientMessageId(ingredientMessageId || streamingRecipeMessage.id);
       setManualIngredient('');
     } catch (recommendationError) {
       const message = recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。';
@@ -1726,7 +1865,7 @@ export default function App() {
               >
                 <div className="chat-bubble">
                   <div className="chat-bubble-content">
-                    <p>{message.text}</p>
+                    {message.nodes?.length ? <StreamNodesRenderer nodes={message.nodes} /> : <p>{message.text}</p>}
                     {message.imageDataUrl ? (
                       <img
                         className="chat-image-preview"
@@ -1744,7 +1883,7 @@ export default function App() {
                     <PlayInlineIcon />
                   </button>
                 </div>
-                {message.ingredients?.length && !message.recipes?.length ? (
+                {message.ingredients?.length && !message.recipes?.length && !message.nodes?.length ? (
                   <section className="ingredient-list-card" aria-label="当前食材清单">
                     <div className="ingredient-list-card-header">
                       <div>
@@ -2054,10 +2193,11 @@ export default function App() {
                               </div>
                             </>
                           ) : recipeDetailLoadingById[recipe.id] ? (
-                            <p className="muted compact-copy inline-loading-copy">
+                            <div className="muted compact-copy inline-loading-copy">
                               <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                              正在生成烹饪步骤...
-                            </p>
+                              <StreamNodesRenderer nodes={recipeDetailStreamNodesById[recipe.id]} />
+                              {recipeDetailStreamNodesById[recipe.id]?.length ? null : <span>正在生成烹饪步骤...</span>}
+                            </div>
                           ) : recipeDetailErrorsById[recipe.id] ? (
                             <div className="detail-error-block">
                               <strong>步骤获取失败</strong>

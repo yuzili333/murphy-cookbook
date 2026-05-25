@@ -70,6 +70,28 @@ function hasSameRecipeIdentity(actualName: string, targetName: string) {
     normalizeIngredientName(targetName).replace(/\s+/g, '').toLowerCase();
 }
 
+function isTimeoutError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message === '接口数据响应超时' || error.name === 'AbortError' || /timeout|aborted/i.test(error.message);
+}
+
+function findLocalRecipeDetailFallback(
+  recipe: RecipeDetailRecipeInput | RecipeDetail,
+  ingredients: IngredientItem[],
+) {
+  const normalizedInputs = new Set(
+    ingredients.map((item) => normalizeIngredientName(item.normalizedName ?? item.name)),
+  );
+
+  return recipeCatalog.find((item) =>
+    hasSameRecipeIdentity(item.name, recipe.name) &&
+    item.ingredients.every((ingredient) => normalizedInputs.has(normalizeIngredientName(ingredient.name))),
+  );
+}
+
 export function parseTextToIngredients(text: string) {
   const parts = text
     .split(/[，,、\s]+/)
@@ -239,9 +261,6 @@ export async function recommendRecipes(
 
   const { profile } = validation;
   const localRecommendationResult = getMockRecipeRecommendations(profile, ingredients);
-  if ('data' in localRecommendationResult) {
-    return localRecommendationResult;
-  }
 
   if (!isSiliconFlowConfigured()) {
     if (shouldRequireRealModel()) {
@@ -265,14 +284,18 @@ export async function recommendRecipes(
       ),
     };
   } catch (error) {
-    if (!shouldRequireRealModel()) {
+    if (isTimeoutError(error) && 'data' in localRecommendationResult) {
+      return localRecommendationResult;
+    }
+
+    if (!shouldRequireRealModel() && 'data' in localRecommendationResult) {
       return localRecommendationResult;
     }
 
     return {
       error: {
         code: 'RECIPE_RECOMMENDATION_FAILED',
-        message: error instanceof Error ? error.message : '菜谱推荐生成失败。',
+        message: isTimeoutError(error) ? '接口超时，稍后重试。' : error instanceof Error ? error.message : '菜谱推荐生成失败。',
       },
     };
   }
@@ -324,10 +347,17 @@ export async function getRecipeDetailForRecommendation(input: {
       ),
     };
   } catch (error) {
+    const localDetail = isTimeoutError(error)
+      ? findLocalRecipeDetailFallback(input.recipe, detailIngredients)
+      : undefined;
+    if (localDetail) {
+      return { data: localDetail };
+    }
+
     return {
       error: {
         code: 'RECIPE_DETAIL_UNAVAILABLE',
-        message: error instanceof Error ? error.message : '菜谱详情生成失败。',
+        message: isTimeoutError(error) ? '接口超时，稍后重试。' : error instanceof Error ? error.message : '菜谱详情生成失败。',
       },
     };
   }

@@ -75,6 +75,77 @@ function summarizeMessages(messages: SiliconFlowMessage[]) {
   });
 }
 
+async function readSiliconFlowStream(response: Response) {
+  if (!response.body) {
+    return { content: '', usage: null as Record<string, unknown> | null, finishReason: null as string | null };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let rawContent = '';
+  let content = '';
+  let usage: Record<string, unknown> | null = null;
+  let finishReason: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    const chunk = decoder.decode(value, { stream: true });
+    rawContent += chunk;
+    buffer += chunk;
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? '';
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line.startsWith('data:')) {
+        continue;
+      }
+
+      const data = line.slice(5).trim();
+      if (!data || data === '[DONE]') {
+        continue;
+      }
+
+      try {
+        const payload = JSON.parse(data) as {
+          choices?: Array<{
+            delta?: { content?: string; reasoning_content?: string };
+            message?: { content?: string };
+            finish_reason?: string | null;
+          }>;
+          usage?: Record<string, unknown>;
+        };
+        content += payload.choices?.[0]?.delta?.content ?? payload.choices?.[0]?.message?.content ?? '';
+        finishReason = payload.choices?.[0]?.finish_reason ?? finishReason;
+        usage = payload.usage ?? usage;
+      } catch {
+        // Ignore malformed event fragments and continue reading the stream.
+      }
+    }
+  }
+
+  if (!content && rawContent.trim()) {
+    try {
+      const payload = JSON.parse(rawContent) as {
+        choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>;
+        usage?: Record<string, unknown>;
+      };
+      content = payload.choices?.[0]?.message?.content?.trim() ?? '';
+      finishReason = payload.choices?.[0]?.finish_reason ?? finishReason;
+      usage = payload.usage ?? usage;
+    } catch {
+      // Keep the streamed content collected so far.
+    }
+  }
+
+  return { content: content.trim(), usage, finishReason };
+}
+
 async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconFlowCallOptions) {
   const apiKey = process.env.SILICONFLOW_API_KEY;
   const startedAt = Date.now();
@@ -114,13 +185,10 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
         body: JSON.stringify({
           model,
           messages,
-          stream: false,
+          stream: route.stream,
           enable_thinking: route.enableThinking,
           temperature: route.temperature,
           max_tokens: options.maxTokens ?? route.maxTokens,
-          response_format: {
-            type: 'json_object',
-          },
         }),
       });
       if (timeoutId) {
@@ -147,13 +215,23 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
         throw new Error(`SiliconFlow chat completion failed: ${text}`);
       }
 
-      const payload = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
-        usage?: Record<string, unknown>;
-      };
-
-      const content = payload.choices?.[0]?.message?.content?.trim() ?? '';
-      const finishReason = payload.choices?.[0]?.finish_reason ?? null;
+      let content = '';
+      let finishReason: string | null = null;
+      let usage: Record<string, unknown> | null = null;
+      if (route.stream) {
+        const streamPayload = await readSiliconFlowStream(response);
+        content = streamPayload.content;
+        finishReason = streamPayload.finishReason;
+        usage = streamPayload.usage;
+      } else {
+        const payload = await response.json() as {
+          choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+          usage?: Record<string, unknown>;
+        };
+        content = payload.choices?.[0]?.message?.content?.trim() ?? '';
+        finishReason = payload.choices?.[0]?.finish_reason ?? null;
+        usage = payload.usage ?? null;
+      }
 
       writeLocalJsonLog({
         type: 'llm_call',
@@ -167,7 +245,7 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
         requestSummary: summarizeMessages(messages),
         responsePreview: content.slice(0, 500),
         finishReason,
-        usage: payload.usage ?? null,
+        usage,
         metadata: options.metadata ?? {},
         logFile: getLocalLlmLogFilePath(),
       });
@@ -300,11 +378,87 @@ function extractRecipesFromPossiblyTruncatedJson(content: string) {
   return results;
 }
 
+function extractObjectsFromArrayByKey<T>(content: string, key: string) {
+  const keyIndex = content.indexOf(`"${key}"`);
+  if (keyIndex === -1) {
+    return [];
+  }
+
+  const arrayStartIndex = content.indexOf('[', keyIndex);
+  if (arrayStartIndex === -1) {
+    return [];
+  }
+
+  const results: T[] = [];
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  let objectStart = -1;
+
+  for (let index = arrayStartIndex + 1; index < content.length; index += 1) {
+    const char = content[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === '{') {
+      if (depth === 0) {
+        objectStart = index;
+      }
+      depth += 1;
+      continue;
+    }
+
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0 && objectStart !== -1) {
+        const candidate = content.slice(objectStart, index + 1);
+        try {
+          results.push(JSON.parse(repairJsonObjectCandidate(candidate)) as T);
+        } catch {
+          // Skip incomplete or malformed objects.
+        }
+        objectStart = -1;
+      }
+      continue;
+    }
+
+    if (char === ']' && depth === 0) {
+      break;
+    }
+  }
+
+  return results;
+}
+
 function parseRecipePlanPayload(content: string) {
-  const normalizedContent = stripMarkdownCodeFence(content);
+  const normalizedContent = extractJsonObjectCandidate(content);
 
   try {
-    return JSON.parse(normalizedContent) as { recipes?: Array<Partial<RecipeDetail>> };
+    const parsed = JSON.parse(repairJsonObjectCandidate(normalizedContent)) as
+      | { recipes?: Array<Partial<RecipeDetail>> }
+      | Array<Partial<RecipeDetail>>;
+    if (Array.isArray(parsed)) {
+      return { recipes: parsed };
+    }
+
+    return parsed;
   } catch {
     const salvagedRecipes = extractRecipesFromPossiblyTruncatedJson(normalizedContent);
     if (salvagedRecipes.length > 0) {
@@ -319,10 +473,19 @@ function parseRecipeStepsPayload(content: string) {
   const normalizedContent = extractJsonObjectCandidate(content);
 
   try {
-    const parsed = JSON.parse(repairJsonObjectCandidate(normalizedContent)) as {
-      steps?: Array<Partial<RecipeDetail['steps'][number]>>;
-      recipes?: Array<{ name?: unknown; steps?: Array<Partial<RecipeDetail['steps'][number]>> }>;
-    };
+    const parsed = JSON.parse(repairJsonObjectCandidate(normalizedContent)) as
+      | {
+          steps?: Array<Partial<RecipeDetail['steps'][number]>>;
+          recipes?: Array<{ name?: unknown; steps?: Array<Partial<RecipeDetail['steps'][number]>> }>;
+        }
+      | Array<Partial<RecipeDetail['steps'][number]>>;
+    if (Array.isArray(parsed)) {
+      return {
+        sourceRecipeName: '',
+        steps: parsed,
+      };
+    }
+
     const sourceRecipeName = parsed.recipes?.[0]?.name;
     const steps = Array.isArray(parsed.steps) ? parsed.steps : parsed.recipes?.[0]?.steps;
     return {
@@ -330,6 +493,17 @@ function parseRecipeStepsPayload(content: string) {
       steps: Array.isArray(steps) ? steps : [],
     };
   } catch {
+    const salvagedSteps = extractObjectsFromArrayByKey<Partial<RecipeDetail['steps'][number]>>(
+      normalizedContent,
+      'steps',
+    );
+    if (salvagedSteps.length > 0) {
+      return {
+        sourceRecipeName: '',
+        steps: salvagedSteps,
+      };
+    }
+
     throw new Error('菜谱步骤模型返回内容无法解析为有效 JSON。');
   }
 }
@@ -361,8 +535,17 @@ function slugifyRecipeName(name: string) {
     .slice(0, 32);
 }
 
-function buildFallbackEnglishName(name: string) {
-  return `${name} Kids Recipe`;
+function buildFallbackEnglishName(_name: string) {
+  return 'Kids Recipe';
+}
+
+function sanitizeEnglishName(value: unknown, recipeName: string) {
+  const englishName = String(value ?? '').trim();
+  if (!englishName || englishName.includes(recipeName) || /[\u4e00-\u9fa5]/.test(englishName)) {
+    return buildFallbackEnglishName(recipeName);
+  }
+
+  return englishName.slice(0, 80);
 }
 
 function buildFallbackNameLearning(name: string, namePinyin = ''): RecipeRecommendation['nameLearning'] {
@@ -435,7 +618,7 @@ function normalizeGeneratedRecipeSummaries(
         id: `recipe_gen_summary_${slugifyRecipeName(name)}_${index + 1}`,
         name,
         namePinyin,
-        englishName: String(recipe.englishName ?? buildFallbackEnglishName(name)),
+        englishName: sanitizeEnglishName(recipe.englishName, name),
         nameLearning: normalizeNameLearning(recipe, name, namePinyin),
         ageRange: String(recipe.ageRange ?? `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`),
         difficulty: recipe.difficulty === 'hard' || recipe.difficulty === 'medium' ? recipe.difficulty : 'easy',
@@ -689,7 +872,7 @@ function buildRecipeDetailFromSteps(
     id: recipe.id,
     name: recipe.name,
     namePinyin: recipe.namePinyin,
-    englishName: recipe.englishName ?? buildFallbackEnglishName(recipe.name),
+    englishName: sanitizeEnglishName(recipe.englishName, recipe.name),
     nameLearning: buildFallbackNameLearning(recipe.name, recipe.namePinyin),
     ageRange: recipe.ageRange ?? '7-12 岁',
     difficulty: recipe.difficulty ?? 'easy',
@@ -719,7 +902,7 @@ function buildRecipePlanUserPrompt(profile: ChildProfile, ingredients: Ingredien
   const compactUserPrompt = compactText(userPrompt, 120);
 
   return [
-    '为小学生生成1-2道菜谱卡片，只输出JSON。',
+    '为小学生生成1-2道菜谱卡片，只返回JSON对象。',
     `儿童:${profile.age}岁；偏好:${tastePreferences}；过敏:${allergens}`,
     compactUserPrompt ? `用户:${compactUserPrompt}` : '',
     `食材:${ingredientLines}`,
@@ -744,18 +927,19 @@ function buildRecipeDetailUserPrompt(
   ].join('\n');
 
   return [
-    '为指定菜名生成儿童烹饪步骤，只输出JSON对象。',
+    '为指定菜名生成儿童烹饪步骤，只返回JSON对象。',
     `允许食材:${ingredientLines}`,
     `菜谱:${recipeLines}`,
     '规则:',
     `1.steps必须制作“${recipe.name}”，禁止换菜名/主食/相似菜。`,
     '2.只能使用允许食材；水/锅/碗/刀具/炉具可作为工具；未列出的盐油糖葱姜蒜酱油牛奶面粉都禁止。',
-    '3.steps 4-8步；description固定为“本步骤食材：A、B；操作：……”，动作细节清楚。',
-    `4.最后一步 expectedResult 写“完成${recipe.name}”。`,
-    '5.每步必填:title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。',
-    '6.小学生可参与清洗、剥皮、撕菜、搅拌、摆盘、递冷食材、冷锅/碗中加食材等低风险动作。',
-    '7.只有明火、高温、热油、爆炒、高压、蒸煮、烤箱、开水等高风险操作 requiresParentAssist=true，parentAction写家长完成。',
-    '8.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号。',
+    '3.steps通常4-6步，复杂菜最多8步，按真实烹饪顺序拆分：准备/清洗/切配/混合/入锅或装盘/成熟判断/收尾。',
+    '4.description固定为“本步骤食材：A、B；操作：……”，操作部分写2-4句短句，必须包含：怎么处理、什么时候加入、做到什么状态算完成。',
+    '5.tip写一个具体要点，如大小厚薄、火候距离、搅拌频率、颜色/软硬变化或防烫提醒。',
+    '6.childAction写小朋友能亲手参与的具体动作，不要只写等待/观察；高风险步骤可写站远观察、读步骤、准备餐盘。',
+    '7.parentAction仅在明火、高温、热油、爆炒、高压、蒸煮、烤箱、开水等高风险操作中写家长完成的动作；低风险步骤写“在旁边看护”。',
+    `8.最后一步 expectedResult 写“完成${recipe.name}”；每步必填:title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。`,
+    '9.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号。',
   ].join('\n');
 }
 
@@ -826,7 +1010,7 @@ export async function generateRecipePlan(profile: ChildProfile, ingredients: Ing
     {
       role: 'system',
       content:
-        '儿童菜谱推荐。只输出JSON：{"recipes":[{"name":"","namePinyin":"","englishName":"","nameLearning":{"characters":[{"character":"","pinyin":"","strokes":1,"structure":"","hint":""}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"riskAlerts":[],"nutritionSummary":"","canCookWithCurrentIngredients":true}]}。返回1-2道；不要fitReasons、extraIngredients、steps、ingredients、imageUrl、解释。',
+        '儿童菜谱推荐。只返回可被 JSON.parse 解析的 JSON 对象，不要 Markdown、代码块、解释、前后缀文字。格式：{"recipes":[{"name":"","namePinyin":"","englishName":"","nameLearning":{"characters":[{"character":"","pinyin":"","strokes":1,"structure":"","hint":""}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"riskAlerts":[],"nutritionSummary":"","canCookWithCurrentIngredients":true}]}。返回1-2道；不要fitReasons、extraIngredients、steps、ingredients、imageUrl。',
     },
     {
       role: 'user',
@@ -870,7 +1054,7 @@ export async function generateRecipeDetail(
     {
       role: 'system',
       content:
-        '儿童菜谱步骤生成。只输出JSON：{"steps":[{"title":"","description":"本步骤食材：A；操作：...","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。小学生可主动参与低风险步骤；仅高风险热源/高温/热油/爆炒/高压/蒸煮要求家长完成。禁止Markdown和解释。',
+        '儿童菜谱步骤生成。只返回可被 JSON.parse 解析的 JSON 对象，不要 Markdown、代码块、解释、前后缀文字。格式：{"steps":[{"title":"","description":"本步骤食材：A；操作：先……。再……。看到……就完成。","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。步骤要能教会小学生烹饪要点；仅高风险热源/高温/热油/爆炒/高压/蒸煮要求家长完成。',
     },
     {
       role: 'user',

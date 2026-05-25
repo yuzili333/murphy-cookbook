@@ -24,6 +24,7 @@ export interface ModelRoute {
   maxTokens: number;
   temperature: number;
   enableThinking: boolean;
+  stream: boolean;
 }
 
 const defaultFastModel = 'Qwen/Qwen3.5-9B';
@@ -96,6 +97,7 @@ export class ModelRouter {
         maxTokens: 260,
         temperature: 0.3,
         enableThinking: false,
+        stream: false,
       };
     }
 
@@ -105,9 +107,10 @@ export class ModelRouter {
         task,
         model: useBalanced ? this.balancedModel : this.fastModel,
         fallbackModels: [],
-        maxTokens: useBalanced ? 650 : 520,
+        maxTokens: useBalanced ? 620 : 500,
         temperature: 0.2,
         enableThinking: false,
+        stream: false,
       };
     }
 
@@ -116,9 +119,10 @@ export class ModelRouter {
         task,
         model: this.balancedModel,
         fallbackModels: [],
-        maxTokens: 900,
+        maxTokens: 1200,
         temperature: 0.2,
         enableThinking: false,
+        stream: false,
       };
     }
 
@@ -130,6 +134,7 @@ export class ModelRouter {
         maxTokens: 360,
         temperature: 0,
         enableThinking: false,
+        stream: false,
       };
     }
 
@@ -141,6 +146,7 @@ export class ModelRouter {
         maxTokens: 300,
         temperature: 0.2,
         enableThinking: false,
+        stream: false,
       };
     }
 
@@ -151,6 +157,7 @@ export class ModelRouter {
       maxTokens: task === 'recipe_nutrition' ? 480 : 320,
       temperature: 0.3,
       enableThinking: false,
+      stream: false,
     };
   }
 }

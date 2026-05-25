@@ -45,9 +45,9 @@ test('getLocalSeasonalIngredientSuggestions returns three items from local seaso
   assert.ok(suggestions.every((item) => item.name && item.reason));
 });
 
-test('local home recipe catalog provides at least 500 generated recipes', () => {
-  assert.equal(generatedHomeRecipeCatalog.length, 500);
-  assert.ok(recipeCatalog.length >= 500);
+test('local home recipe catalog provides 50 generated common recipes', () => {
+  assert.equal(generatedHomeRecipeCatalog.length, 50);
+  assert.ok(recipeCatalog.length >= 50);
   assert.ok(recipeCatalog.some((recipe) => recipe.name === '番茄炒鸡蛋'));
   assert.ok(recipeCatalog.some((recipe) => recipe.name === '草莓奶昔'));
 });
@@ -80,14 +80,14 @@ test('generated local recipes follow model prompt output constraints', () => {
   }
 });
 
-test('recommendRecipes prefers local recipe catalog before model and ignores ingredient order', async () => {
+test('recommendRecipes uses local recipe catalog after model timeout and ignores ingredient order', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
   let fetchCalls = 0;
   global.fetch = (async () => {
     fetchCalls += 1;
-    throw new Error('model should not be called for local recipe matches');
+    throw new Error('接口数据响应超时');
   }) as typeof fetch;
 
   const startedAt = performance.now();
@@ -108,7 +108,7 @@ test('recommendRecipes prefers local recipe catalog before model and ignores ing
     assert.fail(`expected local recommendation data, got ${second.error.code}`);
   }
 
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls, 2);
   assert.ok(elapsedMs < 500);
   assert.ok(first.data.recipes.length <= 2);
   assert.equal('imageUrl' in first.data.recipes[0], false);
@@ -131,8 +131,11 @@ test('recommendRecipes returns model-generated recipe matches for existing child
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
 
-  global.fetch = (async () =>
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return (
     new Response(JSON.stringify({
       choices: [{
         message: {
@@ -168,7 +171,9 @@ test('recommendRecipes returns model-generated recipe matches for existing child
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })) as typeof fetch;
+    })
+    );
+  }) as typeof fetch;
 
   const ingredients = parseTextToIngredients('神秘菜');
   const result = await recommendRecipes('cp_001', ingredients);
@@ -198,9 +203,11 @@ test('recommendRecipes ignores model-provided ids that collide with local catalo
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
 
-  global.fetch = (async () =>
-    new Response(JSON.stringify({
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
       choices: [{
         message: {
           content: JSON.stringify({
@@ -227,7 +234,8 @@ test('recommendRecipes ignores model-provided ids that collide with local catalo
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
 
   const result = await recommendRecipes('cp_001', [
     { id: 'ing_unknown', name: '神秘菜', normalizedName: '神秘菜', quantity: '1份', source: 'manual' },
@@ -550,7 +558,8 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
   const requestBody = requestBodies[0] ?? {};
   assert.equal(requestBody?.model, 'Qwen/Qwen3.5-27B');
   assert.equal(requestBody?.enable_thinking, false);
-  assert.equal(requestBody?.max_tokens, 650);
+  assert.equal(requestBody?.stream, false);
+  assert.equal(requestBody?.max_tokens, 620);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -568,10 +577,16 @@ test('generateRecipePlan uses fast model for simple recommendations without slow
   const requestedMaxTokens: number[] = [];
 
   global.fetch = (async (_input, init) => {
-    const requestBody = JSON.parse(String(init?.body ?? '{}')) as { model?: string; max_tokens?: number; enable_thinking?: boolean };
+    const requestBody = JSON.parse(String(init?.body ?? '{}')) as {
+      model?: string;
+      max_tokens?: number;
+      enable_thinking?: boolean;
+      stream?: boolean;
+    };
     requestedModels.push(String(requestBody.model ?? ''));
     requestedMaxTokens.push(Number(requestBody.max_tokens));
     assert.equal(requestBody.enable_thinking, false);
+    assert.equal(requestBody.stream, false);
 
     return new Response(JSON.stringify({
       choices: [{
@@ -621,7 +636,7 @@ test('generateRecipePlan uses fast model for simple recommendations without slow
 
   assert.equal(result.recipes[0].name, '番茄鸡蛋');
   assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B']);
-  assert.deepEqual(requestedMaxTokens, [520]);
+  assert.deepEqual(requestedMaxTokens, [500]);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -772,9 +787,11 @@ test('getRecipeDetailForRecommendation generates model detail for summary-only g
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
 
-  global.fetch = (async () =>
-    new Response(JSON.stringify({
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
       choices: [{
         message: {
           content: JSON.stringify({
@@ -810,7 +827,8 @@ test('getRecipeDetailForRecommendation generates model detail for summary-only g
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
-    })) as typeof fetch;
+    });
+  }) as typeof fetch;
 
   const result = await getRecipeDetailForRecommendation({
     profileId: 'cp_001',
@@ -854,6 +872,9 @@ test('getRecipeDetailForRecommendation generates model detail for summary-only g
 
   assert.equal(result.data.name, '番茄鸡蛋软面');
   assert.equal(result.data.steps[0].title, '番茄鸡蛋');
+  assert.equal(requestBodies[0]?.enable_thinking, false);
+  assert.equal(requestBodies[0]?.stream, false);
+  assert.equal(requestBodies[0]?.max_tokens, 1200);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -1091,6 +1112,59 @@ test('getRecipeDetailForRecommendation parses standard JSON object when model ad
 
   assert.equal(result.data.steps[0].title, '处理蚕豆');
   assert.equal(result.data.steps[0].description.includes('蚕豆'), true);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('getRecipeDetailForRecommendation salvages complete steps from truncated model JSON', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        finish_reason: 'length',
+        message: {
+          content: `{"steps":[{"title":"清洗菠菜","description":"本步骤食材：菠菜；操作：先把菠菜放进清水。再轻轻搓洗叶片。看到没有泥沙就完成。","tip":"一片片分开洗。","childAction":"清洗菠菜叶片。","parentAction":"在旁边看护","expectedResult":"菠菜洗净。","riskLevel":"low","requiresParentAssist":false},{"title":"切配菠菜","description":"本步骤食材：菠菜；操作：先把洗好的菠菜放在案板上。再切成小段。看到长短接近就完成。","tip":"手指离刀远一点。","childAction":"在看护下摆放菜段。","parentAction":"在旁边看护","expectedResult":"菠菜切成小段。","riskLevel":"low","requiresParentAssist":false},{"title":"入锅`,
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'chat_context_profile',
+    ingredients: [{ id: 'ing_spinach', name: '菠菜', normalizedName: '菠菜', quantity: '适量', source: 'manual' }],
+    recipe: {
+      id: `recipe_generated_spinach_truncated_${Date.now()}`,
+      name: '清炒菠菜',
+      namePinyin: 'qīng chǎo bō cài',
+      englishName: 'Stir-fried Spinach',
+      ageRange: '7-12 岁',
+      difficulty: 'medium' as const,
+      estimatedTimeMinutes: 12,
+      fitReasons: ['清淡简单'],
+      riskAlerts: ['热锅需家长陪同'],
+      nutritionSummary: '富含膳食纤维。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if ('error' in result) {
+    assert.fail(`expected salvaged detail data, got ${result.error.code}`);
+  }
+
+  assert.equal(result.data.steps.length >= 2, true);
+  assert.equal(result.data.steps[0].title, '清洗菠菜');
+  assert.equal(result.data.steps[1].title, '切配菠菜');
 
   global.fetch = originalFetch;
   if (originalKey) {

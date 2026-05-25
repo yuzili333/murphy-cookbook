@@ -716,7 +716,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_1',
         title: '清洗食材',
-        description: `本步骤食材：${ingredientText}；操作：把食材放在流动水下冲洗干净，沥干水分。`,
+        description: `本步骤食材：${ingredientText}；操作：把食材放在流动水下冲洗干净，轻轻搓掉表面杂质。洗好后沥干水分，先放在干净盘子里备用。`,
         tip: '小朋友可以负责冲洗和摆放。',
         riskLevel: 'low',
         requiresParentAssist: false,
@@ -727,7 +727,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_2',
         title: '切成小块',
-        description: `本步骤食材：${ingredientText}；操作：把较大的食材切成方便入口的小块，动作慢一点。`,
+        description: `本步骤食材：${ingredientText}；操作：把较大的食材切成方便入口的小块，尽量切得大小接近。切好后把软硬不同的食材分开放，后面摆盘更整齐。`,
         tip: '常规切菜可以在家长看护下参与，手指要离刀刃远一点。',
         riskLevel: 'low',
         requiresParentAssist: false,
@@ -738,7 +738,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_3',
         title: '组合摆盘',
-        description: `本步骤食材：${ingredientText}；操作：把不同颜色的食材交错摆放，做成彩色小餐盘。`,
+        description: `本步骤食材：${ingredientText}；操作：把不同颜色的食材交错摆放，先铺大块，再补小块。看一看颜色是否均匀，做成彩色小餐盘。`,
         tip: '颜色搭配越丰富，看起来越有食欲。',
         riskLevel: 'low',
         requiresParentAssist: false,
@@ -749,7 +749,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_4',
         title: '分装享用',
-        description: `本步骤食材：${ingredientText}；操作：把摆好的食材分到小碗或小盘中，准备品尝。`,
+        description: `本步骤食材：${ingredientText}；操作：把摆好的食材分到小碗或小盘中，每份不要装太满。先确认大小适合入口，再准备品尝。`,
         tip: '先少量品尝，冰凉水果不要吃太快。',
         riskLevel: 'low',
         requiresParentAssist: false,
@@ -765,7 +765,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_1',
         title: '洗净处理',
-        description: `本步骤食材：${ingredientText}；操作：把水果洗干净，较大的水果由家长切成小块。`,
+        description: `本步骤食材：${ingredientText}；操作：把水果洗干净，去掉不能入口的硬核或外皮。较大的水果由家长切成小块，方便后面搅打。`,
         tip: '水果块越小，搅打越顺滑。',
         riskLevel: 'medium',
         requiresParentAssist: true,
@@ -776,7 +776,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_2',
         title: '加入杯中',
-        description: `本步骤食材：${ingredientText}；操作：把水果块和奶类或少量水放进料理杯，不要超过最高刻度。`,
+        description: `本步骤食材：${ingredientText}；操作：把水果块和少量水放进料理杯，先放软的，再放稍硬的。检查不要超过最高刻度，盖盖前把杯口擦干净。`,
         tip: '盖子盖紧后再启动。',
         riskLevel: 'low',
         requiresParentAssist: false,
@@ -787,7 +787,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_3',
         title: '搅打顺滑',
-        description: `本步骤食材：${ingredientText}；操作：家长确认盖子盖紧后启动料理机，打到顺滑。`,
+        description: `本步骤食材：${ingredientText}；操作：家长确认盖子盖紧后启动料理机，先短时间搅打，再观察是否还有大块。继续打到颜色均匀、口感顺滑。`,
         tip: '机器工作时不要把手靠近刀头区域。',
         riskLevel: 'high',
         requiresParentAssist: true,
@@ -798,7 +798,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_4',
         title: '倒杯品尝',
-        description: `本步骤食材：${ingredientText}；操作：把饮品倒入杯中，先少量品尝甜度和温度。`,
+        description: `本步骤食材：${ingredientText}；操作：把饮品倒入杯中，倒到七八分满即可。先少量品尝甜度和温度，觉得太稠可以再少量加水搅匀。`,
         tip: '冰饮不要一次喝太快。',
         riskLevel: 'low',
         requiresParentAssist: false,
@@ -814,7 +814,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_1',
         title: '清洗准备',
-        description: `本步骤食材：${ingredientText}；操作：把食材洗净，谷物提前淘洗，蔬菜切成小块。`,
+        description: `本步骤食材：${ingredientText}；操作：把食材洗净，谷物提前淘洗到水变清。蔬菜切成小块，较硬的食材切得更小，方便煮软。`,
         tip: '小朋友可以淘洗冷水里的谷物。',
         riskLevel: 'medium',
         requiresParentAssist: true,
@@ -825,7 +825,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_2',
         title: '加水入锅',
-        description: `本步骤食材：${ingredientText}；操作：把食材和清水放入锅中，水量没过食材。`,
+        description: `本步骤食材：${ingredientText}；操作：把食材和清水放入锅中，先放需要久煮的食材。水量没过食材后，再轻轻晃动锅身让食材铺开。`,
         tip: '冷锅时小朋友可以参与放食材。',
         riskLevel: 'low',
         requiresParentAssist: false,
@@ -836,7 +836,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_3',
         title: '煮到软糯',
-        description: `本步骤食材：${ingredientText}；操作：家长开火加热，煮到食材变软，中途轻轻搅动防粘锅。`,
+        description: `本步骤食材：${ingredientText}；操作：家长开火加热，沸腾后转小火慢煮。中途轻轻搅动防粘锅，看到食材变软、汤汁变浓就接近完成。`,
         tip: '热气明显时要离锅远一点。',
         riskLevel: 'high',
         requiresParentAssist: true,
@@ -847,7 +847,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
       {
         id: 'step_4',
         title: '放温享用',
-        description: `本步骤食材：${ingredientText}；操作：盛出后放到温热，再小口品尝。`,
+        description: `本步骤食材：${ingredientText}；操作：盛出后先放到温热，用勺子轻轻搅一搅帮助散热。入口前小口试温，再慢慢品尝。`,
         tip: '入口前先吹一吹。',
         riskLevel: 'low',
         requiresParentAssist: false,
@@ -862,7 +862,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
     {
       id: 'step_1',
       title: '处理食材',
-      description: `本步骤食材：${ingredientText}；操作：把食材洗净，切成薄片或小段，鸡蛋类先打散。`,
+      description: `本步骤食材：${ingredientText}；操作：把食材洗净，切成薄片或小段，鸡蛋类先打散。切好的食材按易熟和不易熟分开放，方便下锅时有顺序。`,
       tip: '切菜由家长完成，小朋友可以洗菜和分装。',
       riskLevel: 'medium',
       requiresParentAssist: false,
@@ -873,7 +873,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
     {
       id: 'step_2',
       title: '下锅加热',
-      description: `本步骤食材：${ingredientText}；操作：家长热锅后放入食材，先放不易熟的，再放易熟的。`,
+      description: `本步骤食材：${ingredientText}；操作：家长热锅后放入食材，先放不易熟的，再放易熟的。每次加入后先摊开，再翻动，让食材受热更均匀。`,
       tip: '热锅时小朋友站在安全距离外。',
       riskLevel: 'high',
       requiresParentAssist: true,
@@ -884,7 +884,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
     {
       id: 'step_3',
       title: '翻拌成熟',
-      description: `本步骤食材：${ingredientText}；操作：沿锅边加入少量清水，继续翻拌到食材熟透。`,
+      description: `本步骤食材：${ingredientText}；操作：沿锅边加入少量清水，继续翻拌到食材熟透。看到颜色变亮、质地变软，说明已经接近完成。`,
       tip: '不额外添加未列出的调味料，保持食材本味。',
       riskLevel: 'high',
       requiresParentAssist: true,
@@ -895,7 +895,7 @@ function buildGeneratedRecipeSteps(kind: GeneratedRecipeKind, ingredients: strin
     {
       id: 'step_4',
       title: '装盘',
-      description: `本步骤食材：${ingredientText}；操作：关火后装盘，稍微放凉再吃。`,
+      description: `本步骤食材：${ingredientText}；操作：关火后装盘，把容易滑落的小块放在盘子中间。稍微放凉后再吃，入口前先确认不烫。`,
       tip: '热菜刚出锅不要急着入口。',
       riskLevel: 'low',
       requiresParentAssist: false,
@@ -916,7 +916,7 @@ function buildGeneratedRecipe(seed: GeneratedRecipeSeed, index: number): RecipeD
     name: seed.name,
     namePinyin: '',
     imageUrl: buildRecipeImageUrl(seed.name, undefined, ingredients),
-    englishName: `${seed.name} ${recipeEnglishKeywordMap[seed.kind]}`,
+    englishName: recipeEnglishKeywordMap[seed.kind],
     nameLearning: buildGeneratedNameLearning(seed.name),
     ageRange: '7-12 岁',
     difficulty: seed.kind === 'stir' ? 'medium' : 'easy',
@@ -945,45 +945,59 @@ function buildGeneratedRecipeSeeds() {
     { name: '彩虹水果拼盘', ingredients: ['苹果', '香蕉', '草莓', '蓝莓'], kind: 'fruit' },
     { name: '西瓜冰粉杯', ingredients: ['西瓜'], kind: 'fruit' },
     { name: '草莓奶昔', ingredients: ['草莓', '牛奶'], kind: 'milkshake' },
+    { name: '香蕉牛奶昔', ingredients: ['香蕉', '牛奶'], kind: 'milkshake' },
+    { name: '苹果胡萝卜汁', ingredients: ['苹果', '胡萝卜'], kind: 'juice' },
+    { name: '黄瓜苹果汁', ingredients: ['黄瓜', '苹果'], kind: 'juice' },
+    { name: '芒果酸奶杯', ingredients: ['芒果', '酸奶'], kind: 'smoothie' },
+    { name: '蓝莓酸奶杯', ingredients: ['蓝莓', '酸奶'], kind: 'smoothie' },
+    { name: '牛油果香蕉奶昔', ingredients: ['牛油果', '香蕉', '牛奶'], kind: 'milkshake' },
+    { name: '南瓜小米粥', ingredients: ['南瓜', '小米'], kind: 'congee' },
+    { name: '山药小米粥', ingredients: ['山药', '小米'], kind: 'congee' },
+    { name: '红薯小米粥', ingredients: ['红薯', '小米'], kind: 'congee' },
+    { name: '玉米燕麦粥', ingredients: ['玉米', '燕麦'], kind: 'congee' },
+    { name: '番茄鸡蛋汤', ingredients: ['番茄', '鸡蛋'], kind: 'soup' },
+    { name: '紫菜鸡蛋汤', ingredients: ['紫菜', '鸡蛋'], kind: 'soup' },
+    { name: '冬瓜虾仁汤', ingredients: ['冬瓜', '虾仁'], kind: 'soup' },
+    { name: '玉米胡萝卜汤', ingredients: ['玉米', '胡萝卜'], kind: 'soup' },
+    { name: '菠菜鸡蛋汤', ingredients: ['菠菜', '鸡蛋'], kind: 'soup' },
+    { name: '西兰花炒鸡蛋', ingredients: ['西兰花', '鸡蛋'], kind: 'stir' },
+    { name: '黄瓜炒鸡蛋', ingredients: ['黄瓜', '鸡蛋'], kind: 'stir' },
+    { name: '胡萝卜炒鸡蛋', ingredients: ['胡萝卜', '鸡蛋'], kind: 'stir' },
+    { name: '菠菜炒鸡蛋', ingredients: ['菠菜', '鸡蛋'], kind: 'stir' },
+    { name: '蒜苗炒鸡蛋', ingredients: ['蒜苗', '鸡蛋'], kind: 'stir' },
+    { name: '青菜炒豆腐', ingredients: ['青菜', '豆腐'], kind: 'stir' },
+    { name: '番茄豆腐汤', ingredients: ['番茄', '豆腐'], kind: 'soup' },
+    { name: '香菇青菜', ingredients: ['香菇', '青菜'], kind: 'stir' },
+    { name: '清炒西兰花', ingredients: ['西兰花'], kind: 'stir' },
+    { name: '清炒菠菜', ingredients: ['菠菜'], kind: 'stir' },
+    { name: '清炒小白菜', ingredients: ['小白菜'], kind: 'stir' },
+    { name: '清炒黄瓜片', ingredients: ['黄瓜'], kind: 'stir' },
+    { name: '土豆胡萝卜丝', ingredients: ['土豆', '胡萝卜'], kind: 'stir' },
+    { name: '彩椒炒鸡胸肉', ingredients: ['彩椒', '鸡胸肉'], kind: 'stir' },
+    { name: '胡萝卜炒牛肉', ingredients: ['胡萝卜', '牛肉'], kind: 'stir' },
+    { name: '番茄鱼片汤', ingredients: ['番茄', '鱼肉'], kind: 'soup' },
+    { name: '虾仁玉米粒', ingredients: ['虾仁', '玉米粒'], kind: 'stir' },
+    { name: '毛豆炒鸡蛋', ingredients: ['毛豆', '鸡蛋'], kind: 'stir' },
+    { name: '莲藕炒肉片', ingredients: ['莲藕', '猪肉'], kind: 'stir' },
+    { name: '猪肝菠菜汤', ingredients: ['猪肝', '菠菜'], kind: 'soup' },
+    { name: '苹果香蕉拼盘', ingredients: ['苹果', '香蕉'], kind: 'fruit' },
+    { name: '草莓蓝莓拼盘', ingredients: ['草莓', '蓝莓'], kind: 'fruit' },
+    { name: '西瓜葡萄拼盘', ingredients: ['西瓜', '葡萄'], kind: 'fruit' },
+    { name: '橙子梨拼盘', ingredients: ['橙子', '梨'], kind: 'fruit' },
+    { name: '猕猴桃香蕉拼盘', ingredients: ['猕猴桃', '香蕉'], kind: 'fruit' },
+    { name: '菠萝芒果拼盘', ingredients: ['菠萝', '芒果'], kind: 'fruit' },
+    { name: '西瓜汁', ingredients: ['西瓜'], kind: 'juice' },
+    { name: '橙汁', ingredients: ['橙子'], kind: 'juice' },
+    { name: '梨汁', ingredients: ['梨'], kind: 'juice' },
+    { name: '葡萄汁', ingredients: ['葡萄'], kind: 'juice' },
   ];
-
-  for (const vegetable of vegetableSeeds) {
-    seeds.push({ name: `清炒${vegetable}`, ingredients: [vegetable], kind: 'stir' });
-    seeds.push({ name: `${vegetable}鸡蛋汤`, ingredients: [vegetable, '鸡蛋'], kind: 'soup' });
-  }
-
-  for (const vegetable of vegetableSeeds.slice(0, 24)) {
-    for (const protein of proteinSeeds.slice(0, 7)) {
-      seeds.push({ name: `${vegetable}炒${protein}`, ingredients: [vegetable, protein], kind: 'stir' });
-    }
-  }
-
-  for (const grain of grainSeeds) {
-    for (const vegetable of vegetableSeeds.slice(0, 12)) {
-      seeds.push({ name: `${vegetable}${grain}粥`, ingredients: [vegetable, grain], kind: 'congee' });
-    }
-  }
-
-  for (const fruit of fruitSeeds) {
-    seeds.push({ name: `${fruit}果汁`, ingredients: [fruit], kind: 'juice' });
-    seeds.push({ name: `${fruit}奶昔`, ingredients: [fruit, '牛奶'], kind: 'milkshake' });
-    seeds.push({ name: `${fruit}酸奶杯`, ingredients: [fruit, '酸奶'], kind: 'smoothie' });
-  }
-
-  for (const first of fruitSeeds.slice(0, 14)) {
-    for (const second of fruitSeeds.slice(6, 20)) {
-      if (first !== second) {
-        seeds.push({ name: `${first}${second}水果拼盘`, ingredients: [first, second], kind: 'fruit' });
-      }
-    }
-  }
 
   const unique = new Map<string, GeneratedRecipeSeed>();
   for (const seed of seeds) {
     if (!unique.has(seed.name)) {
       unique.set(seed.name, seed);
     }
-    if (unique.size >= 500) {
+    if (unique.size >= 50) {
       break;
     }
   }
