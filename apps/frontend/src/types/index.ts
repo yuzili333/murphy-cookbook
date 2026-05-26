@@ -24,6 +24,16 @@ export interface IngredientItem {
   confidence?: number | null;
 }
 
+export interface IngredientKnowledge {
+  name: string;
+  nutritionValues: string[];
+  origin: string;
+  growingClimate: string;
+  bestPairings: string[];
+  kidFact: string;
+  safetyNote: string;
+}
+
 export interface RecipeRecommendation {
   id: string;
   name: string;

@@ -2,6 +2,7 @@ import type {
   ChildProfile,
   CreateChildProfileInput,
   FeedbackResponse,
+  IngredientKnowledge,
   IngredientItem,
   ImageRecognitionResponse,
   LlmLogQueryResult,
@@ -150,6 +151,13 @@ export function fetchSeasonalIngredientSuggestions(month: number, childContext: 
       month,
       childContext: childContext.trim().slice(0, 120),
     }),
+  });
+}
+
+export function fetchIngredientKnowledge(name: string) {
+  return request<IngredientKnowledge>('/ingredients/knowledge', {
+    method: 'POST',
+    body: JSON.stringify({ name: name.trim().slice(0, 30) }),
   });
 }
 

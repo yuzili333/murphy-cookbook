@@ -5,6 +5,7 @@ export type ModelTask =
   | 'ingredient_voice'
   | 'ingredient_normalize'
   | 'ingredient_vision'
+  | 'ingredient_knowledge'
   | 'recipe_recommendation'
   | 'recipe_steps'
   | 'recipe_nutrition'
@@ -96,6 +97,18 @@ export class ModelRouter {
         fallbackModels: textFallbackModels,
         maxTokens: 260,
         temperature: 0.3,
+        enableThinking: false,
+        stream: false,
+      };
+    }
+
+    if (task === 'ingredient_knowledge') {
+      return {
+        task,
+        model: this.fastModel,
+        fallbackModels: [this.balancedModel].filter((model) => model !== this.fastModel),
+        maxTokens: 520,
+        temperature: 0.25,
         enableThinking: false,
         stream: false,
       };

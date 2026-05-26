@@ -20,6 +20,7 @@ import {
 } from './service.js';
 import {
   generateCookingFeedback,
+  generateIngredientKnowledge,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
   understandIngredientsFromImage,
@@ -655,6 +656,54 @@ export function createApp(): Express {
   };
 
   app.post('/api/v1/ingredients/seasonal-suggestions', sendSeasonalSuggestionsResponse);
+
+  app.post('/api/v1/ingredients/knowledge', async (req, res) => {
+    const name = normalizeTextInputValue(req.body?.name ?? req.query?.name);
+
+    if (!name) {
+      res.status(400).json({
+        error: { code: 'INVALID_ARGUMENT', message: '请提供要了解的食材名称。' },
+      });
+      return;
+    }
+
+    try {
+      if (!isSiliconFlowConfigured() && shouldRequireRealModel()) {
+        res.status(500).json({
+          error: {
+            code: 'MODEL_PROVIDER_NOT_CONFIGURED',
+            message: '服务端未配置 SiliconFlow API Key，无法获取食材知识。',
+          },
+        });
+        return;
+      }
+
+      if (!isSiliconFlowConfigured()) {
+        res.json({
+          data: {
+            name,
+            nutritionValues: ['富含成长所需营养', '能帮助丰富一餐的颜色和口感', '适量食用有助于饮食均衡'],
+            origin: '常见于适合种植或养殖这种食材的地区。',
+            growingClimate: '通常喜欢阳光、水分和温度比较合适的环境。',
+            bestPairings: ['鸡蛋', '豆腐', '米饭'],
+            kidFact: `${name} 可以帮助小朋友认识食物从土地到餐桌的过程。`,
+            safetyNote: '食用前要清洗干净，如有过敏史请先告诉家长。',
+          },
+        });
+        return;
+      }
+
+      const knowledge = await generateIngredientKnowledge(name);
+      res.json({ data: knowledge });
+    } catch (error) {
+      res.status(502).json({
+        error: {
+          code: 'INGREDIENT_KNOWLEDGE_FAILED',
+          message: error instanceof Error ? error.message : '食材知识获取失败。',
+        },
+      });
+    }
+  });
 
   app.post('/api/v1/ingredients/recognize-image', upload.single('image'), async (req, res) => {
     if (!req.file) {

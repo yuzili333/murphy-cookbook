@@ -7,6 +7,7 @@ import newChatIcon from './assets/new-chat.svg';
 import sendMessageIcon from './assets/send-message.svg';
 import { defaultIngredientVisual, getIngredientVisual } from './data/ingredientVisuals';
 import {
+  fetchIngredientKnowledge,
   fetchSeasonalIngredientSuggestions,
   parseIngredientText,
   streamGeneratedRecipeDetail,
@@ -17,6 +18,7 @@ import { applyStreamEvent } from './lib/streamAst';
 import { buildCharacterSpeech, formatPinyin, speak, stopSpeaking } from './lib/speech';
 import type {
   ChildProfile,
+  IngredientKnowledge,
   IngredientItem,
   RecipeDetail,
   RecipeRecommendation,
@@ -33,14 +35,33 @@ const childContextStorageKey = 'murphy-cookbook.child-context.v1';
 const chatSessionsStorageKey = 'murphy-cookbook.chat-sessions.v1';
 const activeChatSessionStorageKey = 'murphy-cookbook.active-chat-session.v1';
 const recommendationCacheStorageKey = 'murphy-cookbook.recommendation-cache.v1';
-const recipeStepCacheStorageKey = 'murphy-cookbook.recipe-step-cache.v1';
+const recipeStepCacheStorageKey = 'murphy-cookbook.recipe-step-cache.v2';
+const ingredientKnowledgeCacheStorageKey = 'murphy-cookbook.ingredient-knowledge-cache.v1';
 const legacyRecipeDetailCacheStorageKey = 'murphy-cookbook.recipe-detail-cache.v1';
+const localeStorageKey = 'murphy-cookbook.locale.v1';
 const webCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const conversationProfileId = 'chat_context_profile';
 const defaultChildContext =
   '默认服务对象为小学 1-6 年级学生。推荐原则：低油脂、轻口味、膳食均衡、维生素丰富、主食蛋白质蔬菜搭配均衡，避免高糖、高盐、油炸和过度辛辣。未明确提及重度急性过敏风险时，不主动要求补充儿童年龄、饮食偏好或过敏原。';
 type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
 type TimedCache<T> = Record<string, { createdAt: string; expiresAt: string; data: T }>;
+type AppLocale = 'zh' | 'en';
+
+function readLocale(): AppLocale {
+  if (typeof window === 'undefined') {
+    return 'zh';
+  }
+
+  return window.localStorage.getItem(localeStorageKey) === 'en' ? 'en' : 'zh';
+}
+
+function persistLocale(locale: AppLocale) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(localeStorageKey, locale);
+}
 
 interface ChatMessage {
   id: string;
@@ -418,8 +439,66 @@ function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: stri
   });
 }
 
-function buildRecipeStepCacheKey(recipeName: string) {
-  return recipeName.trim().replace(/\s+/g, '').toLowerCase();
+function normalizeRecipeCacheText(value: string) {
+  return value.trim().replace(/\s+/g, '').toLowerCase();
+}
+
+function buildIngredientKnowledgeKey(name: string) {
+  return normalizeRecipeCacheText(name);
+}
+
+function buildRecipeStepCacheKey(recipe: RecipeRecommendation, ingredients: IngredientItem[]) {
+  return JSON.stringify({
+    recipeName: normalizeRecipeCacheText(recipe.name),
+    ingredientsKey: buildIngredientsKey(ingredients),
+  });
+}
+
+function isValidCachedRecipeDetail(
+  recipe: RecipeRecommendation,
+  ingredients: IngredientItem[],
+  detail: RecipeDetail | null,
+): detail is RecipeDetail {
+  if (!detail || !Array.isArray(detail.steps) || detail.steps.length === 0 || !Array.isArray(detail.ingredients)) {
+    return false;
+  }
+
+  if (normalizeRecipeCacheText(detail.name) !== normalizeRecipeCacheText(recipe.name)) {
+    return false;
+  }
+
+  const requestedIngredientNames = new Set(
+    ingredients
+      .map((ingredient) => normalizeRecipeCacheText(ingredient.normalizedName || ingredient.name))
+      .filter(Boolean),
+  );
+  if (requestedIngredientNames.size === 0) {
+    return true;
+  }
+
+  return detail.ingredients.every((ingredient) =>
+    requestedIngredientNames.has(normalizeRecipeCacheText(ingredient.name)),
+  );
+}
+
+function normalizeCachedRecipeDetail(recipe: RecipeRecommendation, detail: RecipeDetail): RecipeDetail {
+  return {
+    ...recipe,
+    ...detail,
+    id: recipe.id,
+    name: recipe.name,
+    namePinyin: recipe.namePinyin,
+    englishName: recipe.englishName,
+    nameLearning: recipe.nameLearning,
+    ageRange: recipe.ageRange,
+    difficulty: recipe.difficulty,
+    estimatedTimeMinutes: recipe.estimatedTimeMinutes,
+    fitReasons: recipe.fitReasons,
+    riskAlerts: recipe.riskAlerts,
+    nutritionSummary: recipe.nutritionSummary,
+    extraIngredients: recipe.extraIngredients,
+    canCookWithCurrentIngredients: recipe.canCookWithCurrentIngredients,
+  };
 }
 
 function getRecommendationDataFromStreamEvent(event: StreamEvent) {
@@ -520,147 +599,9 @@ function TrashInlineIcon() {
   );
 }
 
-function summarizeStepCaption(step: RecipeDetail['steps'][number]) {
-  const source = step.childAction || step.description || step.title;
-  const compact = source
-    .replace(/^[请先然后接着最后再把将]+/, '')
-    .replace(/[。！？!?,，；;].*$/, '')
-    .trim();
-
-  return (compact || step.title).slice(0, 18);
-}
-
-function getStoryboardPanelCount(stepCount: number) {
-  if (stepCount <= 4) return 1;
-  if (stepCount <= 6) return 2;
-  if (stepCount <= 8) return 3;
-  return 4;
-}
-
-function groupStepsForStoryboard(steps: RecipeDetail['steps']) {
-  const panelCount = getStoryboardPanelCount(steps.length);
-  const groupSize = Math.ceil(steps.length / panelCount);
-
-  return Array.from({ length: panelCount }, (_, panelIndex) => {
-    const startIndex = panelIndex * groupSize;
-    return steps.slice(startIndex, startIndex + groupSize);
-  }).filter((group) => group.length > 0);
-}
-
-const storyboardFamilyGroups = [
-  ['👩‍🍳', '👧'],
-  ['👨‍🍳', '👦'],
-  ['👩‍🍳', '👨‍🍳', '🧒'],
-  ['👩🏻‍🍳', '👧🏻'],
-  ['👨🏻‍🍳', '👦🏻'],
-  ['👩🏼‍🍳', '👨🏼‍🍳', '👧🏼'],
-  ['👩🏽‍🍳', '👧🏽'],
-  ['👨🏽‍🍳', '👦🏽'],
-  ['👩🏾‍🍳', '👨🏾‍🍳', '🧒🏾'],
-  ['👩🏿‍🍳', '👧🏿'],
-  ['👨🏿‍🍳', '👦🏿'],
-  ['👩', '🧒'],
-  ['👨', '🧒'],
-  ['👩', '👨', '👧'],
-  ['👩‍🍳', '🧒'],
-  ['👨‍🍳', '🧒'],
-  ['👩‍🍳', '👨', '👦'],
-  ['👨‍🍳', '👩', '👧'],
-  ['👨‍👩‍👧'],
-  ['👨‍👩‍👦'],
-];
-
-const storyboardKitchenSafetyEmojis = [
-  { emoji: '🔪', keywords: ['刀', '切', '削', '剁', '片', '丝'] },
-  { emoji: '✂️', keywords: ['剪'] },
-  { emoji: '🔥', keywords: ['火', '燃气', '明火', '烧', '热锅'] },
-  { emoji: '🍳', keywords: ['锅', '煎', '炒'] },
-  { emoji: '🥘', keywords: ['炖', '焖', '煮'] },
-  { emoji: '🍲', keywords: ['汤', '煲'] },
-  { emoji: '♨️', keywords: ['烫', '热', '开水'] },
-  { emoji: '💨', keywords: ['蒸'] },
-  { emoji: '⚡', keywords: ['电', '插座'] },
-  { emoji: '📛', keywords: ['危险', '禁止'] },
-  { emoji: '⚠️', keywords: ['注意', '小心', '风险'] },
-  { emoji: '🧯', keywords: ['火', '油'] },
-  { emoji: '🧤', keywords: ['烤箱', '热盘', '端出'] },
-  { emoji: '🥣', keywords: ['搅拌', '混合'] },
-  { emoji: '🥄', keywords: ['勺', '舀'] },
-  { emoji: '🍽️', keywords: ['装盘', '摆盘'] },
-  { emoji: '🧊', keywords: ['冷藏', '冰', '降温'] },
-  { emoji: '⏲️', keywords: ['分钟', '等待', '计时'] },
-  { emoji: '🌡️', keywords: ['温度', '火候'] },
-  { emoji: '🧼', keywords: ['洗', '清洁'] },
-];
-
 function getKnownIngredientVisual(name: string) {
   const visual = getIngredientVisual(name);
   return visual.name === defaultIngredientVisual.name ? null : visual;
-}
-
-function buildStepSearchText(step: RecipeDetail['steps'][number]) {
-  return [step.title, step.description, step.childAction, step.parentAction, step.expectedResult, step.tip].filter(Boolean).join('');
-}
-
-function getIngredientStepKeywords(ingredientName: string, visual: NonNullable<ReturnType<typeof getKnownIngredientVisual>>) {
-  const baseNames = [ingredientName, visual.name, ...(visual.aliases ?? [])].filter(Boolean);
-  const derivedNames = new Set(baseNames);
-
-  for (const name of baseNames) {
-    if (name.includes('鸡蛋')) {
-      derivedNames.add('蛋液');
-      derivedNames.add('打蛋');
-      derivedNames.add('蛋黄');
-      derivedNames.add('蛋清');
-    }
-    if (name.includes('西红柿') || name.includes('番茄')) {
-      derivedNames.add('番茄');
-      derivedNames.add('西红柿');
-    }
-    if (name.includes('土豆')) {
-      derivedNames.add('薯块');
-      derivedNames.add('土豆块');
-    }
-    if (name.includes('胡萝卜')) {
-      derivedNames.add('萝卜丁');
-      derivedNames.add('胡萝卜丁');
-    }
-    if (name.includes('青菜') || name.includes('白菜') || name.includes('菠菜') || name.includes('生菜')) {
-      derivedNames.add('菜叶');
-      derivedNames.add('叶菜');
-    }
-  }
-
-  return Array.from(derivedNames);
-}
-
-function getPanelIngredientVisuals(panelSteps: RecipeDetail['steps'], recipeIngredients: RecipeDetail['ingredients']) {
-  const panelText = panelSteps.map(buildStepSearchText).join('');
-  const normalizedPanelText = panelText.replace(/\s+/g, '').toLowerCase();
-  const matched = recipeIngredients
-    .map((ingredient) => {
-      const visual = getKnownIngredientVisual(ingredient.name);
-      if (!visual) return null;
-      const names = getIngredientStepKeywords(ingredient.name, visual);
-      const isMatched = names.some((name) => {
-        const normalizedName = name.replace(/\s+/g, '').toLowerCase();
-        return normalizedPanelText.includes(normalizedName);
-      });
-
-      return isMatched ? { name: ingredient.name, emoji: visual.emoji } : null;
-    })
-    .filter((item): item is { name: string; emoji: string } => Boolean(item));
-
-  return matched.filter((item, index, items) => items.findIndex((candidate) => candidate.name === item.name) === index).slice(0, 4);
-}
-
-function getPanelSafetyEmojis(panelSteps: RecipeDetail['steps']) {
-  const panelText = panelSteps.map(buildStepSearchText).join('');
-  const matched = storyboardKitchenSafetyEmojis
-    .filter((item) => item.keywords.some((keyword) => panelText.includes(keyword)))
-    .map((item) => item.emoji);
-
-  return Array.from(new Set(matched)).slice(0, 4);
 }
 
 function readImageAsDataUrl(file: File) {
@@ -678,7 +619,6 @@ export default function App() {
   const chatInputRef = useRef<HTMLInputElement>(null);
   const chatThreadEndRef = useRef<HTMLDivElement>(null);
   const skipNextChatAutoScrollRef = useRef(false);
-  const requestedRecipeDetailKeysRef = useRef<Set<string>>(new Set());
   const ingredientSwipeRef = useRef({
     startX: 0,
     startY: 0,
@@ -710,6 +650,12 @@ export default function App() {
   const [recipeDetailLoadingById, setRecipeDetailLoadingById] = useState<Record<string, boolean>>({});
   const [recipeDetailErrorsById, setRecipeDetailErrorsById] = useState<Record<string, string>>({});
   const [recipeDetailStreamNodesById, setRecipeDetailStreamNodesById] = useState<Record<string, MessageNode[]>>({});
+  const [recipeVideoGeneratedById, setRecipeVideoGeneratedById] = useState<Record<string, boolean>>({});
+  const [recipeVideoLoadingById, setRecipeVideoLoadingById] = useState<Record<string, boolean>>({});
+  const [ingredientKnowledgeByName, setIngredientKnowledgeByName] = useState<Record<string, IngredientKnowledge>>({});
+  const [ingredientKnowledgeLoadingByName, setIngredientKnowledgeLoadingByName] = useState<Record<string, boolean>>({});
+  const [ingredientKnowledgeErrorsByName, setIngredientKnowledgeErrorsByName] = useState<Record<string, string>>({});
+  const [activeIngredientKnowledgeKey, setActiveIngredientKnowledgeKey] = useState('');
   const [learningRecipe, setLearningRecipe] = useState<RecipeRecommendation | null>(null);
   const [manualIngredient, setManualIngredient] = useState('');
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -721,7 +667,14 @@ export default function App() {
   const [error, setError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [favoriteConfettiRecipeId, setFavoriteConfettiRecipeId] = useState('');
+  const [locale, setLocale] = useState<AppLocale>(() => readLocale());
   const isRecognizingIngredients = isParsingText || isUploadingImage;
+  const isEnglish = locale === 'en';
+
+  const handleLocaleChange = (nextLocale: AppLocale) => {
+    setLocale(nextLocale);
+    persistLocale(nextLocale);
+  };
 
   const speakText = (text: string, lang = 'zh-CN', speechKey = '') => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
@@ -1147,16 +1100,18 @@ export default function App() {
     messageId: string,
     showToast = false,
   ) => {
-    const stepCacheKey = buildRecipeStepCacheKey(recipe.name);
+    const stepCacheKey = buildRecipeStepCacheKey(recipe, nextIngredients);
     const cachedDetail = readCachedValue<RecipeDetail>(recipeStepCacheStorageKey, stepCacheKey);
-    if (cachedDetail) {
-      setRecipeDetailsById((current) => ({ ...current, [cachedDetail.id]: cachedDetail, [recipe.id]: cachedDetail }));
-      mergeRecipeDetailIntoCurrentSession(messageId, cachedDetail);
+    if (isValidCachedRecipeDetail(recipe, nextIngredients, cachedDetail)) {
+      const normalizedCachedDetail = normalizeCachedRecipeDetail(recipe, cachedDetail);
+      setRecipeDetailsById((current) => ({ ...current, [recipe.id]: normalizedCachedDetail }));
+      mergeRecipeDetailIntoCurrentSession(messageId, normalizedCachedDetail);
       setRecipeDetailErrorsById((current) => {
         const next = { ...current };
         delete next[recipe.id];
         return next;
       });
+      setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: false }));
       return;
     }
 
@@ -1192,8 +1147,8 @@ export default function App() {
       if (!streamedDetail) {
         throw new Error(streamErrorMessage || '菜谱步骤流式响应未返回有效卡片。');
       }
-      const detail = streamedDetail as RecipeDetail;
-      setRecipeDetailsById((current) => ({ ...current, [detail.id]: detail, [recipe.id]: detail }));
+      const detail = normalizeCachedRecipeDetail(recipe, streamedDetail as RecipeDetail);
+      setRecipeDetailsById((current) => ({ ...current, [recipe.id]: detail }));
       mergeRecipeDetailIntoCurrentSession(messageId, detail);
       writeCachedValue(recipeStepCacheStorageKey, stepCacheKey, detail);
     } catch (detailError) {
@@ -1207,66 +1162,61 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    if (isBootstrapping || typeof window === 'undefined' || !('IntersectionObserver' in window)) {
+  const handleIngredientKnowledgeClick = async (ingredient: IngredientItem) => {
+    const knowledgeKey = buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name);
+    if (!knowledgeKey) {
       return;
     }
 
-    const recipeCards = Array.from(document.querySelectorAll<HTMLElement>('.carousel-recipe-card[data-recipe-card-id]'));
-    if (recipeCards.length === 0) {
+    setActiveIngredientKnowledgeKey(knowledgeKey);
+    if (ingredientKnowledgeByName[knowledgeKey] || ingredientKnowledgeLoadingByName[knowledgeKey]) {
       return;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) {
-            continue;
-          }
+    const cachedKnowledge = readCachedValue<IngredientKnowledge>(ingredientKnowledgeCacheStorageKey, knowledgeKey);
+    if (cachedKnowledge) {
+      setIngredientKnowledgeByName((current) => ({ ...current, [knowledgeKey]: cachedKnowledge }));
+      return;
+    }
 
-          const card = entry.target as HTMLElement;
-          const recipeId = card.dataset.recipeCardId ?? '';
-          const messageId = card.closest<HTMLElement>('[data-chat-message-id]')?.dataset.chatMessageId ?? '';
-          const message = chatMessages.find((item) => item.id === messageId);
-          const recipe = message?.recipes?.find((item) => item.id === recipeId);
-          const nextIngredients = message?.ingredients?.length ? message.ingredients : ingredients;
+    setIngredientKnowledgeLoadingByName((current) => ({ ...current, [knowledgeKey]: true }));
+    setIngredientKnowledgeErrorsByName((current) => {
+      const next = { ...current };
+      delete next[knowledgeKey];
+      return next;
+    });
 
-          if (!recipe || !messageId || nextIngredients.length === 0) {
-            observer.unobserve(card);
-            continue;
-          }
+    try {
+      const knowledge = await fetchIngredientKnowledge(ingredient.normalizedName || ingredient.name);
+      setIngredientKnowledgeByName((current) => ({ ...current, [knowledgeKey]: knowledge }));
+      writeCachedValue(ingredientKnowledgeCacheStorageKey, knowledgeKey, knowledge);
+    } catch (knowledgeError) {
+      const message = knowledgeError instanceof Error ? knowledgeError.message : '食材知识获取失败。';
+      setIngredientKnowledgeErrorsByName((current) => ({ ...current, [knowledgeKey]: message }));
+      setToastMessage(`${ingredient.name} 知识卡片获取失败，请稍后重试。`);
+    } finally {
+      setIngredientKnowledgeLoadingByName((current) => ({ ...current, [knowledgeKey]: false }));
+    }
+  };
 
-          const requestKey = `${messageId}:${recipe.id}:${buildIngredientsKey(nextIngredients)}`;
-          if (
-            recipeDetailsById[recipe.id] ||
-            recipeDetailLoadingById[recipe.id] ||
-            requestedRecipeDetailKeysRef.current.has(requestKey)
-          ) {
-            observer.unobserve(card);
-            continue;
-          }
+  const handleGenerateRecipeStepVideo = async (recipe: RecipeRecommendation) => {
+    if (recipeVideoGeneratedById[recipe.id] || recipeVideoLoadingById[recipe.id]) {
+      return;
+    }
 
-          requestedRecipeDetailKeysRef.current.add(requestKey);
-          observer.unobserve(card);
-          void loadRecipeDetailForCard(recipe, nextIngredients, selectedProfile, messageId);
-        }
-      },
-      {
-        root: null,
-        rootMargin: '140px 0px 180px 0px',
-        threshold: 0.18,
-      },
-    );
-
-    recipeCards.forEach((card) => observer.observe(card));
-
-    return () => observer.disconnect();
-  }, [chatMessages, ingredients, isBootstrapping, recipeDetailLoadingById, recipeDetailsById, selectedProfile]);
+    setRecipeVideoLoadingById((current) => ({ ...current, [recipe.id]: true }));
+    window.setTimeout(() => {
+      setRecipeVideoGeneratedById((current) => ({ ...current, [recipe.id]: true }));
+      setRecipeVideoLoadingById((current) => ({ ...current, [recipe.id]: false }));
+      setToastMessage(`${recipe.name} 卡通步骤视频已生成`);
+    }, 900);
+  };
 
   const requestChatRecommendations = async (
     prompt: string,
     nextIngredients: IngredientItem[],
     sourceIngredientMessageId = '',
+    forceRefresh = false,
   ) => {
     if (nextIngredients.length === 0) {
       addChatMessage({
@@ -1292,10 +1242,40 @@ export default function App() {
         `用户本轮输入：${prompt}`,
       ].join('\n');
       const recommendationCacheKey = buildRecommendationCacheKey(selectedProfile, ingredientsKey);
-      const cachedRecommendation = readCachedValue<RecommendationResponse>(
-        recommendationCacheStorageKey,
-        recommendationCacheKey,
-      );
+      const cachedRecommendation = forceRefresh
+        ? null
+        : readCachedValue<RecommendationResponse>(
+            recommendationCacheStorageKey,
+            recommendationCacheKey,
+          );
+      const obsoleteRecipeIds = chatMessages
+        .filter((message) => {
+          if (!message.recipes?.length) {
+            return false;
+          }
+
+          if (message.ingredientsKey) {
+            return message.ingredientsKey === ingredientsKey;
+          }
+
+          return nextIngredients.every((item) => message.text.includes(item.name));
+        })
+        .flatMap((message) => message.recipes?.map((recipe) => recipe.id) ?? []);
+      if (obsoleteRecipeIds.length > 0) {
+        const obsoleteRecipeIdSet = new Set(obsoleteRecipeIds);
+        setRecipeDetailsById((current) =>
+          Object.fromEntries(Object.entries(current).filter(([recipeId]) => !obsoleteRecipeIdSet.has(recipeId))),
+        );
+        setRecipeDetailLoadingById((current) =>
+          Object.fromEntries(Object.entries(current).filter(([recipeId]) => !obsoleteRecipeIdSet.has(recipeId))),
+        );
+        setRecipeDetailErrorsById((current) =>
+          Object.fromEntries(Object.entries(current).filter(([recipeId]) => !obsoleteRecipeIdSet.has(recipeId))),
+        );
+        setRecipeDetailStreamNodesById((current) =>
+          Object.fromEntries(Object.entries(current).filter(([recipeId]) => !obsoleteRecipeIdSet.has(recipeId))),
+        );
+      }
       setChatMessages((current) =>
         current.filter((message) => {
           if (!message.recipes?.length) {
@@ -1342,7 +1322,7 @@ export default function App() {
       }
       const recipes = data.recipes;
       const recipeDetails = data.recipeDetails ?? [];
-      setRecipeDetailsById(buildRecipeDetailsMap(recipeDetails));
+      setRecipeDetailsById((current) => ({ ...current, ...buildRecipeDetailsMap(recipeDetails) }));
       setRecipeDetailLoadingById({});
       setRecipeDetailErrorsById({});
       setChatMessages((current) =>
@@ -1655,7 +1635,7 @@ export default function App() {
     }
 
     setIngredients((current) => mergeIngredientItems(current, sourceIngredients ?? []));
-    await requestChatRecommendations('请根据当前已识别食材推荐菜谱', nextIngredients, sourceMessageId);
+    await requestChatRecommendations('请根据当前已识别食材推荐菜谱', nextIngredients, sourceMessageId, true);
   };
 
   const toggleFavoriteRecipe = (recipe: RecipeRecommendation) => {
@@ -1688,6 +1668,8 @@ export default function App() {
       <AppShell
         onOpenConversations={() => setIsConversationDrawerOpen(true)}
         onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
+        locale={locale}
+        onLocaleChange={handleLocaleChange}
       >
         <section className="page-grid">
           <div className="panel">
@@ -1703,6 +1685,8 @@ export default function App() {
     <AppShell
       onOpenConversations={() => setIsConversationDrawerOpen(true)}
       onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
+      locale={locale}
+      onLocaleChange={handleLocaleChange}
     >
       <input
         ref={cameraImageInputRef}
@@ -1731,18 +1715,18 @@ export default function App() {
           <aside className="conversation-drawer" aria-label="历史对话">
             <div className="conversation-drawer-header">
               <div>
-                <p className="eyebrow">历史对话</p>
+                <p className="eyebrow">{isEnglish ? 'Chat History' : '历史对话'}</p>
               </div>
               <button type="button" className="ghost-button" onClick={() => setIsConversationDrawerOpen(false)}>
-                关闭
+                {isEnglish ? 'Close' : '关闭'}
               </button>
             </div>
             <button type="button" className="new-chat-button" onClick={handleNewConversation}>
               <img src={newChatIcon} alt="" aria-hidden="true" />
-              新建对话
+              {isEnglish ? 'New Chat' : '新建对话'}
             </button>
             <div className="conversation-list">
-              <p className="conversation-group-title">最近</p>
+              <p className="conversation-group-title">{isEnglish ? 'Recent' : '最近'}</p>
               {chatSessions.length > 0 ? (
                 chatSessions.map((session) => (
                   <div
@@ -1763,12 +1747,12 @@ export default function App() {
                       onClick={() => handleDeleteConversation(session.id)}
                       aria-label={`删除历史对话：${session.title}`}
                     >
-                      删除
+                      {isEnglish ? 'Delete' : '删除'}
                     </button>
                   </div>
                 ))
               ) : (
-                <p className="conversation-empty">暂无历史对话</p>
+                <p className="conversation-empty">{isEnglish ? 'No chat history yet' : '暂无历史对话'}</p>
               )}
             </div>
           </aside>
@@ -1786,11 +1770,11 @@ export default function App() {
           <aside className="settings-drawer favorite-drawer" aria-label="菜谱收藏">
             <div className="drawer-header">
               <div>
-                <p className="eyebrow">菜谱收藏</p>
-                <h2>已收藏菜谱</h2>
+                <p className="eyebrow">{isEnglish ? 'Recipe Collection' : '菜谱收藏'}</p>
+                <h2>{isEnglish ? 'Saved Recipes' : '已收藏菜谱'}</h2>
               </div>
               <button type="button" className="ghost-button" onClick={() => setIsFavoriteDrawerOpen(false)}>
-                关闭
+                {isEnglish ? 'Close' : '关闭'}
               </button>
             </div>
             <div className="settings-menu favorite-drawer-list">
@@ -1803,13 +1787,13 @@ export default function App() {
                     onClick={() => handleOpenFavoriteRecipe(recipe)}
                   >
                     <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
-                    <span>{recipe.englishName} · {recipe.estimatedTimeMinutes} 分钟</span>
+                    <span>{recipe.englishName} · {recipe.estimatedTimeMinutes} {isEnglish ? 'min' : '分钟'}</span>
                   </button>
                 ))
               ) : (
                 <div className="empty-state">
-                  <strong>还没有收藏菜谱</strong>
-                  <p>在推荐卡片中点击收藏后，会出现在这里。</p>
+                  <strong>{isEnglish ? 'No saved recipes yet' : '还没有收藏菜谱'}</strong>
+                  <p>{isEnglish ? 'Tap favorite on a recipe card to save it here.' : '在推荐卡片中点击收藏后，会出现在这里。'}</p>
                 </div>
               )}
             </div>
@@ -1830,6 +1814,58 @@ export default function App() {
         </div>
       ) : null}
 
+      <aside className="tablet-landscape-panel tablet-history-panel" aria-label={isEnglish ? 'Chat History' : '历史对话'}>
+        <div className="tablet-panel-header">
+          <strong>{isEnglish ? 'Chat History' : '历史记录'}</strong>
+          <button type="button" onClick={handleNewConversation} aria-label={isEnglish ? 'New chat' : '新建对话'}>
+            +
+          </button>
+        </div>
+        <div className="tablet-panel-list">
+          {chatSessions.length > 0 ? (
+            chatSessions.slice(0, 8).map((session) => (
+              <button
+                key={`tablet_${session.id}`}
+                type="button"
+                className={session.id === activeChatSessionId ? 'tablet-panel-item active' : 'tablet-panel-item'}
+                onClick={() => handleSelectConversation(session)}
+              >
+                <strong>{session.title}</strong>
+                <span>{session.childContext || (isEnglish ? 'Default healthy student profile' : '默认小学阶段健康饮食原则')}</span>
+              </button>
+            ))
+          ) : (
+            <p className="tablet-panel-empty">{isEnglish ? 'No chats yet' : '暂无历史对话'}</p>
+          )}
+        </div>
+      </aside>
+
+      <aside className="tablet-landscape-panel tablet-favorite-panel" aria-label={isEnglish ? 'Recipe Collection' : '菜谱收藏'}>
+        <div className="tablet-panel-header">
+          <strong>{isEnglish ? 'Recipe Collection' : '我的收藏'}</strong>
+          <button type="button" onClick={() => setIsFavoriteDrawerOpen(true)} aria-label={isEnglish ? 'Open collection' : '打开收藏'}>
+            ×
+          </button>
+        </div>
+        <div className="tablet-panel-list">
+          {favoriteRecipes.length > 0 ? (
+            favoriteRecipes.slice(0, 8).map((recipe) => (
+              <button
+                key={`tablet_favorite_${recipe.id}`}
+                type="button"
+                className="tablet-panel-item favorite"
+                onClick={() => handleOpenFavoriteRecipe(recipe)}
+              >
+                <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
+                <span>{recipe.englishName} · {recipe.estimatedTimeMinutes} {isEnglish ? 'min' : '分钟'}</span>
+              </button>
+            ))
+          ) : (
+            <p className="tablet-panel-empty">{isEnglish ? 'No saved recipes' : '暂无收藏菜谱'}</p>
+          )}
+        </div>
+      </aside>
+
       <section
         className="chatbox-page"
         onTouchStart={handleChatboxTouchStart}
@@ -1844,9 +1880,9 @@ export default function App() {
               <span className="mascot-spoon">🥄</span>
             </div>
             <div>
-              <p className="eyebrow">KIDS COOKING BOT</p>
-              <h2>今天想把哪些食材变成好吃的？</h2>
-              <p>可以说出来、拍下来，或直接打字告诉我。</p>
+              <p className="eyebrow">{isEnglish ? 'KIDS COOKING BOT' : '儿童美食智能体'}</p>
+              <h2>{isEnglish ? 'What ingredients should we turn into something delicious?' : '今天想把哪些食材变成好吃的？'}</h2>
+              <p>{isEnglish ? 'Speak, take a photo, upload a picture, or type your ingredients.' : '可以说出来、拍下来，或直接打字告诉我。'}</p>
             </div>
           </div>
           <div className="chat-thread" aria-live="polite">
@@ -1856,6 +1892,18 @@ export default function App() {
                 messageIngredientsKey &&
                   chatMessages.some((item) => item.recipes?.length && item.ingredientsKey === messageIngredientsKey),
               );
+              const activeKnowledgeIngredient = message.ingredients?.find(
+                (ingredient) => buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name) === activeIngredientKnowledgeKey,
+              );
+              const activeIngredientKnowledge = activeKnowledgeIngredient
+                ? ingredientKnowledgeByName[activeIngredientKnowledgeKey]
+                : null;
+              const isActiveIngredientKnowledgeLoading = Boolean(
+                activeKnowledgeIngredient && ingredientKnowledgeLoadingByName[activeIngredientKnowledgeKey],
+              );
+              const activeIngredientKnowledgeError = activeKnowledgeIngredient
+                ? ingredientKnowledgeErrorsByName[activeIngredientKnowledgeKey]
+                : '';
 
               return (
               <article
@@ -1884,13 +1932,13 @@ export default function App() {
                   </button>
                 </div>
                 {message.ingredients?.length && !message.recipes?.length && !message.nodes?.length ? (
-                  <section className="ingredient-list-card" aria-label="当前食材清单">
+                  <section className="ingredient-list-card" aria-label={isEnglish ? 'Available ingredients' : '当前食材清单'}>
                     <div className="ingredient-list-card-header">
                       <div>
-                        <p>当前食材清单</p>
-                        <strong>确认后我将为你推荐合适的菜谱</strong>
+                        <p>{isEnglish ? 'Available Ingredients' : '当前食材清单'}</p>
+                        <strong>{isEnglish ? 'Confirm these ingredients before recipe ideas' : '确认后我将为你推荐合适的菜谱'}</strong>
                       </div>
-                      <span>共 {message.ingredients.length} 项</span>
+                      <span>{isEnglish ? `${message.ingredients.length} items` : `共 ${message.ingredients.length} 项`}</span>
                     </div>
                     <div
                       className="ingredient-card-row"
@@ -1903,30 +1951,52 @@ export default function App() {
                       const visual = getIngredientVisual(ingredient.name);
                       const isFallback = visual.name === defaultIngredientVisual.name;
 
-                      return (
-                        <article
-                          key={`${message.id}_${ingredient.id}`}
-                          className={isFallback ? 'chat-ingredient-card fallback' : 'chat-ingredient-card'}
-                        >
+	                      return (
+	                        <article
+	                          key={`${message.id}_${ingredient.id}`}
+	                          className={
+	                            [
+	                              isFallback ? 'chat-ingredient-card fallback' : 'chat-ingredient-card',
+	                              buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name) === activeIngredientKnowledgeKey
+	                                ? 'active'
+	                                : '',
+	                            ].filter(Boolean).join(' ')
+	                          }
+	                          role="button"
+	                          tabIndex={0}
+	                          onClick={() => void handleIngredientKnowledgeClick(ingredient)}
+	                          onKeyDown={(event) => {
+	                            if (event.key === 'Enter' || event.key === ' ') {
+	                              event.preventDefault();
+	                              void handleIngredientKnowledgeClick(ingredient);
+	                            }
+	                          }}
+	                        >
                           <span className="ingredient-pinyin">{visual.pinyin}</span>
                           <strong>{ingredient.name}</strong>
                           <div className="ingredient-emoji" role="img" aria-label={isFallback ? '默认食材占位' : ingredient.name}>
                             {visual.emoji}
                           </div>
                           <div className="ingredient-card-toolbar">
-                            <button
-                              type="button"
-                              className="ingredient-icon-button speech"
-                              onClick={() => speak(`${ingredient.name}，${visual.pinyin}`, 'zh-CN')}
-                              aria-label={`朗读食材：${ingredient.name}`}
-                            >
+	                            <button
+	                              type="button"
+	                              className="ingredient-icon-button speech"
+	                              onClick={(event) => {
+	                                event.stopPropagation();
+	                                speak(`${ingredient.name}，${visual.pinyin}`, 'zh-CN');
+	                              }}
+	                              aria-label={`朗读食材：${ingredient.name}`}
+	                            >
                               <PlayInlineIcon />
                             </button>
-                            <button
-                              type="button"
-                              className="ingredient-icon-button delete"
-                              onClick={() => removeChatIngredient(ingredient.id)}
-                              aria-label={`删除食材：${ingredient.name}`}
+	                            <button
+	                              type="button"
+	                              className="ingredient-icon-button delete"
+	                              onClick={(event) => {
+	                                event.stopPropagation();
+	                                removeChatIngredient(ingredient.id);
+	                              }}
+	                              aria-label={`删除食材：${ingredient.name}`}
                             >
                               <TrashInlineIcon />
                             </button>
@@ -1942,10 +2012,90 @@ export default function App() {
                         aria-label="从本地照片继续新增食材"
                       >
                         <span>+</span>
-                        <strong>添加食材</strong>
-                      </button>
-                    </div>
-                    <div className="ingredient-card-actions">
+	                        <strong>{isEnglish ? 'Add more' : '添加食材'}</strong>
+	                      </button>
+	                    </div>
+	                    {activeKnowledgeIngredient ? (
+	                      <section className="ingredient-knowledge-card" aria-label={`${activeKnowledgeIngredient.name} 食材知识卡片`}>
+	                        <div className="ingredient-knowledge-heading">
+	                          <div>
+	                            <p>{isEnglish ? 'Ingredient Notes' : '食材小百科'}</p>
+	                            <strong>
+	                              {activeKnowledgeIngredient.name}
+	                              <span aria-hidden="true"> · {getIngredientVisual(activeKnowledgeIngredient.name).emoji}</span>
+	                            </strong>
+	                          </div>
+	                          <button
+	                            type="button"
+	                            className="mini-speech-button"
+	                            onClick={() => {
+	                              const knowledgeText = activeIngredientKnowledge
+	                                ? [
+	                                    `${activeIngredientKnowledge.name}的营养价值：${activeIngredientKnowledge.nutritionValues.join('，')}`,
+	                                    `产地：${activeIngredientKnowledge.origin}`,
+	                                    `适宜气候：${activeIngredientKnowledge.growingClimate}`,
+	                                    `最佳搭配：${activeIngredientKnowledge.bestPairings.join('、')}`,
+	                                    activeIngredientKnowledge.kidFact,
+	                                  ].join('。')
+	                                : `${activeKnowledgeIngredient.name} 食材知识正在获取中`;
+	                              speak(knowledgeText, 'zh-CN');
+	                            }}
+	                            aria-label={`朗读${activeKnowledgeIngredient.name}食材知识`}
+	                          >
+	                            <PlayInlineIcon />
+	                          </button>
+	                        </div>
+	                        {isActiveIngredientKnowledgeLoading ? (
+	                          <p className="ingredient-knowledge-loading">
+	                            <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+	                            {isEnglish ? 'Learning about this ingredient...' : '正在查询食材知识...'}
+	                          </p>
+	                        ) : activeIngredientKnowledgeError ? (
+	                          <div className="ingredient-knowledge-error">
+	                            <p>{activeIngredientKnowledgeError}</p>
+	                            <button
+	                              type="button"
+	                              className="secondary-button"
+	                              onClick={() => void handleIngredientKnowledgeClick(activeKnowledgeIngredient)}
+	                            >
+	                              {isEnglish ? 'Try again' : '重新获取'}
+	                            </button>
+	                          </div>
+	                        ) : activeIngredientKnowledge ? (
+	                          <div className="ingredient-knowledge-grid">
+	                            <div>
+	                              <span>{isEnglish ? 'Nutrition' : '营养价值'}</span>
+	                              <ul>
+	                                {activeIngredientKnowledge.nutritionValues.map((item) => (
+	                                  <li key={`${activeIngredientKnowledge.name}_nutrition_${item}`}>{item}</li>
+	                                ))}
+	                              </ul>
+	                            </div>
+	                            <div>
+	                              <span>{isEnglish ? 'Origin' : '常见产地'}</span>
+	                              <p>{activeIngredientKnowledge.origin}</p>
+	                            </div>
+	                            <div>
+	                              <span>{isEnglish ? 'Climate' : '生长气候'}</span>
+	                              <p>{activeIngredientKnowledge.growingClimate}</p>
+	                            </div>
+	                            <div>
+	                              <span>{isEnglish ? 'Good Pairings' : '最佳搭配'}</span>
+	                              <p>{activeIngredientKnowledge.bestPairings.join('、')}</p>
+	                            </div>
+	                            <div className="ingredient-knowledge-wide">
+	                              <span>{isEnglish ? 'Fun Fact' : '小朋友知识点'}</span>
+	                              <p>{activeIngredientKnowledge.kidFact}</p>
+	                            </div>
+	                            <div className="ingredient-knowledge-wide safety">
+	                              <span>{isEnglish ? 'Safety' : '安全提醒'}</span>
+	                              <p>{activeIngredientKnowledge.safetyNote}</p>
+	                            </div>
+	                          </div>
+	                        ) : null}
+	                      </section>
+	                    ) : null}
+	                    <div className="ingredient-card-actions">
                       <button
                         type="button"
                         className={
@@ -1957,15 +2107,18 @@ export default function App() {
                         disabled={isRecognizingIngredients || isFetchingRecommendations}
                       >
                         {isFetchingRecommendations ? (
-                          <>
+                          <span className="recommend-loading-inline">
                             <img className="loading-icon recommend-loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                            <span>推荐中...</span>
-                            <small>AI 正在根据当前食材生成菜谱</small>
-                          </>
+                            <span>{isEnglish ? 'Thinking...' : '推荐中...'}</span>
+                          </span>
                         ) : (
                           <>
-                            <span>推荐菜谱</span>
-                            <small>根据当前食材，AI 为你推荐合适的菜谱</small>
+                            <span>{isEnglish ? 'Surprise Me' : '推荐菜谱'}</span>
+                            <small>
+                              {hasRecommendedForMessageIngredients
+                                ? (isEnglish ? 'Generate a fresh set and replace old recipes' : '可再次生成，并替换历史推荐')
+                                : (isEnglish ? 'Get kid-friendly recipes from these ingredients' : '根据当前食材，AI 为你推荐合适的菜谱')}
+                            </small>
                           </>
                         )}
                       </button>
@@ -1979,28 +2132,29 @@ export default function App() {
                     aria-roledescription="carousel"
                   >
                     <div className="recipe-carousel-header">
-                      <span>推荐菜谱</span>
-                      <b>左右滑动查看 {message.recipes.length} 道</b>
+                      <span>{isEnglish ? 'Recommended Recipes' : '推荐菜谱'}</span>
+                      <b>{isEnglish ? `Swipe for ${message.recipes.length}` : `左右滑动查看 ${message.recipes.length} 道`}</b>
                     </div>
                     <div
                       className="recipe-carousel"
                       aria-label="推荐菜谱"
-                    >
-                    {message.recipes.map((recipe) => {
-                      const recipeDetail = recipeDetailsById[recipe.id];
-                      const recipeStoryboardPanels = recipeDetail ? groupStepsForStoryboard(recipeDetail.steps) : [];
-                      const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
-                      const hasHighRiskAllergy = hasHighRiskAllergyAlert(riskAlertText, message.ingredients ?? ingredients);
+	                    >
+	                    {message.recipes.map((recipe) => {
+	                      const recipeDetail = recipeDetailsById[recipe.id];
+	                      const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
+	                      const hasHighRiskAllergy = hasHighRiskAllergyAlert(riskAlertText, message.ingredients ?? ingredients);
+	                      const hasGeneratedStepVideo = Boolean(recipeVideoGeneratedById[recipe.id]);
+	                      const isGeneratingStepVideo = Boolean(recipeVideoLoadingById[recipe.id]);
 
-                      return (
+	                      return (
                         <article
                           key={`${message.id}_${recipe.id}`}
                           className="carousel-recipe-card"
                           data-recipe-card-id={recipe.id}
                         >
                         <div className="recipe-card-kicker">
-                          <span>儿童友好食谱</span>
-                          {recipe.canCookWithCurrentIngredients ? <span className="fit-chip">现有食材可做</span> : null}
+                          <span>{isEnglish ? 'Kid-friendly' : '儿童友好食谱'}</span>
+                          {recipe.canCookWithCurrentIngredients ? <span className="fit-chip">{isEnglish ? 'Ready to cook' : '现有食材可做'}</span> : null}
                         </div>
                         <div className="recipe-card-name-stack">
                           <button
@@ -2036,22 +2190,22 @@ export default function App() {
                         <div className="recipe-card-meta-grid">
                           <span>
                             <b>{recipe.estimatedTimeMinutes}</b>
-                            <small>分钟</small>
+                            <small>{isEnglish ? 'min' : '分钟'}</small>
                           </span>
                           <span>
                             <b>{formatRecipeDifficulty(recipe.difficulty)}</b>
-                            <small>难度</small>
+                            <small>{isEnglish ? 'Level' : '难度'}</small>
                           </span>
                           <span>
                             <b>{recipe.ageRange}</b>
-                            <small>适合年龄</small>
+                            <small>{isEnglish ? 'Age' : '适合年龄'}</small>
                           </span>
                         </div>
                         <div className="recipe-note-grid">
                           {recipe.riskAlerts.length > 0 ? (
                             <section className={hasHighRiskAllergy ? 'recipe-note-panel warning allergy-warning' : 'recipe-note-panel warning'}>
                               <div className="note-panel-heading">
-                                <strong>烹饪注意</strong>
+                                <strong>{isEnglish ? 'Safety Notes' : '烹饪注意'}</strong>
                                 <button
                                   type="button"
                                   className="mini-speech-button"
@@ -2071,17 +2225,17 @@ export default function App() {
                               <div className="inline-detail-meta">
                                 <span>
                                   <b>{recipeDetail.prepTimeMinutes}</b>
-                                  备料分钟
+                                  {isEnglish ? 'prep min' : '备料分钟'}
                                 </span>
                                 <span>
                                   <b>{recipeDetail.cookTimeMinutes}</b>
-                                  烹饪分钟
+                                  {isEnglish ? 'cook min' : '烹饪分钟'}
                                 </span>
                               </div>
                               <div className="inline-detail-block">
                                 <div className="detail-block-heading">
-                                  <strong>食材配料清单</strong>
-                                  <span>名称 / 用量</span>
+                                  <strong>{isEnglish ? 'Ingredients' : '食材配料清单'}</strong>
+                                  <span>{isEnglish ? 'Name / Amount' : '名称 / 用量'}</span>
                                 </div>
                                 <div className="ingredient-table" role="list">
                                   {recipeDetail.ingredients.map((ingredient) => (
@@ -2107,100 +2261,99 @@ export default function App() {
                                   ))}
                                 </div>
                               </div>
-                              <div className="inline-detail-block">
-                                <div className="detail-block-heading">
-                                  <strong>卡通步骤图解</strong>
-                                  <span>看图做菜</span>
-                                </div>
-                                <div className="step-storyboard" aria-label={`${recipe.name} 卡通步骤图解`}>
-                                  {recipeStoryboardPanels.map((panelSteps, panelIndex) => {
-                                    const hasAssistStep = panelSteps.some((step) => step.requiresParentAssist);
-                                    const panelIngredients = getPanelIngredientVisuals(panelSteps, recipeDetail.ingredients);
-                                    const panelSafetyEmojis = getPanelSafetyEmojis(panelSteps);
-                                    const familyEmojis = storyboardFamilyGroups[panelIndex % storyboardFamilyGroups.length];
-                                    const speechKey = `story_${recipe.id}_${panelIndex}`;
-                                    const panelSpeechText = panelSteps
-                                      .map((step) => {
-                                        const stepNumber = recipeDetail.steps.findIndex((item) => item.id === step.id) + 1;
-                                        return `第${stepNumber}步，${step.title}，${step.childAction || step.description}`;
-                                      })
-                                      .join('。');
-
-                                    return (
-                                      <article
-                                        className={hasAssistStep ? 'storyboard-panel needs-assist' : 'storyboard-panel'}
-                                        key={`${recipe.id}_story_${panelIndex}`}
-                                      >
-                                        <div className="storyboard-illustration" aria-hidden="true">
-                                          <div className="storyboard-ingredient-emoji-row">
-                                            {panelIngredients.map((ingredient) => (
-                                              <span key={`${recipe.id}_${panelIndex}_${ingredient.name}`}>{ingredient.emoji}</span>
-                                            ))}
-                                          </div>
-                                          <div className="storyboard-family-row">
-                                            {familyEmojis.map((emoji, familyIndex) => (
-                                              <span key={`${recipe.id}_${panelIndex}_family_${familyIndex}`} className="storyboard-character">
-                                                {emoji}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        </div>
-                                        <div className="storyboard-copy">
-                                          <div className="storyboard-heading">
-                                            <strong>图 {panelIndex + 1}</strong>
-                                            <button
-                                              type="button"
-                                              className="step-speech-button"
-                                              onClick={() => speakText(panelSpeechText, 'zh-CN', speechKey)}
-                                              aria-label={`${activeSpeechKey === speechKey ? '停止朗读' : '朗读'}图解步骤 ${panelIndex + 1}`}
-                                            >
-                                              <PlayInlineIcon />
-                                              {activeSpeechKey === speechKey ? '停止' : '朗读'}
-                                            </button>
-                                          </div>
-                                          {panelIngredients.length > 0 ? (
-                                            <div className="storyboard-ingredient-tags" aria-label="本步骤食材">
-                                              {panelIngredients.map((ingredient) => (
-                                                <span key={`${recipe.id}_${panelIndex}_${ingredient.name}_tag`}>
-                                                  {ingredient.name}
-                                                  <b aria-hidden="true">{ingredient.emoji}</b>
-                                                </span>
-                                              ))}
-                                            </div>
-                                          ) : null}
-                                          <ol className="storyboard-caption-list">
-                                            {panelSteps.map((step) => {
-                                              const stepNumber = recipeDetail.steps.findIndex((item) => item.id === step.id) + 1;
-                                              return (
-                                                <li key={step.id} className={step.requiresParentAssist ? 'needs-assist' : undefined}>
-                                                  <b>{stepNumber}</b>
-                                                  <span>{summarizeStepCaption(step)}</span>
-                                                </li>
-                                              );
-                                            })}
-                                          </ol>
-                                          {hasAssistStep ? (
-                                            <p className="storyboard-safety">
-                                              <span aria-hidden="true">{(panelSafetyEmojis.length ? panelSafetyEmojis : ['⚠️']).join(' ')}</span>
-                                              热源、刀具或电器步骤请家长接手。
-                                            </p>
-                                          ) : null}
-                                        </div>
-                                      </article>
-                                    );
-                                  })}
-                                </div>
-                              </div>
+	                              <div className="inline-detail-block">
+	                                <div className="detail-block-heading">
+	                                  <strong>{isEnglish ? 'Cartoon Cooking Video' : '卡通烹饪步骤视频'}</strong>
+	                                  <span>{isEnglish ? 'Manual generation' : '手动生成'}</span>
+	                                </div>
+	                                <section className={hasGeneratedStepVideo ? 'recipe-video-panel generated' : 'recipe-video-panel'} aria-label={`${recipe.name} 卡通烹饪步骤视频`}>
+	                                  <div className="recipe-video-placeholder" role="img" aria-label={`${recipe.name} 视频占位符`}>
+	                                    <div className="video-sun" aria-hidden="true" />
+	                                    <div className="video-family" aria-hidden="true">
+	                                      <span>👩‍🍳</span>
+	                                      <span>🧒</span>
+	                                      <span>👨‍🍳</span>
+	                                    </div>
+	                                    <div className="video-ingredients" aria-hidden="true">
+	                                      {recipeDetail.ingredients.slice(0, 4).map((ingredient) => {
+	                                        const visual = getKnownIngredientVisual(ingredient.name);
+	                                        return visual ? <span key={`${recipe.id}_video_${ingredient.name}`}>{visual.emoji}</span> : null;
+	                                      })}
+	                                    </div>
+	                                    <p>
+	                                      {hasGeneratedStepVideo
+	                                        ? (isEnglish ? 'Warm cartoon cooking video preview' : '温暖卡通烹饪视频预览')
+	                                        : (isEnglish ? 'Video placeholder, not generated yet' : '视频占位符，尚未生成')}
+	                                    </p>
+	                                    <strong>{recipeDetail.steps[0]?.title ?? recipe.name}</strong>
+	                                  </div>
+	                                  <div className="recipe-video-copy">
+	                                    <p>{isEnglish ? 'Video length target: within 30 seconds. Captions follow the cooking steps below.' : '视频目标时长不超过 30 秒，画面字幕与下方步骤内容对应。'}</p>
+	                                    <button
+	                                      type="button"
+	                                      className="secondary-button"
+	                                      onClick={() => void handleGenerateRecipeStepVideo(recipe)}
+	                                      disabled={hasGeneratedStepVideo || isGeneratingStepVideo}
+	                                    >
+	                                      {isGeneratingStepVideo ? (
+	                                        <>
+	                                          <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+	                                          {isEnglish ? 'Generating...' : '生成中...'}
+	                                        </>
+	                                      ) : hasGeneratedStepVideo ? (
+	                                        (isEnglish ? 'Generated once' : '已生成一次')
+	                                      ) : (
+	                                        (isEnglish ? 'Generate Cartoon Video' : '生成卡通步骤视频')
+	                                      )}
+	                                    </button>
+	                                  </div>
+	                                </section>
+	                              </div>
+	                              <div className="inline-detail-block">
+	                                <div className="detail-block-heading">
+	                                  <strong>{isEnglish ? 'Cooking Steps' : '烹饪步骤'}</strong>
+	                                  <span>{isEnglish ? 'Ordered details' : '按序号执行'}</span>
+	                                </div>
+	                                <ol className="recipe-step-timeline">
+	                                  {recipeDetail.steps.map((step, stepIndex) => {
+	                                    const speechKey = `step_${recipe.id}_${step.id}`;
+	                                    const speechText = `第${stepIndex + 1}步，${step.title}。${step.description}。${step.tip}。${step.childAction ? `小朋友可以：${step.childAction}。` : ''}${step.requiresParentAssist ? `这一步需要家长协助：${step.parentAction}。` : ''}`;
+	                                    return (
+	                                      <li key={step.id} className={step.requiresParentAssist ? 'recipe-step-item needs-assist' : 'recipe-step-item'}>
+	                                        <span className="step-index">{stepIndex + 1}</span>
+	                                        <div className="step-body">
+	                                          <div className="inline-step-heading">
+	                                            <strong>{step.title}</strong>
+	                                            <button
+	                                              type="button"
+	                                              className="step-speech-button"
+	                                              onClick={() => speakText(speechText, 'zh-CN', speechKey)}
+	                                              aria-label={`${activeSpeechKey === speechKey ? '停止朗读' : '朗读'}第${stepIndex + 1}步`}
+	                                            >
+	                                              <PlayInlineIcon />
+	                                              {activeSpeechKey === speechKey ? (isEnglish ? 'Stop' : '停止') : (isEnglish ? 'Play' : '朗读')}
+	                                            </button>
+	                                          </div>
+	                                          <p>{step.description}</p>
+	                                          <p className="step-note"><b>{isEnglish ? 'Tip' : '要点'}</b>{step.tip}</p>
+	                                          {step.childAction ? <p className="step-result"><b>{isEnglish ? 'Kid' : '小朋友'}</b>{step.childAction}</p> : null}
+	                                          {step.requiresParentAssist ? <p className="step-safety"><b>{isEnglish ? 'Parent' : '家长协助'}</b>{step.parentAction}</p> : null}
+	                                        </div>
+	                                      </li>
+	                                    );
+	                                  })}
+	                                </ol>
+	                              </div>
                             </>
                           ) : recipeDetailLoadingById[recipe.id] ? (
                             <div className="muted compact-copy inline-loading-copy">
                               <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
                               <StreamNodesRenderer nodes={recipeDetailStreamNodesById[recipe.id]} />
-                              {recipeDetailStreamNodesById[recipe.id]?.length ? null : <span>正在生成烹饪步骤...</span>}
+                              {recipeDetailStreamNodesById[recipe.id]?.length ? null : <span>{isEnglish ? 'Generating cooking steps...' : '正在生成烹饪步骤...'}</span>}
                             </div>
                           ) : recipeDetailErrorsById[recipe.id] ? (
                             <div className="detail-error-block">
-                              <strong>步骤获取失败</strong>
+                              <strong>{isEnglish ? 'Steps failed' : '步骤获取失败'}</strong>
                               <p>{recipeDetailErrorsById[recipe.id]}</p>
                               <button
                                 type="button"
@@ -2214,16 +2367,24 @@ export default function App() {
                                     正在重新获取...
                                   </>
                                 ) : (
-                                  '再次获取'
+                                  (isEnglish ? 'Try again' : '再次获取')
                                 )}
                               </button>
                             </div>
-                          ) : (
-                            <div className="detail-error-block">
-                              <strong>步骤准备中</strong>
-                              <p>正在从缓存或大模型加载烹饪步骤，请稍候。</p>
-                            </div>
-                          )}
+	                          ) : (
+	                            <div className="detail-error-block">
+	                              <strong>{isEnglish ? 'Cooking steps are ready to generate' : '烹饪步骤待获取'}</strong>
+	                              <p>{isEnglish ? 'Tap the button when you want the detailed comic-style cooking steps.' : '需要查看详细图解步骤时，请点击按钮手动获取。'}</p>
+	                              <button
+	                                type="button"
+	                                className="secondary-button"
+	                                onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
+	                                disabled={recipeDetailLoadingById[recipe.id]}
+	                              >
+	                                {isEnglish ? 'Get Cooking Steps' : '获取烹饪步骤'}
+	                              </button>
+	                            </div>
+	                          )}
                         </div>
                         <div className="carousel-actions single-action">
                           <button
@@ -2248,7 +2409,7 @@ export default function App() {
                                 ))}
                               </span>
                             ) : null}
-                            {favoriteRecipes.some((item) => item.id === recipe.id) ? '已收藏' : '收藏'}
+                            {favoriteRecipes.some((item) => item.id === recipe.id) ? (isEnglish ? 'Saved' : '已收藏') : (isEnglish ? 'Save' : '收藏')}
                           </button>
                         </div>
                       </article>
@@ -2311,7 +2472,7 @@ export default function App() {
                   void handleChatSubmit();
                 }
               }}
-              placeholder="按住说话或拍照取材"
+              placeholder={isEnglish ? 'Type ingredients or use voice/photo...' : '输入食材或用语音、拍照取材'}
               disabled={isRecognizingIngredients}
             />
             <button

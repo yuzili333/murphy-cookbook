@@ -4,20 +4,16 @@ import historyIcon from '../assets/history.svg';
 interface AppShellProps {
   onOpenConversations?: () => void;
   onOpenFavorites?: () => void;
+  locale?: 'zh' | 'en';
+  onLocaleChange?: (locale: 'zh' | 'en') => void;
   children: ReactNode;
 }
 
-export function AppShell({ onOpenConversations, onOpenFavorites, children }: AppShellProps) {
+export function AppShell({ onOpenConversations, onOpenFavorites, locale = 'zh', onLocaleChange, children }: AppShellProps) {
+  const isChinese = locale === 'zh';
+
   return (
     <div className="app-shell">
-      <button
-        type="button"
-        className="settings-trigger favorite-entry-trigger"
-        onClick={onOpenFavorites}
-        aria-label="打开菜谱收藏"
-      >
-        <img className="settings-trigger-icon" src={historyIcon} alt="" aria-hidden="true" />
-      </button>
       <aside className="sidebar">
         <button
           type="button"
@@ -30,7 +26,38 @@ export function AppShell({ onOpenConversations, onOpenFavorites, children }: App
           </svg>
         </button>
         <div className="brand-block">
-          <h2 className="eyebrow">Cookbook Assistant</h2>
+          <span className="shell-mascot" aria-hidden="true">👩‍🍳</span>
+          <div>
+            <h1>{isChinese ? '小墨菲的美食宝典' : "Murphy's Cookbook"}</h1>
+            <p>{isChinese ? '儿童 AI 菜谱伙伴' : 'AI Recipe Buddy for Kids'}</p>
+          </div>
+        </div>
+        <div className="topbar-actions">
+          <button
+            type="button"
+            className="favorite-entry-trigger"
+            onClick={onOpenFavorites}
+            aria-label={isChinese ? '打开菜谱收藏' : 'Open recipe collection'}
+          >
+            <img className="settings-trigger-icon" src={historyIcon} alt="" aria-hidden="true" />
+          </button>
+          <div className="locale-switch" role="group" aria-label={isChinese ? '切换语言' : 'Switch language'}>
+            <button
+              type="button"
+              className={isChinese ? 'active' : undefined}
+              onClick={() => onLocaleChange?.('zh')}
+            >
+              中文
+            </button>
+            <span aria-hidden="true">|</span>
+            <button
+              type="button"
+              className={!isChinese ? 'active' : undefined}
+              onClick={() => onLocaleChange?.('en')}
+            >
+              EN
+            </button>
+          </div>
         </div>
       </aside>
       <main className="main-panel">

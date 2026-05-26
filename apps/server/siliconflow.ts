@@ -4,6 +4,7 @@ import {
   recipeCatalog,
   type ChildProfile,
   type IngredientItem,
+  type IngredientKnowledge,
   type RecipeRecommendation,
   type RecipeDetailRecipeInput,
   type RecipeDetail,
@@ -307,6 +308,30 @@ function repairJsonObjectCandidate(content: string) {
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
     .replace(/,\s*([}\]])/g, '$1');
+}
+
+function compactStringArray(value: unknown, limit: number) {
+  return (Array.isArray(value) ? value : [])
+    .map((item) => String(item ?? '').trim())
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function parseIngredientKnowledge(content: string, fallbackName: string): IngredientKnowledge {
+  const candidate = repairJsonObjectCandidate(extractJsonObjectCandidate(content));
+  const parsed = JSON.parse(candidate) as Partial<IngredientKnowledge>;
+  const nutritionValues = compactStringArray(parsed.nutritionValues, 4);
+  const bestPairings = compactStringArray(parsed.bestPairings, 5);
+
+  return {
+    name: String(parsed.name ?? fallbackName).trim().slice(0, 30) || fallbackName,
+    nutritionValues: nutritionValues.length ? nutritionValues : ['富含对成长有帮助的营养成分'],
+    origin: String(parsed.origin ?? '常见于多个适宜种植地区。').trim().slice(0, 120),
+    growingClimate: String(parsed.growingClimate ?? '喜欢温和、阳光和水分适中的生长环境。').trim().slice(0, 140),
+    bestPairings: bestPairings.length ? bestPairings : ['鸡蛋', '豆腐', '米饭'],
+    kidFact: String(parsed.kidFact ?? '认识食材能帮助小朋友更会选择健康食物。').trim().slice(0, 140),
+    safetyNote: String(parsed.safetyNote ?? '食用前要清洗干净，如有明确过敏史需避免食用。').trim().slice(0, 140),
+  };
 }
 
 function extractRecipesFromPossiblyTruncatedJson(content: string) {
@@ -927,19 +952,20 @@ function buildRecipeDetailUserPrompt(
   ].join('\n');
 
   return [
-    '为指定菜名生成儿童烹饪步骤，只返回JSON对象。',
+    '为指定菜名生成详细、可执行的儿童烹饪步骤，只返回JSON对象。',
     `允许食材:${ingredientLines}`,
     `菜谱:${recipeLines}`,
     '规则:',
     `1.steps必须制作“${recipe.name}”，禁止换菜名/主食/相似菜。`,
     '2.只能使用允许食材；水/锅/碗/刀具/炉具可作为工具；未列出的盐油糖葱姜蒜酱油牛奶面粉都禁止。',
-    '3.steps通常4-6步，复杂菜最多8步，按真实烹饪顺序拆分：准备/清洗/切配/混合/入锅或装盘/成熟判断/收尾。',
-    '4.description固定为“本步骤食材：A、B；操作：……”，操作部分写2-4句短句，必须包含：怎么处理、什么时候加入、做到什么状态算完成。',
-    '5.tip写一个具体要点，如大小厚薄、火候距离、搅拌频率、颜色/软硬变化或防烫提醒。',
+    '3.steps通常5-8步，按真实烹饪顺序拆分：准备工具/清洗/切配/调和/入锅或装盘/成熟判断/收尾。',
+    '4.description固定为“本步骤食材：A、B；操作：……”，操作部分写3-5句短句，必须包含：处理动作、加入时机、搅拌或摆放方式、完成状态。',
+    '5.tip写一个具体烹饪要点，如大小厚薄、火候距离、搅拌频率、颜色/软硬变化、试温或防滑防烫提醒。',
     '6.childAction写小朋友能亲手参与的具体动作，不要只写等待/观察；高风险步骤可写站远观察、读步骤、准备餐盘。',
     '7.parentAction仅在明火、高温、热油、爆炒、高压、蒸煮、烤箱、开水等高风险操作中写家长完成的动作；低风险步骤写“在旁边看护”。',
-    `8.最后一步 expectedResult 写“完成${recipe.name}”；每步必填:title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。`,
-    '9.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号。',
+    '8.每步内容将用于生成儿童卡通烹饪视频字幕，请让title适合做短字幕，description适合拆成视频旁白。',
+    `9.最后一步 expectedResult 写“完成${recipe.name}”；每步必填:title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。`,
+    '10.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号。',
   ].join('\n');
 }
 
@@ -1054,7 +1080,7 @@ export async function generateRecipeDetail(
     {
       role: 'system',
       content:
-        '儿童菜谱步骤生成。只返回可被 JSON.parse 解析的 JSON 对象，不要 Markdown、代码块、解释、前后缀文字。格式：{"steps":[{"title":"","description":"本步骤食材：A；操作：先……。再……。看到……就完成。","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。步骤要能教会小学生烹饪要点；仅高风险热源/高温/热油/爆炒/高压/蒸煮要求家长完成。',
+        '儿童菜谱步骤生成。只返回可被 JSON.parse 解析的 JSON 对象，不要 Markdown、代码块、解释、前后缀文字。格式：{"steps":[{"title":"","description":"本步骤食材：A；操作：先……。再……。接着……。看到……就完成。","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。步骤要详细到小学生能跟着学习烹饪要点，并可作为30秒以内卡通烹饪视频的字幕脚本；仅高风险热源/高温/热油/爆炒/高压/蒸煮要求家长完成。',
     },
     {
       role: 'user',
@@ -1112,6 +1138,38 @@ export async function generateRecipeDetails(
   );
 
   return [...catalogDetails, ...generatedDetails];
+}
+
+export async function generateIngredientKnowledge(name: string) {
+  const ingredientName = compactText(normalizeIngredientName(name), 30);
+  if (!ingredientName) {
+    throw new Error('请提供要查询的食材名称。');
+  }
+
+  const content = await callSiliconFlow([
+    {
+      role: 'system',
+      content:
+        '你是儿童食材百科智能体。面向小学阶段儿童，用准确、简短、容易理解的中文介绍一种食材。只输出严格 JSON，不要 Markdown，不要额外说明。JSON 字段必须为：{"name":"食材名","nutritionValues":["营养价值1","营养价值2","营养价值3"],"origin":"常见产地或来源","growingClimate":"适宜生长气候","bestPairings":["搭配食材1","搭配食材2","搭配食材3"],"kidFact":"一句有趣小知识","safetyNote":"一句清洗、过敏或食用安全提醒"}。',
+    },
+    {
+      role: 'user',
+      content: `食材：${ingredientName}\n要求：营养价值最多4条；搭配食材最多5个；每句话不超过28个中文字符；适合小朋友阅读。`,
+    },
+  ], {
+    operation: 'generate_ingredient_knowledge',
+    task: 'ingredient_knowledge',
+    routeContext: {
+      userPrompt: ingredientName,
+    },
+    metadata: {
+      ingredientName,
+    },
+    maxTokens: 520,
+    timeoutMs: 30_000,
+  });
+
+  return parseIngredientKnowledge(content, ingredientName);
 }
 
 export async function generateCookingFeedback(input: {
