@@ -2684,6 +2684,10 @@ button {
   pointer-events: none;
 }
 
+.recommend-button-confetti {
+  z-index: 2;
+}
+
 .button-confetti-piece {
   position: absolute;
   left: 50%;
@@ -3055,6 +3059,25 @@ button {
   font-size: 0.85rem;
 }
 
+.pronunciation-toggle {
+  min-width: 54px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #e6e6e6;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #525252;
+  font-size: 0.82rem;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.04);
+}
+
+.pronunciation-toggle.active {
+  border-color: rgba(247, 25, 114, 0.18);
+  background: #dceeb1;
+  color: #16313a;
+}
+
 .main-panel {
   padding: 92px 12px 18px;
 }
@@ -3082,10 +3105,13 @@ button {
   letter-spacing: 0.06em;
 }
 
-.kids-chat-hero h2 {
+.kids-chat-hero h3 {
+  margin-block-start: 0;
+  margin-block-end: 0;
   color: #000000;
   font-weight: 800;
   letter-spacing: 0;
+  color: #f71972;
 }
 
 .kids-chat-hero p {
@@ -3186,6 +3212,7 @@ button {
   border-radius: 999px;
   background: #f71972;
   color: #ffffff;
+  overflow: visible;
   box-shadow: 0 12px 26px rgba(247, 25, 114, 0.24);
 }
 
@@ -3562,6 +3589,13 @@ button {
     font-size: 0.72rem;
   }
 
+  .pronunciation-toggle {
+    min-width: 42px;
+    min-height: 36px;
+    padding: 0 8px;
+    font-size: 0.72rem;
+  }
+
   .main-panel {
     padding: 84px 10px 14px;
   }
@@ -3712,6 +3746,15 @@ button {
     padding-inline: 18px;
   }
 
+  .chat-menu-button {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .favorite-entry-trigger {
+    display: none;
+  }
+
   .main-panel {
     padding: 96px 268px 18px;
   }
@@ -3779,7 +3822,7 @@ button {
   }
 
   .kids-chat-hero {
-    padding: 18px 22px;
+    padding: 8px 16px;
   }
 
   .recipe-carousel-shell,
@@ -3965,6 +4008,15 @@ body {
   .main-panel {
     padding-top: 96px;
     padding-bottom: 0;
+  }
+
+  .chat-menu-button {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .favorite-entry-trigger {
+    display: none;
   }
 
   .chatbox-page {

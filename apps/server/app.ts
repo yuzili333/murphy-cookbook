@@ -38,6 +38,13 @@ type StreamEvent =
   | { type: 'error'; id?: string; message: string }
   | { type: 'finish' };
 
+type OutputLocale = 'zh' | 'en';
+
+interface GenerationLocaleOptions {
+  locale: OutputLocale;
+  pinyinMode: boolean;
+}
+
 function beginSse(res: Response) {
   res.status(200);
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -125,6 +132,7 @@ interface RecipeDetailRequestPayload {
   ingredients: IngredientItem[];
   profile: Partial<ChildProfile> | null;
   recipe: Partial<RecipeDetailRecipeInput> | null;
+  generationOptions: GenerationLocaleOptions;
 }
 
 interface RecipeDetailsRequestPayload {
@@ -132,6 +140,7 @@ interface RecipeDetailsRequestPayload {
   ingredients: IngredientItem[];
   profile: Partial<ChildProfile> | null;
   recipes: Array<Partial<RecipeRecommendation>>;
+  generationOptions: GenerationLocaleOptions;
 }
 
 interface RecommendationRequestPayload {
@@ -139,6 +148,7 @@ interface RecommendationRequestPayload {
   ingredients: IngredientItem[];
   profile: Partial<ChildProfile> | null;
   userPrompt: string;
+  generationOptions: GenerationLocaleOptions;
 }
 
 function isRecipeRecommendationInput(recipe: Partial<RecipeDetailRecipeInput> | null): recipe is RecipeDetailRecipeInput {
@@ -263,6 +273,23 @@ function resolveIngredientItems(value: unknown): IngredientItem[] {
   }, []);
 }
 
+function resolveGenerationLocaleOptions(payload: Record<string, unknown>, queryPayload: Record<string, unknown>): GenerationLocaleOptions {
+  const rawLocale = String(payload.locale ?? payload.language ?? queryPayload.locale ?? queryPayload.language ?? 'zh').toLowerCase();
+  const rawPinyinMode = payload.pinyinMode ?? payload.enablePinyin ?? queryPayload.pinyinMode ?? queryPayload.enablePinyin;
+  const pinyinMode =
+    rawPinyinMode === undefined
+      ? true
+      : rawPinyinMode === true ||
+        rawPinyinMode === 'true' ||
+        rawPinyinMode === '1' ||
+        rawPinyinMode === 'on';
+
+  return {
+    locale: rawLocale === 'en' || rawLocale === 'english' ? 'en' : 'zh',
+    pinyinMode,
+  };
+}
+
 export function resolveRecommendationRequestPayload(body: unknown, query: unknown = {}): RecommendationRequestPayload {
   const payload = normalizeRequestRecord(body);
   const queryPayload = normalizeRequestRecord(query);
@@ -272,6 +299,7 @@ export function resolveRecommendationRequestPayload(body: unknown, query: unknow
     ingredients: resolveIngredientItems(payload.ingredients ?? queryPayload.ingredients),
     profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
     userPrompt: String(payload.userPrompt ?? queryPayload.userPrompt ?? ''),
+    generationOptions: resolveGenerationLocaleOptions(payload, queryPayload),
   };
 }
 
@@ -289,6 +317,7 @@ export function resolveRecipeDetailRequestPayload(body: unknown, query: unknown 
         payload.selectedRecipe ??
         parseJsonInput(queryPayload.recipe, null),
     ),
+    generationOptions: resolveGenerationLocaleOptions(payload, queryPayload),
   };
 }
 
@@ -303,6 +332,7 @@ export function resolveRecipeDetailsRequestPayload(body: unknown, query: unknown
     recipes: Array.isArray(payload.recipes)
       ? payload.recipes as Array<Partial<RecipeRecommendation>>
       : parseJsonInput<Array<Partial<RecipeRecommendation>>>(queryPayload.recipes, []),
+    generationOptions: resolveGenerationLocaleOptions(payload, queryPayload),
   };
 }
 
@@ -333,8 +363,8 @@ export function createApp(): Express {
   });
 
   const sendRecommendationResponse = async (req: Request, res: Response) => {
-    const { profileId, ingredients, profile, userPrompt } = resolveRecommendationRequestPayload(req.body, req.query);
-    const result = await recommendRecipes(profileId, ingredients, profile, userPrompt);
+    const { profileId, ingredients, profile, userPrompt, generationOptions } = resolveRecommendationRequestPayload(req.body, req.query);
+    const result = await recommendRecipes(profileId, ingredients, profile, userPrompt, generationOptions);
 
     if ('error' in result) {
       const status =
@@ -359,12 +389,18 @@ export function createApp(): Express {
 
   const streamRecommendationResponse = async (req: Request, res: Response) => {
     beginSse(res);
-    const { profileId, ingredients, profile, userPrompt } = resolveRecommendationRequestPayload(req.body, req.query);
+    const { profileId, ingredients, profile, userPrompt, generationOptions } = resolveRecommendationRequestPayload(req.body, req.query);
     const textNodeId = `text_${Date.now()}`;
-    await writeTypewriterText(res, textNodeId, '正在分析食材清单，准备生成儿童友好的菜谱卡片...');
+    await writeTypewriterText(
+      res,
+      textNodeId,
+      generationOptions.locale === 'en'
+        ? 'Analyzing the ingredients and preparing kid-friendly recipe cards...'
+        : '正在分析食材清单，准备生成儿童友好的菜谱卡片...',
+    );
 
     try {
-      const result = await recommendRecipes(profileId, ingredients, profile, userPrompt);
+      const result = await recommendRecipes(profileId, ingredients, profile, userPrompt, generationOptions);
       if ('error' in result) {
         writeStreamEvent(res, { type: 'error', message: result.error.message });
         endSse(res);
@@ -373,6 +409,11 @@ export function createApp(): Express {
 
       const leadText = result.data.recipes
         .map((recipe, index) => {
+          if (generationOptions.locale === 'en') {
+            const risk = recipe.riskAlerts.length ? `Note: ${recipe.riskAlerts.slice(0, 2).join('; ')}` : 'Overall risk is low';
+            return `\n${index + 1}. ${recipe.name}: ${recipe.nutritionSummary}. Why it fits: uses the current ingredients, keeps flavor gentle, and supports kid participation. ${risk}.`;
+          }
+
           const risk = recipe.riskAlerts.length ? `注意：${recipe.riskAlerts.slice(0, 2).join('；')}` : '整体风险较低';
           return `\n${index + 1}. ${recipe.name}：${recipe.nutritionSummary}。推荐原因：适合当前食材、口味清淡、步骤适合小学阶段参与。${risk}。`;
         })
@@ -440,7 +481,7 @@ export function createApp(): Express {
   };
 
   const sendRecipeDetailResponse = async (req: Request, res: Response) => {
-    let { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
+    let { profileId, ingredients, profile, recipe, generationOptions } = resolveRecipeDetailRequestPayload(req.body, req.query);
 
     if (!isRecipeRecommendationInput(recipe)) {
       const fallbackPayload = resolveRecipeDetailRequestPayload((req as RequestWithRawBody).rawBody, req.query);
@@ -448,6 +489,7 @@ export function createApp(): Express {
       ingredients = fallbackPayload.ingredients;
       profile = fallbackPayload.profile;
       recipe = fallbackPayload.recipe;
+      generationOptions = fallbackPayload.generationOptions;
     }
 
     if (!isRecipeRecommendationInput(recipe) && req.params.recipeId) {
@@ -471,6 +513,7 @@ export function createApp(): Express {
       ingredients,
       profileInput: profile,
       recipe,
+      generationOptions,
     });
 
     if ('error' in result) {
@@ -491,7 +534,7 @@ export function createApp(): Express {
 
   const streamRecipeDetailResponse = async (req: Request, res: Response) => {
     beginSse(res);
-    let { profileId, ingredients, profile, recipe } = resolveRecipeDetailRequestPayload(req.body, req.query);
+    let { profileId, ingredients, profile, recipe, generationOptions } = resolveRecipeDetailRequestPayload(req.body, req.query);
 
     if (!isRecipeRecommendationInput(recipe)) {
       const fallbackPayload = resolveRecipeDetailRequestPayload((req as RequestWithRawBody).rawBody, req.query);
@@ -499,6 +542,7 @@ export function createApp(): Express {
       ingredients = fallbackPayload.ingredients;
       profile = fallbackPayload.profile;
       recipe = fallbackPayload.recipe;
+      generationOptions = fallbackPayload.generationOptions;
     }
 
     if (!isRecipeRecommendationInput(recipe)) {
@@ -508,7 +552,13 @@ export function createApp(): Express {
     }
 
     const textNodeId = `text_${Date.now()}`;
-    await writeTypewriterText(res, textNodeId, `正在生成《${recipe.name}》的儿童版烹饪步骤...`);
+    await writeTypewriterText(
+      res,
+      textNodeId,
+      generationOptions.locale === 'en'
+        ? `Generating kid-friendly cooking steps for ${recipe.name}...`
+        : `正在生成《${recipe.name}》的儿童版烹饪步骤...`,
+    );
 
     try {
       const result = await getRecipeDetailForRecommendation({
@@ -516,6 +566,7 @@ export function createApp(): Express {
         ingredients,
         profileInput: profile,
         recipe,
+        generationOptions,
       });
 
       if ('error' in result) {
@@ -659,10 +710,18 @@ export function createApp(): Express {
 
   app.post('/api/v1/ingredients/knowledge', async (req, res) => {
     const name = normalizeTextInputValue(req.body?.name ?? req.query?.name);
+    const generationOptions = resolveGenerationLocaleOptions(
+      normalizeRequestRecord(req.body),
+      normalizeRequestRecord(req.query),
+    );
+    const isEnglish = generationOptions.locale === 'en';
 
     if (!name) {
       res.status(400).json({
-        error: { code: 'INVALID_ARGUMENT', message: '请提供要了解的食材名称。' },
+        error: {
+          code: 'INVALID_ARGUMENT',
+          message: isEnglish ? 'Please provide an ingredient name.' : '请提供要了解的食材名称。',
+        },
       });
       return;
     }
@@ -672,7 +731,9 @@ export function createApp(): Express {
         res.status(500).json({
           error: {
             code: 'MODEL_PROVIDER_NOT_CONFIGURED',
-            message: '服务端未配置 SiliconFlow API Key，无法获取食材知识。',
+            message: isEnglish
+              ? 'The server is missing the SiliconFlow API key, so ingredient notes cannot be generated.'
+              : '服务端未配置 SiliconFlow API Key，无法获取食材知识。',
           },
         });
         return;
@@ -680,26 +741,40 @@ export function createApp(): Express {
 
       if (!isSiliconFlowConfigured()) {
         res.json({
-          data: {
-            name,
-            nutritionValues: ['富含成长所需营养', '能帮助丰富一餐的颜色和口感', '适量食用有助于饮食均衡'],
-            origin: '常见于适合种植或养殖这种食材的地区。',
-            growingClimate: '通常喜欢阳光、水分和温度比较合适的环境。',
-            bestPairings: ['鸡蛋', '豆腐', '米饭'],
-            kidFact: `${name} 可以帮助小朋友认识食物从土地到餐桌的过程。`,
-            safetyNote: '食用前要清洗干净，如有过敏史请先告诉家长。',
-          },
+          data: isEnglish
+            ? {
+                name,
+                nutritionValues: ['Supports balanced meals', 'Adds color and texture', 'Good in small kid-friendly portions'],
+                origin: 'Commonly found in regions suitable for growing or raising this ingredient.',
+                growingClimate: 'Usually grows well with suitable sunlight, water, and temperature.',
+                bestPairings: ['egg', 'tofu', 'rice'],
+                kidFact: `${name} helps kids learn how food travels from farms to the table.`,
+                safetyNote: 'Wash well before eating, and tell an adult about any allergy history.',
+              }
+            : {
+                name,
+                nutritionValues: ['富含成长所需营养', '能帮助丰富一餐的颜色和口感', '适量食用有助于饮食均衡'],
+                origin: '常见于适合种植或养殖这种食材的地区。',
+                growingClimate: '通常喜欢阳光、水分和温度比较合适的环境。',
+                bestPairings: ['鸡蛋', '豆腐', '米饭'],
+                kidFact: `${name} 可以帮助小朋友认识食物从土地到餐桌的过程。`,
+                safetyNote: '食用前要清洗干净，如有过敏史请先告诉家长。',
+              },
         });
         return;
       }
 
-      const knowledge = await generateIngredientKnowledge(name);
+      const knowledge = await generateIngredientKnowledge(name, generationOptions);
       res.json({ data: knowledge });
     } catch (error) {
       res.status(502).json({
         error: {
           code: 'INGREDIENT_KNOWLEDGE_FAILED',
-          message: error instanceof Error ? error.message : '食材知识获取失败。',
+          message: error instanceof Error
+            ? error.message
+            : isEnglish
+              ? 'Failed to get ingredient notes.'
+              : '食材知识获取失败。',
         },
       });
     }
@@ -856,7 +931,7 @@ export function createApp(): Express {
   app.post('/api/v1/recipes/:recipeId/nutrition', sendRecipeNutritionResponse);
 
   app.post('/api/v1/recipes/details', async (req, res) => {
-    const { profileId, ingredients, profile, recipes } = resolveRecipeDetailsRequestPayload(req.body, req.query);
+    const { profileId, ingredients, profile, recipes, generationOptions } = resolveRecipeDetailsRequestPayload(req.body, req.query);
     const validRecipes = recipes.filter(isFullRecipeRecommendationInput);
 
     if (validRecipes.length === 0) {
@@ -871,6 +946,7 @@ export function createApp(): Express {
       ingredients,
       profileInput: profile,
       recipes: validRecipes,
+      generationOptions,
     });
 
     if ('error' in result) {

@@ -29,6 +29,11 @@ function normalizeApiBase(base: string) {
 
 const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL ?? resolveDefaultApiBase());
 
+export interface GenerationLocaleOptions {
+  locale?: 'zh' | 'en';
+  pinyinMode?: boolean;
+}
+
 interface ApiEnvelope<T> {
   data: T;
 }
@@ -154,14 +159,23 @@ export function fetchSeasonalIngredientSuggestions(month: number, childContext: 
   });
 }
 
-export function fetchIngredientKnowledge(name: string) {
+export function fetchIngredientKnowledge(name: string, options: GenerationLocaleOptions = {}) {
   return request<IngredientKnowledge>('/ingredients/knowledge', {
     method: 'POST',
-    body: JSON.stringify({ name: name.trim().slice(0, 30) }),
+    body: JSON.stringify({
+      name: name.trim().slice(0, 30),
+      locale: options.locale ?? 'zh',
+      pinyinMode: options.pinyinMode ?? true,
+    }),
   });
 }
 
-export function fetchRecommendations(profile: ChildProfile, ingredients: IngredientItem[], userPrompt = '') {
+export function fetchRecommendations(
+  profile: ChildProfile,
+  ingredients: IngredientItem[],
+  userPrompt = '',
+  options: GenerationLocaleOptions = {},
+) {
   const normalizedIngredients = ingredients.map((ingredient) => ({
     id: ingredient.id,
     name: ingredient.name,
@@ -173,6 +187,8 @@ export function fetchRecommendations(profile: ChildProfile, ingredients: Ingredi
     profileId: profile.id,
     profile,
     userPrompt,
+    locale: options.locale ?? 'zh',
+    pinyinMode: options.pinyinMode ?? true,
     ingredients: normalizedIngredients,
     sortBy: 'balanced',
     allowExtraIngredients: true,
@@ -188,6 +204,7 @@ export function streamRecommendations(
   profile: ChildProfile,
   ingredients: IngredientItem[],
   userPrompt: string,
+  options: GenerationLocaleOptions,
   onEvent: (event: StreamEvent) => void,
 ) {
   const normalizedIngredients = ingredients.map((ingredient) => ({
@@ -204,6 +221,8 @@ export function streamRecommendations(
       profileId: profile.id,
       profile,
       userPrompt,
+      locale: options.locale ?? 'zh',
+      pinyinMode: options.pinyinMode ?? true,
       ingredients: normalizedIngredients,
       sortBy: 'balanced',
       allowExtraIngredients: true,
@@ -220,10 +239,14 @@ export function fetchGeneratedRecipeDetail(payload: {
   profile: ChildProfile;
   ingredients: IngredientItem[];
   recipe: RecipeDetail | RecipeRecommendation;
+  locale?: 'zh' | 'en';
+  pinyinMode?: boolean;
 }) {
   const recipe = payload.recipe;
   const requestPayload = {
     profileId: payload.profileId,
+    locale: payload.locale ?? 'zh',
+    pinyinMode: payload.pinyinMode ?? true,
     ingredients: payload.ingredients.map((ingredient) => ({
       name: ingredient.name,
       normalizedName: ingredient.normalizedName ?? ingredient.name,
@@ -258,6 +281,8 @@ export function streamGeneratedRecipeDetail(
     profile: ChildProfile;
     ingredients: IngredientItem[];
     recipe: RecipeDetail | RecipeRecommendation;
+    locale?: 'zh' | 'en';
+    pinyinMode?: boolean;
   },
   onEvent: (event: StreamEvent) => void,
 ) {
@@ -266,6 +291,8 @@ export function streamGeneratedRecipeDetail(
     method: 'POST',
     body: JSON.stringify({
       profileId: payload.profileId,
+      locale: payload.locale ?? 'zh',
+      pinyinMode: payload.pinyinMode ?? true,
       ingredients: payload.ingredients.map((ingredient) => ({
         name: ingredient.name,
         normalizedName: ingredient.normalizedName ?? ingredient.name,

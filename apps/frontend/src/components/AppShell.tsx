@@ -6,10 +6,20 @@ interface AppShellProps {
   onOpenFavorites?: () => void;
   locale?: 'zh' | 'en';
   onLocaleChange?: (locale: 'zh' | 'en') => void;
+  pronunciationMode?: boolean;
+  onPronunciationModeChange?: (enabled: boolean) => void;
   children: ReactNode;
 }
 
-export function AppShell({ onOpenConversations, onOpenFavorites, locale = 'zh', onLocaleChange, children }: AppShellProps) {
+export function AppShell({
+  onOpenConversations,
+  onOpenFavorites,
+  locale = 'zh',
+  onLocaleChange,
+  pronunciationMode = true,
+  onPronunciationModeChange,
+  children,
+}: AppShellProps) {
   const isChinese = locale === 'zh';
 
   return (
@@ -19,7 +29,7 @@ export function AppShell({ onOpenConversations, onOpenFavorites, locale = 'zh', 
           type="button"
           className="chat-menu-button"
           onClick={onOpenConversations}
-          aria-label="打开历史对话"
+          aria-label={isChinese ? '打开历史对话' : 'Open chat history'}
         >
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M4.8 6.8h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 0 0 0 1.8Zm0 6.1h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 1 0 0 1.8Zm0 6.1h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 1 0 0 1.8Z" />
@@ -28,8 +38,7 @@ export function AppShell({ onOpenConversations, onOpenFavorites, locale = 'zh', 
         <div className="brand-block">
           <span className="shell-mascot" aria-hidden="true">👩‍🍳</span>
           <div>
-            <h1>{isChinese ? '小墨菲的美食宝典' : "Murphy's Cookbook"}</h1>
-            <p>{isChinese ? '儿童 AI 菜谱伙伴' : 'AI Recipe Buddy for Kids'}</p>
+            <h1>{isChinese ? '食谱Agent' : "AI Cookbook"}</h1>
           </div>
         </div>
         <div className="topbar-actions">
@@ -47,7 +56,7 @@ export function AppShell({ onOpenConversations, onOpenFavorites, locale = 'zh', 
               className={isChinese ? 'active' : undefined}
               onClick={() => onLocaleChange?.('zh')}
             >
-              中文
+              {isChinese ? '中文' : 'CN'}
             </button>
             <span aria-hidden="true">|</span>
             <button
@@ -58,6 +67,15 @@ export function AppShell({ onOpenConversations, onOpenFavorites, locale = 'zh', 
               EN
             </button>
           </div>
+          <button
+            type="button"
+            className={pronunciationMode ? 'pronunciation-toggle active' : 'pronunciation-toggle'}
+            onClick={() => onPronunciationModeChange?.(!pronunciationMode)}
+            aria-pressed={pronunciationMode}
+            aria-label={isChinese ? '切换拼音模式' : 'Toggle pronunciation mode'}
+          >
+            {isChinese ? '拼音' : 'ABC'}
+          </button>
         </div>
       </aside>
       <main className="main-panel">

@@ -28,6 +28,11 @@ export type RecommendationResult =
   | { data: GeneratedRecommendationPayload }
   | { error: RecommendationError };
 
+interface GenerationLocaleOptions {
+  locale?: 'zh' | 'en';
+  pinyinMode?: boolean;
+}
+
 const recipeRecommendationModelTimeoutMs = Number(process.env.RECIPE_RECOMMENDATION_MODEL_TIMEOUT_MS ?? 30000);
 const recipeDetailModelTimeoutMs = Number(process.env.RECIPE_DETAIL_MODEL_TIMEOUT_MS ?? 30000);
 const defaultRecommendationProfile: ChildProfile = {
@@ -252,6 +257,7 @@ export async function recommendRecipes(
   ingredients: IngredientItem[],
   profileInput?: Partial<ChildProfile> | null,
   userPrompt = '',
+  generationOptions: GenerationLocaleOptions = {},
 ): Promise<RecommendationResult> {
   const validation = validateRecommendationInput(profileId, ingredients, profileInput);
 
@@ -278,7 +284,7 @@ export async function recommendRecipes(
   try {
     return {
       data: await withTimeout(
-        generateRecipePlan(profile, ingredients, userPrompt),
+        generateRecipePlan(profile, ingredients, userPrompt, generationOptions),
         recipeRecommendationModelTimeoutMs,
         '接口数据响应超时',
       ),
@@ -306,6 +312,7 @@ export async function getRecipeDetailForRecommendation(input: {
   ingredients: IngredientItem[];
   recipe: RecipeDetailRecipeInput | RecipeDetail;
   profileInput?: Partial<ChildProfile> | null;
+  generationOptions?: GenerationLocaleOptions;
 }): Promise<{ data: RecipeDetail } | { error: RecommendationError }> {
   const validation = validateDetailInput(input.profileId, input.profileInput);
 
@@ -341,7 +348,7 @@ export async function getRecipeDetailForRecommendation(input: {
   try {
     return {
       data: await withTimeout(
-        generateRecipeDetail(profile, detailIngredients, input.recipe),
+        generateRecipeDetail(profile, detailIngredients, input.recipe, input.generationOptions),
         recipeDetailModelTimeoutMs,
         '接口数据响应超时',
       ),
@@ -368,6 +375,7 @@ export async function getRecipeDetailsForRecommendations(input: {
   ingredients: IngredientItem[];
   recipes: Array<RecipeRecommendation | RecipeDetail>;
   profileInput?: Partial<ChildProfile> | null;
+  generationOptions?: GenerationLocaleOptions;
 }): Promise<{ data: RecipeDetail[] } | { error: RecommendationError }> {
   const validation = validateRecommendationInput(input.profileId, input.ingredients, input.profileInput);
 
@@ -402,7 +410,7 @@ export async function getRecipeDetailsForRecommendations(input: {
 
   try {
     const generatedDetails = await withTimeout(
-      generateRecipeDetails(validation.profile, input.ingredients, missingRecipes),
+      generateRecipeDetails(validation.profile, input.ingredients, missingRecipes, input.generationOptions),
       recipeDetailModelTimeoutMs,
       '接口数据响应超时',
     );

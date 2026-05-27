@@ -39,6 +39,7 @@ const recipeStepCacheStorageKey = 'murphy-cookbook.recipe-step-cache.v2';
 const ingredientKnowledgeCacheStorageKey = 'murphy-cookbook.ingredient-knowledge-cache.v1';
 const legacyRecipeDetailCacheStorageKey = 'murphy-cookbook.recipe-detail-cache.v1';
 const localeStorageKey = 'murphy-cookbook.locale.v1';
+const pronunciationModeStorageKey = 'murphy-cookbook.pronunciation-mode.v1';
 const webCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const conversationProfileId = 'chat_context_profile';
 const defaultChildContext =
@@ -46,6 +47,232 @@ const defaultChildContext =
 type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
 type TimedCache<T> = Record<string, { createdAt: string; expiresAt: string; data: T }>;
 type AppLocale = 'zh' | 'en';
+
+const defaultChildContextEn =
+  'Default audience: grade 1-6 students. Recipe principles: low oil, mild flavor, balanced meals, vitamin-rich ingredients, and balanced staples, protein, and vegetables. Avoid high sugar, high salt, deep-fried, and very spicy food. Unless a severe acute allergy risk is mentioned, do not ask for age, preferences, or allergens.';
+
+const staticTextTranslations: Record<string, string> = {
+  '我是智能儿童菜谱助手，已记录本次对话的特殊饮食信息，告诉我今天有什么食材，也可以拍照上传。':
+    'I am your AI cookbook buddy. I saved the special diet notes for this chat. Tell me today’s ingredients or upload a photo.',
+  '我是智能儿童菜谱助手，请通过文字、语音或拍照上传提供喜欢的食材':
+    'I am your AI cookbook buddy. Share ingredients by typing, speaking, taking a photo, or uploading an image.',
+  '我还没有识别到可用食材。你可以输入“鸡蛋、番茄、黄瓜”，或直接拍一张食材照片。':
+    'I have not found any usable ingredients yet. Try typing “egg, tomato, cucumber” or take a photo of your ingredients.',
+  '正在生成菜谱推荐...': 'Generating recipe ideas...',
+  '你提到了可能引发严重急性过敏的情况。我已记录这条特殊饮食信息。为了更安全，请补充孩子是否已确诊相关食材过敏、严重程度，以及是否需要完全避开这类食材。':
+    'You mentioned a possible severe allergy risk. I saved this special diet note. For safety, please add whether the child has a confirmed allergy, how severe it is, and whether the ingredient must be fully avoided.',
+  '一次最多支持 10 个食材。当前识别后会超过上限，请减少食材或换一组食材。':
+    'Up to 10 ingredients are supported at once. This result would exceed the limit, so please remove some ingredients or try another set.',
+  '一次最多支持 10 个食材。请先减少食材数量，再获取推荐菜谱。':
+    'Up to 10 ingredients are supported at once. Please remove some ingredients before getting recipe ideas.',
+  '我识别到了这些食材。你可以继续补充食材，也可以直接搜索菜谱。':
+    'I found these ingredients. You can add more or get recipe ideas now.',
+  '我暂时没有识别到明确食材，可以换一种说法再试。':
+    'I could not find a clear ingredient yet. Try saying it another way.',
+  '食材识别失败，请稍后再试。': 'Ingredient recognition failed. Please try again later.',
+  '我上传了一张食材图片': 'I uploaded an ingredient photo.',
+  '图片识别出的食材加入后会超过 10 个上限，请减少食材后再继续。':
+    'The photo result would exceed the 10 ingredient limit. Please remove some ingredients first.',
+  '我从图片里识别到了这些食材。': 'I found these ingredients in the photo.',
+  '我暂时没有从图片里识别到明确食材。': 'I could not find clear ingredients in the photo yet.',
+  接口数据响应超时: 'Request timed out',
+  '接口超时，稍后重试。': 'Request timed out. Please try again later.',
+  '菜谱推荐生成失败。': 'Recipe generation failed.',
+  '菜谱详情生成失败。': 'Cooking steps generation failed.',
+  '请提供有效的推荐菜谱卡片信息。': 'Please provide a valid recipe card.',
+};
+
+const ingredientEnglishNameMap: Record<string, string> = {
+  菠菜: 'Spinach',
+  油菜: 'Bok choy',
+  小白菜: 'Baby bok choy',
+  菜心: 'Choy sum',
+  芦笋: 'Asparagus',
+  春笋: 'Spring bamboo shoots',
+  莴笋: 'Celtuce',
+  豌豆: 'Peas',
+  荷兰豆: 'Snow peas',
+  蚕豆: 'Broad beans',
+  香椿: 'Toona sprouts',
+  荠菜: 'Shepherd’s purse',
+  马兰头: 'Indian aster',
+  韭菜: 'Garlic chives',
+  蒜苗: 'Garlic sprouts',
+  茼蒿: 'Crown daisy',
+  生菜: 'Lettuce',
+  西洋菜: 'Watercress',
+  苋菜: 'Amaranth greens',
+  茭白: 'Water bamboo',
+  樱桃萝卜: 'Cherry radish',
+  水萝卜: 'Water radish',
+  胡萝卜: 'Carrot',
+  白萝卜: 'Daikon radish',
+  卷心菜: 'Cabbage',
+  紫甘蓝: 'Red cabbage',
+  西兰花: 'Broccoli',
+  花椰菜: 'Cauliflower',
+  芹菜: 'Celery',
+  黄瓜: 'Cucumber',
+  番茄: 'Tomato',
+  草莓: 'Strawberry',
+  樱桃: 'Cherry',
+  枇杷: 'Loquat',
+  桑葚: 'Mulberry',
+  青梅: 'Green plum',
+  菠萝: 'Pineapple',
+  木瓜: 'Papaya',
+  芒果: 'Mango',
+  莲雾: 'Wax apple',
+  春橙: 'Spring orange',
+  沃柑: 'Mandarin orange',
+  丑橘: 'Dekopon',
+  金桔: 'Kumquat',
+  柠檬: 'Lemon',
+  青苹果: 'Green apple',
+  梨: 'Pear',
+  香蕉: 'Banana',
+  猕猴桃: 'Kiwi',
+  蓝莓: 'Blueberry',
+  甜豆: 'Sugar snap peas',
+  豌豆苗: 'Pea shoots',
+  豆苗: 'Bean sprouts',
+  油麦菜: 'A choy',
+  空心菜: 'Water spinach',
+  丝瓜: 'Luffa',
+  佛手瓜: 'Chayote',
+  冬瓜: 'Winter melon',
+  南瓜苗: 'Pumpkin shoots',
+  土豆: 'Potato',
+  山药: 'Chinese yam',
+  莲藕: 'Lotus root',
+  蘑菇: 'Mushroom',
+  香菇: 'Shiitake mushroom',
+  平菇: 'Oyster mushroom',
+  金针菇: 'Enoki mushroom',
+  口蘑: 'Button mushroom',
+  木耳菜: 'Malabar spinach',
+  苦菊: 'Bitter lettuce',
+  娃娃菜: 'Baby napa cabbage',
+  上海青: 'Shanghai bok choy',
+  芥蓝: 'Chinese broccoli',
+  青椒: 'Green pepper',
+  彩椒: 'Bell pepper',
+  西葫芦: 'Zucchini',
+  西瓜: 'Watermelon',
+  甜瓜: 'Melon',
+  哈密瓜: 'Hami melon',
+  香瓜: 'Muskmelon',
+  苦瓜: 'Bitter melon',
+  南瓜: 'Pumpkin',
+  圣女果: 'Cherry tomato',
+  茄子: 'Eggplant',
+  玉米: 'Corn',
+  毛豆: 'Edamame',
+  四季豆: 'Green beans',
+  豇豆: 'Yardlong beans',
+  扁豆: 'Hyacinth beans',
+  荸荠: 'Water chestnut',
+  菱角: 'Water caltrop',
+  红薯叶: 'Sweet potato leaves',
+  南瓜藤: 'Pumpkin vines',
+  桃子: 'Peach',
+  油桃: 'Nectarine',
+  蟠桃: 'Flat peach',
+  李子: 'Plum',
+  杏: 'Apricot',
+  杏子: 'Apricot',
+  杨梅: 'Waxberry',
+  荔枝: 'Lychee',
+  龙眼: 'Longan',
+  火龙果: 'Dragon fruit',
+  葡萄: 'Grapes',
+  树莓: 'Raspberry',
+  无花果: 'Fig',
+  苹果: 'Apple',
+  百香果: 'Passion fruit',
+  椰子: 'Coconut',
+  牛油果: 'Avocado',
+  秋葵: 'Okra',
+  芋头: 'Taro',
+  竹荪: 'Bamboo fungus',
+  银耳: 'Snow fungus',
+  海带: 'Kelp',
+  贝贝南瓜: 'Mini pumpkin',
+  红薯: 'Sweet potato',
+  紫薯: 'Purple sweet potato',
+  青萝卜: 'Green radish',
+  大白菜: 'Napa cabbage',
+  雪梨: 'Snow pear',
+  柿子: 'Persimmon',
+  提子: 'Table grapes',
+  石榴: 'Pomegranate',
+  橙子: 'Orange',
+  柚子: 'Pomelo',
+  蜜柚: 'Honey pomelo',
+  橘子: 'Tangerine',
+  山楂: 'Hawthorn',
+  枣: 'Jujube',
+  冬枣: 'Winter jujube',
+  杏鲍菇: 'King oyster mushroom',
+  木耳: 'Wood ear mushroom',
+  紫菜: 'Nori',
+  洋葱: 'Onion',
+  大葱: 'Scallion',
+  韭黄: 'Yellow chives',
+  豆芽: 'Bean sprouts',
+  黄豆芽: 'Soybean sprouts',
+  绿豆芽: 'Mung bean sprouts',
+  豆腐: 'Tofu',
+  脐橙: 'Navel orange',
+  血橙: 'Blood orange',
+  砂糖橘: 'Sugar mandarin',
+  甘蔗: 'Sugarcane',
+  百合: 'Lily bulb',
+  莲子: 'Lotus seeds',
+  板栗: 'Chestnut',
+  甜玉米: 'Sweet corn',
+  鸡蛋: 'Egg',
+  面条: 'Noodles',
+};
+
+const seasonalReasonEnglishMap: Record<string, string> = {
+  清新爽口: 'Fresh and crisp',
+  维生素多: 'Rich in vitamins',
+  适合春天: 'Great for spring',
+  口感清甜: 'Sweet and mild',
+  清爽补水: 'Refreshing and hydrating',
+  夏天解暑: 'Cooling for summer',
+  口感脆甜: 'Crisp and sweet',
+  轻爽好吃: 'Light and tasty',
+  润燥温和: 'Gentle and soothing',
+  秋天适合: 'Great for autumn',
+  香甜好做: 'Sweet and easy',
+  营养丰富: 'Nutritious',
+  温和易做: 'Mild and easy',
+  冬天适合: 'Great for winter',
+  清淡暖胃: 'Light and warming',
+  营养均衡: 'Balanced nutrition',
+};
+
+function t(locale: AppLocale, zh: string, en: string) {
+  return locale === 'en' ? en : zh;
+}
+
+function localizeStaticText(text: string, locale: AppLocale) {
+  return locale === 'en' ? staticTextTranslations[text] ?? text : text;
+}
+
+function getIngredientDisplayName(name: string, locale: AppLocale) {
+  return locale === 'en' ? ingredientEnglishNameMap[name] ?? name : name;
+}
+
+function getSeasonalReasonDisplay(reason: string, locale: AppLocale) {
+  return locale === 'en' ? seasonalReasonEnglishMap[reason] ?? reason : reason;
+}
+
+function getSessionTitleDisplay(title: string, locale: AppLocale) {
+  return locale === 'en' && title === '新对话' ? 'New Chat' : title;
+}
 
 function readLocale(): AppLocale {
   if (typeof window === 'undefined') {
@@ -61,6 +288,22 @@ function persistLocale(locale: AppLocale) {
   }
 
   window.localStorage.setItem(localeStorageKey, locale);
+}
+
+function readPronunciationMode() {
+  if (typeof window === 'undefined') {
+    return true;
+  }
+
+  return window.localStorage.getItem(pronunciationModeStorageKey) !== 'off';
+}
+
+function persistPronunciationMode(enabled: boolean) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(pronunciationModeStorageKey, enabled ? 'on' : 'off');
 }
 
 interface ChatMessage {
@@ -104,12 +347,21 @@ function stripRecipeDetailsFromSession(session: ChatSession): ChatSession {
 }
 
 function createWelcomeMessage(childContext = ''): ChatMessage {
+  const locale = readLocale();
   return {
     id: `chat_welcome_${crypto.randomUUID()}`,
     role: 'assistant',
     text: childContext
-      ? '我是智能儿童菜谱助手，已记录本次对话的特殊饮食信息，告诉我今天有什么食材，也可以拍照上传。'
-      : '我是智能儿童菜谱助手，请通过文字、语音或拍照上传提供喜欢的食材',
+      ? t(
+          locale,
+          '我是智能儿童菜谱助手，已记录本次对话的特殊饮食信息，告诉我今天有什么食材，也可以拍照上传。',
+          'I am your AI cookbook buddy. I saved the special diet notes for this chat. Tell me today’s ingredients or upload a photo.',
+        )
+      : t(
+          locale,
+          '我是智能儿童菜谱助手，请通过文字、语音或拍照上传提供喜欢的食材',
+          'I am your AI cookbook buddy. Share ingredients by typing, speaking, taking a photo, or uploading an image.',
+        ),
     createdAt: new Date().toISOString(),
   };
 }
@@ -428,7 +680,12 @@ function buildIngredientsKey(items: IngredientItem[]) {
     .join('|');
 }
 
-function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: string) {
+function buildRecommendationCacheKey(
+  profile: ChildProfile,
+  ingredientsKey: string,
+  locale: AppLocale,
+  pronunciationMode: boolean,
+) {
   return JSON.stringify({
     profileId: profile.id,
     age: profile.age,
@@ -436,6 +693,8 @@ function buildRecommendationCacheKey(profile: ChildProfile, ingredientsKey: stri
     allergens: profile.allergens,
     dietaryHabits: profile.dietaryHabits,
     ingredientsKey,
+    locale,
+    pronunciationMode,
   });
 }
 
@@ -443,14 +702,21 @@ function normalizeRecipeCacheText(value: string) {
   return value.trim().replace(/\s+/g, '').toLowerCase();
 }
 
-function buildIngredientKnowledgeKey(name: string) {
-  return normalizeRecipeCacheText(name);
+function buildIngredientKnowledgeKey(name: string, locale: AppLocale) {
+  return `${locale}:${normalizeRecipeCacheText(name)}`;
 }
 
-function buildRecipeStepCacheKey(recipe: RecipeRecommendation, ingredients: IngredientItem[]) {
+function buildRecipeStepCacheKey(
+  recipe: RecipeRecommendation,
+  ingredients: IngredientItem[],
+  locale: AppLocale,
+  pronunciationMode: boolean,
+) {
   return JSON.stringify({
     recipeName: normalizeRecipeCacheText(recipe.name),
     ingredientsKey: buildIngredientsKey(ingredients),
+    locale,
+    pronunciationMode,
   });
 }
 
@@ -576,14 +842,21 @@ function buildRecipeDetailsMap(details: RecipeDetail[]) {
   }, {});
 }
 
-function formatRecipeDifficulty(difficulty: RecipeRecommendation['difficulty']) {
-  const labels: Record<RecipeRecommendation['difficulty'], string> = {
-    easy: '简单',
-    medium: '中等',
-    hard: '较难',
+function formatRecipeDifficulty(difficulty: RecipeRecommendation['difficulty'], locale: AppLocale) {
+  const labels: Record<AppLocale, Record<RecipeRecommendation['difficulty'], string>> = {
+    zh: {
+      easy: '简单',
+      medium: '中等',
+      hard: '较难',
+    },
+    en: {
+      easy: 'Easy',
+      medium: 'Medium',
+      hard: 'Hard',
+    },
   };
 
-  return labels[difficulty] ?? '中等';
+  return labels[locale][difficulty] ?? labels[locale].medium;
 }
 
 function PlayInlineIcon() {
@@ -667,7 +940,9 @@ export default function App() {
   const [error, setError] = useState('');
   const [toastMessage, setToastMessage] = useState('');
   const [favoriteConfettiRecipeId, setFavoriteConfettiRecipeId] = useState('');
+  const [recommendConfettiMessageId, setRecommendConfettiMessageId] = useState('');
   const [locale, setLocale] = useState<AppLocale>(() => readLocale());
+  const [isPronunciationModeEnabled, setIsPronunciationModeEnabled] = useState(() => readPronunciationMode());
   const isRecognizingIngredients = isParsingText || isUploadingImage;
   const isEnglish = locale === 'en';
 
@@ -676,9 +951,14 @@ export default function App() {
     persistLocale(nextLocale);
   };
 
+  const handlePronunciationModeChange = (enabled: boolean) => {
+    setIsPronunciationModeEnabled(enabled);
+    persistPronunciationMode(enabled);
+  };
+
   const speakText = (text: string, lang = 'zh-CN', speechKey = '') => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      setError('当前设备浏览器不支持语音朗读功能。');
+      setError(t(locale, '当前设备浏览器不支持语音朗读功能。', 'This browser does not support voice playback.'));
       return;
     }
 
@@ -821,7 +1101,7 @@ export default function App() {
         setRecipeDetailsById(buildRecipeDetailsMap(activeSession.messages.flatMap((message) => message.recipeDetails ?? [])));
         setLikedRecipeIds(localLikedRecipeIds);
       } catch (bootstrapError) {
-        setError(bootstrapError instanceof Error ? bootstrapError.message : '初始化失败，请稍后重试。');
+        setError(bootstrapError instanceof Error ? bootstrapError.message : t(locale, '初始化失败，请稍后重试。', 'Initialization failed. Please try again later.'));
       } finally {
         setIsBootstrapping(false);
       }
@@ -835,7 +1115,10 @@ export default function App() {
 
     async function loadSeasonalIngredientSuggestions() {
       try {
-        const data = await fetchSeasonalIngredientSuggestions(new Date().getMonth() + 1, childContext.trim() || defaultChildContext);
+        const data = await fetchSeasonalIngredientSuggestions(
+          new Date().getMonth() + 1,
+          childContext.trim() || (isEnglish ? defaultChildContextEn : defaultChildContext),
+        );
         if (!isCancelled) {
           setSeasonalIngredientSuggestions(data.suggestions.filter((item) => item.name).slice(0, 3));
         }
@@ -851,7 +1134,7 @@ export default function App() {
     return () => {
       isCancelled = true;
     };
-  }, [childContext]);
+  }, [childContext, isEnglish]);
 
   useEffect(() => {
     setFavoriteRecipes(favoriteRecipesByProfile[selectedProfileId || conversationProfileId] ?? []);
@@ -960,6 +1243,15 @@ export default function App() {
     const timeoutId = window.setTimeout(() => setFavoriteConfettiRecipeId(''), 620);
     return () => window.clearTimeout(timeoutId);
   }, [favoriteConfettiRecipeId]);
+
+  useEffect(() => {
+    if (!recommendConfettiMessageId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setRecommendConfettiMessageId(''), 620);
+    return () => window.clearTimeout(timeoutId);
+  }, [recommendConfettiMessageId]);
 
   useEffect(() => {
     if (!pendingScrollRecipeId) {
@@ -1100,7 +1392,12 @@ export default function App() {
     messageId: string,
     showToast = false,
   ) => {
-    const stepCacheKey = buildRecipeStepCacheKey(recipe, nextIngredients);
+    const stepCacheKey = buildRecipeStepCacheKey(
+      recipe,
+      nextIngredients,
+      locale,
+      isPronunciationModeEnabled,
+    );
     const cachedDetail = readCachedValue<RecipeDetail>(recipeStepCacheStorageKey, stepCacheKey);
     if (isValidCachedRecipeDetail(recipe, nextIngredients, cachedDetail)) {
       const normalizedCachedDetail = normalizeCachedRecipeDetail(recipe, cachedDetail);
@@ -1131,6 +1428,8 @@ export default function App() {
         profile,
         ingredients: nextIngredients,
         recipe,
+        locale,
+        pinyinMode: isPronunciationModeEnabled,
       }, (event) => {
         patchRecipeDetailStreamNodes(recipe.id, event);
         const detailFromEvent = getRecipeDetailFromStreamEvent(event);
@@ -1145,17 +1444,21 @@ export default function App() {
         throw new Error(streamErrorMessage);
       }
       if (!streamedDetail) {
-        throw new Error(streamErrorMessage || '菜谱步骤流式响应未返回有效卡片。');
+        throw new Error(streamErrorMessage || t(locale, '菜谱步骤流式响应未返回有效卡片。', 'The cooking steps stream did not return a valid card.'));
       }
       const detail = normalizeCachedRecipeDetail(recipe, streamedDetail as RecipeDetail);
       setRecipeDetailsById((current) => ({ ...current, [recipe.id]: detail }));
       mergeRecipeDetailIntoCurrentSession(messageId, detail);
       writeCachedValue(recipeStepCacheStorageKey, stepCacheKey, detail);
     } catch (detailError) {
-      const message = detailError instanceof Error ? detailError.message : '菜谱步骤获取失败。';
+      const message = detailError instanceof Error ? detailError.message : t(locale, '菜谱步骤获取失败。', 'Failed to get cooking steps.');
       setRecipeDetailErrorsById((current) => ({ ...current, [recipe.id]: message }));
       if (showToast) {
-        setToastMessage(message === '接口数据响应超时' ? message : `${recipe.name} 步骤获取失败，请稍后重试。`);
+        setToastMessage(
+          message === '接口数据响应超时'
+            ? t(locale, '接口数据响应超时', 'Request timed out')
+            : t(locale, `${recipe.name} 步骤获取失败，请稍后重试。`, `Failed to get steps for ${recipe.name}. Please try again later.`),
+        );
       }
     } finally {
       setRecipeDetailLoadingById((current) => ({ ...current, [recipe.id]: false }));
@@ -1163,7 +1466,7 @@ export default function App() {
   };
 
   const handleIngredientKnowledgeClick = async (ingredient: IngredientItem) => {
-    const knowledgeKey = buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name);
+    const knowledgeKey = buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale);
     if (!knowledgeKey) {
       return;
     }
@@ -1187,13 +1490,16 @@ export default function App() {
     });
 
     try {
-      const knowledge = await fetchIngredientKnowledge(ingredient.normalizedName || ingredient.name);
+      const knowledge = await fetchIngredientKnowledge(ingredient.normalizedName || ingredient.name, {
+        locale,
+        pinyinMode: isPronunciationModeEnabled,
+      });
       setIngredientKnowledgeByName((current) => ({ ...current, [knowledgeKey]: knowledge }));
       writeCachedValue(ingredientKnowledgeCacheStorageKey, knowledgeKey, knowledge);
     } catch (knowledgeError) {
-      const message = knowledgeError instanceof Error ? knowledgeError.message : '食材知识获取失败。';
+      const message = knowledgeError instanceof Error ? knowledgeError.message : t(locale, '食材知识获取失败。', 'Failed to get ingredient notes.');
       setIngredientKnowledgeErrorsByName((current) => ({ ...current, [knowledgeKey]: message }));
-      setToastMessage(`${ingredient.name} 知识卡片获取失败，请稍后重试。`);
+      setToastMessage(t(locale, `${ingredient.name} 知识卡片获取失败，请稍后重试。`, `Failed to get notes for ${getIngredientDisplayName(ingredient.name, locale)}. Please try again later.`));
     } finally {
       setIngredientKnowledgeLoadingByName((current) => ({ ...current, [knowledgeKey]: false }));
     }
@@ -1208,7 +1514,7 @@ export default function App() {
     window.setTimeout(() => {
       setRecipeVideoGeneratedById((current) => ({ ...current, [recipe.id]: true }));
       setRecipeVideoLoadingById((current) => ({ ...current, [recipe.id]: false }));
-      setToastMessage(`${recipe.name} 卡通步骤视频已生成`);
+      setToastMessage(t(locale, `${recipe.name} 卡通步骤视频已生成`, `Cartoon cooking video for ${recipe.name} is ready.`));
     }, 900);
   };
 
@@ -1221,7 +1527,11 @@ export default function App() {
     if (nextIngredients.length === 0) {
       addChatMessage({
         role: 'assistant',
-        text: '我还没有识别到可用食材。你可以输入“鸡蛋、番茄、黄瓜”，或直接拍一张食材照片。',
+        text: t(
+          locale,
+          '我还没有识别到可用食材。你可以输入“鸡蛋、番茄、黄瓜”，或直接拍一张食材照片。',
+          'I have not found any usable ingredients yet. Try typing “egg, tomato, cucumber” or take a photo of your ingredients.',
+        ),
       });
       return;
     }
@@ -1238,10 +1548,21 @@ export default function App() {
 
     try {
       const recommendationPrompt = [
-        `儿童情况：${childContext.trim() || defaultChildContext}`,
-        `用户本轮输入：${prompt}`,
+        isEnglish
+          ? `Child context: ${childContext.trim() || defaultChildContextEn}`
+          : `儿童情况：${childContext.trim() || defaultChildContext}`,
+        isEnglish ? `User input: ${prompt}` : `用户本轮输入：${prompt}`,
+        `输出语言：${isEnglish ? 'English' : '简体中文'}`,
+        isPronunciationModeEnabled
+          ? `读音辅助：开启，${isEnglish ? '菜谱名称读音字段输出英文单词音节组合' : '菜谱名称读音字段输出带声调拼音'}`
+          : '读音辅助：关闭，不输出菜谱名称拼音或音节辅助内容',
       ].join('\n');
-      const recommendationCacheKey = buildRecommendationCacheKey(selectedProfile, ingredientsKey);
+      const recommendationCacheKey = buildRecommendationCacheKey(
+        selectedProfile,
+        ingredientsKey,
+        locale,
+        isPronunciationModeEnabled,
+      );
       const cachedRecommendation = forceRefresh
         ? null
         : readCachedValue<RecommendationResponse>(
@@ -1292,7 +1613,7 @@ export default function App() {
       skipNextChatAutoScrollRef.current = true;
       const streamingRecipeMessage = addChatMessage({
         role: 'assistant',
-        text: '正在生成菜谱推荐...',
+        text: t(locale, '正在生成菜谱推荐...', 'Generating recipe ideas...'),
         nodes: [{ id: 'recommendation_stream_intro', type: 'text', content: '' }],
         ingredientsKey,
         ingredients: nextIngredients,
@@ -1300,22 +1621,31 @@ export default function App() {
       let data = cachedRecommendation;
       let streamErrorMessage = '';
       if (!data) {
-        await streamRecommendations(selectedProfile, nextIngredients, recommendationPrompt, (event) => {
-          patchChatMessageNodes(streamingRecipeMessage.id, event);
-          const streamData = getRecommendationDataFromStreamEvent(event);
-          if (streamData) {
-            data = streamData;
-          }
-          if (event.type === 'error') {
-            streamErrorMessage = event.message;
-          }
-        });
+        await streamRecommendations(
+          selectedProfile,
+          nextIngredients,
+          recommendationPrompt,
+          {
+            locale,
+            pinyinMode: isPronunciationModeEnabled,
+          },
+          (event) => {
+            patchChatMessageNodes(streamingRecipeMessage.id, event);
+            const streamData = getRecommendationDataFromStreamEvent(event);
+            if (streamData) {
+              data = streamData;
+            }
+            if (event.type === 'error') {
+              streamErrorMessage = event.message;
+            }
+          },
+        );
       }
       if (!data && streamErrorMessage) {
         throw new Error(streamErrorMessage);
       }
       if (!data) {
-        throw new Error(streamErrorMessage || '菜谱推荐流式响应未返回有效卡片。');
+        throw new Error(streamErrorMessage || t(locale, '菜谱推荐流式响应未返回有效卡片。', 'The recipe stream did not return a valid card.'));
       }
       if (!cachedRecommendation) {
         writeCachedValue(recommendationCacheStorageKey, recommendationCacheKey, data);
@@ -1330,7 +1660,11 @@ export default function App() {
           message.id === streamingRecipeMessage.id
             ? {
                 ...message,
-                text: `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
+                text: t(
+                  locale,
+                  `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
+                  `Based on ${nextIngredients.map((item) => getIngredientDisplayName(item.name, locale)).join(', ')}, I found ${recipes.length} kid-friendly recipe ${recipes.length === 1 ? 'idea' : 'ideas'}.`,
+                ),
                 recipes,
                 recipeDetails,
               }
@@ -1340,7 +1674,7 @@ export default function App() {
       setPendingIngredientMessageId(ingredientMessageId || streamingRecipeMessage.id);
       setManualIngredient('');
     } catch (recommendationError) {
-      const message = recommendationError instanceof Error ? recommendationError.message : '推荐失败，请稍后重试。';
+      const message = recommendationError instanceof Error ? recommendationError.message : t(locale, '推荐失败，请稍后重试。', 'Recipe recommendation failed. Please try again later.');
       setError(message);
       addChatMessage({
         role: 'assistant',
@@ -1360,7 +1694,7 @@ export default function App() {
       id: `ingredient_${crypto.randomUUID()}`,
       name: suggestion.name,
       normalizedName: suggestion.name,
-      quantity: '适量',
+      quantity: t(locale, '适量', 'as needed'),
       source: 'manual',
       confidence: 1,
     };
@@ -1375,11 +1709,15 @@ export default function App() {
 
     addChatMessage({
       role: 'user',
-      text: suggestion.name,
+      text: getIngredientDisplayName(suggestion.name, locale),
     });
     addChatMessage({
       role: 'assistant',
-      text: `已选择时令食材：${suggestion.name}。你可以继续补充食材，也可以直接搜索菜谱。`,
+      text: t(
+        locale,
+        `已选择时令食材：${suggestion.name}。你可以继续补充食材，也可以直接搜索菜谱。`,
+        `Selected seasonal ingredient: ${getIngredientDisplayName(suggestion.name, locale)}. You can add more ingredients or get recipe ideas now.`,
+      ),
       ingredients: nextIngredients,
     });
   };
@@ -1399,7 +1737,11 @@ export default function App() {
         setChildContext(prompt);
         addChatMessage({
           role: 'assistant',
-          text: '你提到了可能引发严重急性过敏的情况。我已记录这条特殊饮食信息。为了更安全，请补充孩子是否已确诊相关食材过敏、严重程度，以及是否需要完全避开这类食材。',
+          text: t(
+            locale,
+            '你提到了可能引发严重急性过敏的情况。我已记录这条特殊饮食信息。为了更安全，请补充孩子是否已确诊相关食材过敏、严重程度，以及是否需要完全避开这类食材。',
+            'You mentioned a possible severe allergy risk. I saved this special diet note. For safety, please add whether the child has a confirmed allergy, how severe it is, and whether the ingredient must be fully avoided.',
+          ),
         });
         setManualIngredient('');
         return;
@@ -1408,10 +1750,14 @@ export default function App() {
       const parsed = await parseIngredientText(prompt);
       const nextIngredients = mergeIngredientItems(ingredients, parsed.ingredients);
       if (nextIngredients.length > 10) {
-        setError('一次最多支持 10 个食材，请减少食材后再继续添加。');
+        setError(t(locale, '一次最多支持 10 个食材，请减少食材后再继续添加。', 'Up to 10 ingredients are supported at once. Please remove some before adding more.'));
         addChatMessage({
           role: 'assistant',
-          text: '一次最多支持 10 个食材。当前识别后会超过上限，请减少食材或换一组食材。',
+          text: t(
+            locale,
+            '一次最多支持 10 个食材。当前识别后会超过上限，请减少食材或换一组食材。',
+            'Up to 10 ingredients are supported at once. This result would exceed the limit, so please remove some ingredients or try another set.',
+          ),
         });
         return;
       }
@@ -1422,14 +1768,16 @@ export default function App() {
       }
       addChatMessage({
         role: 'assistant',
-        text: parsed.ingredients.length > 0 ? '我识别到了这些食材。你可以继续补充食材，也可以直接搜索菜谱。' : '我暂时没有识别到明确食材，可以换一种说法再试。',
+        text: parsed.ingredients.length > 0
+          ? t(locale, '我识别到了这些食材。你可以继续补充食材，也可以直接搜索菜谱。', 'I found these ingredients. You can add more or get recipe ideas now.')
+          : t(locale, '我暂时没有识别到明确食材，可以换一种说法再试。', 'I could not find a clear ingredient yet. Try saying it another way.'),
         ingredients: nextIngredients,
       });
     } catch (chatError) {
-      setError(chatError instanceof Error ? chatError.message : '食材识别失败。');
+      setError(chatError instanceof Error ? chatError.message : t(locale, '食材识别失败。', 'Ingredient recognition failed.'));
       addChatMessage({
         role: 'assistant',
-        text: chatError instanceof Error ? chatError.message : '食材识别失败，请稍后再试。',
+        text: chatError instanceof Error ? chatError.message : t(locale, '食材识别失败，请稍后再试。', 'Ingredient recognition failed. Please try again later.'),
       });
     } finally {
       setIsParsingText(false);
@@ -1446,29 +1794,33 @@ export default function App() {
       const imageDataUrl = await readImageAsDataUrl(file);
       addChatMessage({
         role: 'user',
-        text: '我上传了一张食材图片',
+        text: t(locale, '我上传了一张食材图片', 'I uploaded an ingredient photo.'),
         imageDataUrl,
-        imageAlt: file.name ? `用户上传的食材图片：${file.name}` : '用户上传的食材图片',
+        imageAlt: file.name
+          ? t(locale, `用户上传的食材图片：${file.name}`, `Ingredient photo uploaded by user: ${file.name}`)
+          : t(locale, '用户上传的食材图片', 'Ingredient photo uploaded by user'),
       });
 
       const data = await uploadIngredientImage(file);
       const nextIngredients = mergeIngredientItems(ingredients, data.ingredients);
       if (nextIngredients.length > 10) {
-        setError('一次最多支持 10 个食材，请减少食材后再继续添加。');
+        setError(t(locale, '一次最多支持 10 个食材，请减少食材后再继续添加。', 'Up to 10 ingredients are supported at once. Please remove some before adding more.'));
         addChatMessage({
           role: 'assistant',
-          text: '图片识别出的食材加入后会超过 10 个上限，请减少食材后再继续。',
+          text: t(locale, '图片识别出的食材加入后会超过 10 个上限，请减少食材后再继续。', 'The photo result would exceed the 10 ingredient limit. Please remove some ingredients first.'),
         });
         return;
       }
       setIngredients(nextIngredients);
       addChatMessage({
         role: 'assistant',
-        text: data.ingredients.length > 0 ? '我从图片里识别到了这些食材。' : '我暂时没有从图片里识别到明确食材。',
+        text: data.ingredients.length > 0
+          ? t(locale, '我从图片里识别到了这些食材。', 'I found these ingredients in the photo.')
+          : t(locale, '我暂时没有从图片里识别到明确食材。', 'I could not find clear ingredients in the photo yet.'),
         ingredients: nextIngredients,
       });
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : '图片上传失败。');
+      setError(uploadError instanceof Error ? uploadError.message : t(locale, '图片上传失败。', 'Image upload failed.'));
     } finally {
       setIsUploadingImage(false);
       event.target.value = '';
@@ -1477,17 +1829,17 @@ export default function App() {
 
   const handleStartVoiceInput = async () => {
     if (typeof window === 'undefined') {
-      setError('当前环境不支持语音输入。');
+      setError(t(locale, '当前环境不支持语音输入。', 'Voice input is not supported in this environment.'));
       return;
     }
 
     if (!window.isSecureContext) {
-      setError('当前页面不是安全连接，浏览器会拦截麦克风。请改用 HTTPS 地址访问，或直接在本机 localhost 打开。局域网 HTTP 开发地址通常无法语音输入。');
+      setError(t(locale, '当前页面不是安全连接，浏览器会拦截麦克风。请改用 HTTPS 地址访问，或直接在本机 localhost 打开。局域网 HTTP 开发地址通常无法语音输入。', 'This page is not using a secure connection, so the browser may block the microphone. Use HTTPS or local localhost.'));
       return;
     }
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError('当前浏览器不支持麦克风访问接口，请改用 Safari/Chrome 新版本，或使用文本输入。');
+      setError(t(locale, '当前浏览器不支持麦克风访问接口，请改用 Safari/Chrome 新版本，或使用文本输入。', 'This browser does not support microphone access. Try a newer Safari/Chrome or use text input.'));
       return;
     }
 
@@ -1525,7 +1877,7 @@ export default function App() {
       (window as Window & { webkitSpeechRecognition?: new () => unknown }).webkitSpeechRecognition;
 
     if (!SpeechRecognitionCtor) {
-      setError('当前设备浏览器没有开放系统语音转文字能力。请改用 Safari/Chrome 新版本，或先使用系统键盘麦克风转文字再粘贴。');
+      setError(t(locale, '当前设备浏览器没有开放系统语音转文字能力。请改用 Safari/Chrome 新版本，或先使用系统键盘麦克风转文字再粘贴。', 'This browser does not provide speech-to-text. Try a newer Safari/Chrome, or use the keyboard microphone and paste the text.'));
       return;
     }
 
@@ -1548,7 +1900,7 @@ export default function App() {
 
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = 'zh-CN';
+      recognition.lang = isEnglish ? 'en-US' : 'zh-CN';
       recognition.maxAlternatives = 1;
 
       recognition.onstart = () => {
@@ -1562,34 +1914,34 @@ export default function App() {
           .trim();
 
         if (!transcript) {
-          setError('没有识别到有效语音内容，请再试一次。');
+          setError(t(locale, '没有识别到有效语音内容，请再试一次。', 'No clear voice input was recognized. Please try again.'));
           return;
         }
 
         try {
           await handleChatSubmit(transcript);
         } catch (parseError) {
-          setError(parseError instanceof Error ? parseError.message : '语音文本解析失败。');
+          setError(parseError instanceof Error ? parseError.message : t(locale, '语音文本解析失败。', 'Voice text parsing failed.'));
         }
       };
 
       recognition.onerror = (event) => {
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          setError('当前浏览器未获得麦克风或语音识别权限，请先允许系统麦克风访问；如果你是通过局域网 HTTP 访问开发环境，也可能被浏览器直接拦截。');
+          setError(t(locale, '当前浏览器未获得麦克风或语音识别权限，请先允许系统麦克风访问；如果你是通过局域网 HTTP 访问开发环境，也可能被浏览器直接拦截。', 'The browser does not have microphone or speech permission. Allow microphone access first. Local network HTTP pages may also be blocked.'));
           return;
         }
 
         if (event.error === 'no-speech') {
-          setError('没有听到清晰语音，请靠近设备并再试一次。');
+          setError(t(locale, '没有听到清晰语音，请靠近设备并再试一次。', 'No clear speech was heard. Move closer to the device and try again.'));
           return;
         }
 
         if (event.error === 'audio-capture') {
-          setError('浏览器没有成功连接系统麦克风。请检查系统麦克风权限、浏览器权限，或改用 HTTPS 地址重新打开。');
+          setError(t(locale, '浏览器没有成功连接系统麦克风。请检查系统麦克风权限、浏览器权限，或改用 HTTPS 地址重新打开。', 'The browser could not connect to the microphone. Check system and browser permissions, or reopen with HTTPS.'));
           return;
         }
 
-        setError('当前设备暂时无法完成系统语音输入，请改用文本输入。');
+        setError(t(locale, '当前设备暂时无法完成系统语音输入，请改用文本输入。', 'Voice input is temporarily unavailable on this device. Please use text input.'));
       };
 
       recognition.onend = () => {
@@ -1601,8 +1953,8 @@ export default function App() {
       setIsListeningVoice(false);
       setError(
         voiceError instanceof Error
-          ? `无法启动系统语音输入：${voiceError.message}`
-          : '无法启动系统语音输入。请检查 HTTPS、安全权限和浏览器麦克风授权。',
+          ? t(locale, `无法启动系统语音输入：${voiceError.message}`, `Could not start voice input: ${voiceError.message}`)
+          : t(locale, '无法启动系统语音输入。请检查 HTTPS、安全权限和浏览器麦克风授权。', 'Could not start voice input. Check HTTPS, security permissions, and browser microphone access.'),
       );
     }
   };
@@ -1626,21 +1978,29 @@ export default function App() {
   const handleSearchWithCurrentIngredients = async (sourceIngredients?: IngredientItem[], sourceMessageId = '') => {
     const nextIngredients = sourceIngredients?.length ? sourceIngredients : ingredients;
     if (nextIngredients.length > 10) {
-      setError('一次最多支持 10 个食材，请减少食材后再获取推荐菜谱。');
+      setError(t(locale, '一次最多支持 10 个食材，请减少食材后再获取推荐菜谱。', 'Up to 10 ingredients are supported at once. Please remove some before getting recipes.'));
       addChatMessage({
         role: 'assistant',
-        text: '一次最多支持 10 个食材。请先减少食材数量，再获取推荐菜谱。',
+        text: t(locale, '一次最多支持 10 个食材。请先减少食材数量，再获取推荐菜谱。', 'Up to 10 ingredients are supported at once. Please remove some ingredients before getting recipe ideas.'),
       });
       return;
     }
 
     setIngredients((current) => mergeIngredientItems(current, sourceIngredients ?? []));
-    await requestChatRecommendations('请根据当前已识别食材推荐菜谱', nextIngredients, sourceMessageId, true);
+    if (sourceMessageId) {
+      setRecommendConfettiMessageId(sourceMessageId);
+    }
+    await requestChatRecommendations(
+      t(locale, '请根据当前已识别食材推荐菜谱', 'Please recommend recipes from the currently recognized ingredients.'),
+      nextIngredients,
+      sourceMessageId,
+      true,
+    );
   };
 
   const toggleFavoriteRecipe = (recipe: RecipeRecommendation) => {
     if (!selectedProfileId) {
-      setError('请先选择儿童档案后再收藏菜谱。');
+      setError(t(locale, '请先选择儿童档案后再收藏菜谱。', 'Please start a chat before saving recipes.'));
       return;
     }
 
@@ -1657,7 +2017,7 @@ export default function App() {
       persistFavoriteRecipes(next);
       if (!exists) {
         setFavoriteConfettiRecipeId(recipe.id);
-        setToastMessage(`已收藏 ${recipe.name}`);
+        setToastMessage(t(locale, `已收藏 ${recipe.name}`, `Saved ${recipe.name}`));
       }
       return next;
     });
@@ -1670,11 +2030,13 @@ export default function App() {
         onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
         locale={locale}
         onLocaleChange={handleLocaleChange}
+        pronunciationMode={isPronunciationModeEnabled}
+        onPronunciationModeChange={handlePronunciationModeChange}
       >
         <section className="page-grid">
           <div className="panel">
-            <p className="eyebrow">初始化中</p>
-            <h2>正在加载对话和收藏菜谱…</h2>
+            <p className="eyebrow">{isEnglish ? 'Loading' : '初始化中'}</p>
+            <h2>{isEnglish ? 'Loading chats and saved recipes...' : '正在加载对话和收藏菜谱…'}</h2>
           </div>
         </section>
       </AppShell>
@@ -1687,6 +2049,8 @@ export default function App() {
       onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
       locale={locale}
       onLocaleChange={handleLocaleChange}
+      pronunciationMode={isPronunciationModeEnabled}
+      onPronunciationModeChange={handlePronunciationModeChange}
     >
       <input
         ref={cameraImageInputRef}
@@ -1709,10 +2073,10 @@ export default function App() {
           <button
             type="button"
             className="conversation-backdrop"
-            aria-label="关闭历史对话"
+            aria-label={isEnglish ? 'Close chat history' : '关闭历史对话'}
             onClick={() => setIsConversationDrawerOpen(false)}
           />
-          <aside className="conversation-drawer" aria-label="历史对话">
+          <aside className="conversation-drawer" aria-label={isEnglish ? 'Chat History' : '历史对话'}>
             <div className="conversation-drawer-header">
               <div>
                 <p className="eyebrow">{isEnglish ? 'Chat History' : '历史对话'}</p>
@@ -1738,14 +2102,14 @@ export default function App() {
                       className="conversation-select-button"
                       onClick={() => handleSelectConversation(session)}
                     >
-                      <strong>{session.title}</strong>
-                      <span>{session.childContext || '默认小学阶段健康饮食原则'}</span>
+                      <strong>{getSessionTitleDisplay(session.title, locale)}</strong>
+                      <span>{session.childContext || (isEnglish ? 'Default healthy student profile' : '默认小学阶段健康饮食原则')}</span>
                     </button>
                     <button
                       type="button"
                       className="conversation-delete-button"
                       onClick={() => handleDeleteConversation(session.id)}
-                      aria-label={`删除历史对话：${session.title}`}
+                      aria-label={isEnglish ? `Delete chat: ${getSessionTitleDisplay(session.title, locale)}` : `删除历史对话：${session.title}`}
                     >
                       {isEnglish ? 'Delete' : '删除'}
                     </button>
@@ -1764,10 +2128,10 @@ export default function App() {
           <button
             type="button"
             className="settings-backdrop"
-            aria-label="关闭菜谱收藏"
+            aria-label={isEnglish ? 'Close recipe collection' : '关闭菜谱收藏'}
             onClick={() => setIsFavoriteDrawerOpen(false)}
           />
-          <aside className="settings-drawer favorite-drawer" aria-label="菜谱收藏">
+          <aside className="settings-drawer favorite-drawer" aria-label={isEnglish ? 'Recipe Collection' : '菜谱收藏'}>
             <div className="drawer-header">
               <div>
                 <p className="eyebrow">{isEnglish ? 'Recipe Collection' : '菜谱收藏'}</p>
@@ -1786,7 +2150,7 @@ export default function App() {
                     className="settings-menu-item favorite-drawer-item"
                     onClick={() => handleOpenFavoriteRecipe(recipe)}
                   >
-                    <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
+                    <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} showPronunciation={isPronunciationModeEnabled} />
                     <span>{recipe.englishName} · {recipe.estimatedTimeMinutes} {isEnglish ? 'min' : '分钟'}</span>
                   </button>
                 ))
@@ -1803,14 +2167,14 @@ export default function App() {
 
       {error ? (
         <div className="alert-box error-banner">
-          <strong>当前提示</strong>
-          <p>{error}</p>
+          <strong>{isEnglish ? 'Notice' : '当前提示'}</strong>
+          <p>{localizeStaticText(error, locale)}</p>
         </div>
       ) : null}
 
       {toastMessage ? (
         <div className="toast-banner" role="status" aria-live="polite">
-          {toastMessage}
+          {localizeStaticText(toastMessage, locale)}
         </div>
       ) : null}
 
@@ -1830,7 +2194,7 @@ export default function App() {
                 className={session.id === activeChatSessionId ? 'tablet-panel-item active' : 'tablet-panel-item'}
                 onClick={() => handleSelectConversation(session)}
               >
-                <strong>{session.title}</strong>
+                <strong>{getSessionTitleDisplay(session.title, locale)}</strong>
                 <span>{session.childContext || (isEnglish ? 'Default healthy student profile' : '默认小学阶段健康饮食原则')}</span>
               </button>
             ))
@@ -1856,7 +2220,7 @@ export default function App() {
                 className="tablet-panel-item favorite"
                 onClick={() => handleOpenFavoriteRecipe(recipe)}
               >
-                <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} />
+                <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} showPronunciation={isPronunciationModeEnabled} />
                 <span>{recipe.englishName} · {recipe.estimatedTimeMinutes} {isEnglish ? 'min' : '分钟'}</span>
               </button>
             ))
@@ -1873,15 +2237,14 @@ export default function App() {
         onTouchEnd={handleChatboxTouchEnd}
         onTouchCancel={handleChatboxTouchEnd}
       >
-          <div className="kids-chat-hero" aria-label="儿童烹饪助手">
+          <div className="kids-chat-hero" aria-label={isEnglish ? 'Kids cooking assistant' : '儿童烹饪助手'}>
             <div className="mascot-badge" aria-hidden="true">
               <span className="mascot-chef-hat">▴</span>
               <span className="mascot-face">😊</span>
               <span className="mascot-spoon">🥄</span>
             </div>
             <div>
-              <p className="eyebrow">{isEnglish ? 'KIDS COOKING BOT' : '儿童美食智能体'}</p>
-              <h2>{isEnglish ? 'What ingredients should we turn into something delicious?' : '今天想把哪些食材变成好吃的？'}</h2>
+              <h3>{isEnglish ? 'What ingredients should we turn into something delicious?' : '今天想把哪些食材变成好吃的？'}</h3>
               <p>{isEnglish ? 'Speak, take a photo, upload a picture, or type your ingredients.' : '可以说出来、拍下来，或直接打字告诉我。'}</p>
             </div>
           </div>
@@ -1893,7 +2256,7 @@ export default function App() {
                   chatMessages.some((item) => item.recipes?.length && item.ingredientsKey === messageIngredientsKey),
               );
               const activeKnowledgeIngredient = message.ingredients?.find(
-                (ingredient) => buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name) === activeIngredientKnowledgeKey,
+                (ingredient) => buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale) === activeIngredientKnowledgeKey,
               );
               const activeIngredientKnowledge = activeKnowledgeIngredient
                 ? ingredientKnowledgeByName[activeIngredientKnowledgeKey]
@@ -1904,6 +2267,7 @@ export default function App() {
               const activeIngredientKnowledgeError = activeKnowledgeIngredient
                 ? ingredientKnowledgeErrorsByName[activeIngredientKnowledgeKey]
                 : '';
+              const displayMessageText = localizeStaticText(message.text, locale);
 
               return (
               <article
@@ -1913,20 +2277,20 @@ export default function App() {
               >
                 <div className="chat-bubble">
                   <div className="chat-bubble-content">
-                    {message.nodes?.length ? <StreamNodesRenderer nodes={message.nodes} /> : <p>{message.text}</p>}
+                    {message.nodes?.length ? <StreamNodesRenderer nodes={message.nodes} /> : <p>{displayMessageText}</p>}
                     {message.imageDataUrl ? (
                       <img
                         className="chat-image-preview"
                         src={message.imageDataUrl}
-                        alt={message.imageAlt || '用户上传的食材图片'}
+                        alt={message.imageAlt || t(locale, '用户上传的食材图片', 'Ingredient photo uploaded by user')}
                       />
                     ) : null}
                   </div>
                   <button
                     type="button"
                     className="assistant-speech-button"
-                    onClick={() => speak(message.text, 'zh-CN')}
-                    aria-label={message.role === 'user' ? '朗读用户消息' : '朗读助手消息'}
+                    onClick={() => speak(displayMessageText, isEnglish ? 'en-US' : 'zh-CN')}
+                    aria-label={message.role === 'user' ? t(locale, '朗读用户消息', 'Read user message') : t(locale, '朗读助手消息', 'Read assistant message')}
                   >
                     <PlayInlineIcon />
                   </button>
@@ -1950,6 +2314,8 @@ export default function App() {
                     {message.ingredients.map((ingredient) => {
                       const visual = getIngredientVisual(ingredient.name);
                       const isFallback = visual.name === defaultIngredientVisual.name;
+                      const ingredientDisplayName = getIngredientDisplayName(ingredient.name, locale);
+                      const ingredientPronunciation = isEnglish ? ingredientDisplayName : visual.pinyin;
 
 	                      return (
 	                        <article
@@ -1957,7 +2323,7 @@ export default function App() {
 	                          className={
 	                            [
 	                              isFallback ? 'chat-ingredient-card fallback' : 'chat-ingredient-card',
-	                              buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name) === activeIngredientKnowledgeKey
+	                              buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale) === activeIngredientKnowledgeKey
 	                                ? 'active'
 	                                : '',
 	                            ].filter(Boolean).join(' ')
@@ -1972,9 +2338,9 @@ export default function App() {
 	                            }
 	                          }}
 	                        >
-                          <span className="ingredient-pinyin">{visual.pinyin}</span>
-                          <strong>{ingredient.name}</strong>
-                          <div className="ingredient-emoji" role="img" aria-label={isFallback ? '默认食材占位' : ingredient.name}>
+                          <span className="ingredient-pinyin">{ingredientPronunciation}</span>
+                          <strong>{ingredientDisplayName}</strong>
+                          <div className="ingredient-emoji" role="img" aria-label={isFallback ? t(locale, '默认食材占位', 'Default ingredient placeholder') : ingredientDisplayName}>
                             {visual.emoji}
                           </div>
                           <div className="ingredient-card-toolbar">
@@ -1983,9 +2349,9 @@ export default function App() {
 	                              className="ingredient-icon-button speech"
 	                              onClick={(event) => {
 	                                event.stopPropagation();
-	                                speak(`${ingredient.name}，${visual.pinyin}`, 'zh-CN');
+	                                speak(`${ingredientDisplayName}，${ingredientPronunciation}`, isEnglish ? 'en-US' : 'zh-CN');
 	                              }}
-	                              aria-label={`朗读食材：${ingredient.name}`}
+	                              aria-label={t(locale, `朗读食材：${ingredient.name}`, `Read ingredient: ${ingredientDisplayName}`)}
 	                            >
                               <PlayInlineIcon />
                             </button>
@@ -1996,7 +2362,7 @@ export default function App() {
 	                                event.stopPropagation();
 	                                removeChatIngredient(ingredient.id);
 	                              }}
-	                              aria-label={`删除食材：${ingredient.name}`}
+	                              aria-label={t(locale, `删除食材：${ingredient.name}`, `Remove ingredient: ${ingredientDisplayName}`)}
                             >
                               <TrashInlineIcon />
                             </button>
@@ -2009,19 +2375,19 @@ export default function App() {
                         className="ingredient-add-card"
                         onClick={() => fileImageInputRef.current?.click()}
                         disabled={isRecognizingIngredients}
-                        aria-label="从本地照片继续新增食材"
+                        aria-label={isEnglish ? 'Add more ingredients from a local photo' : '从本地照片继续新增食材'}
                       >
                         <span>+</span>
 	                        <strong>{isEnglish ? 'Add more' : '添加食材'}</strong>
 	                      </button>
 	                    </div>
 	                    {activeKnowledgeIngredient ? (
-	                      <section className="ingredient-knowledge-card" aria-label={`${activeKnowledgeIngredient.name} 食材知识卡片`}>
+	                      <section className="ingredient-knowledge-card" aria-label={t(locale, `${activeKnowledgeIngredient.name} 食材知识卡片`, `${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} ingredient notes`)}>
 	                        <div className="ingredient-knowledge-heading">
 	                          <div>
 	                            <p>{isEnglish ? 'Ingredient Notes' : '食材小百科'}</p>
 	                            <strong>
-	                              {activeKnowledgeIngredient.name}
+	                              {getIngredientDisplayName(activeKnowledgeIngredient.name, locale)}
 	                              <span aria-hidden="true"> · {getIngredientVisual(activeKnowledgeIngredient.name).emoji}</span>
 	                            </strong>
 	                          </div>
@@ -2031,16 +2397,18 @@ export default function App() {
 	                            onClick={() => {
 	                              const knowledgeText = activeIngredientKnowledge
 	                                ? [
-	                                    `${activeIngredientKnowledge.name}的营养价值：${activeIngredientKnowledge.nutritionValues.join('，')}`,
-	                                    `产地：${activeIngredientKnowledge.origin}`,
-	                                    `适宜气候：${activeIngredientKnowledge.growingClimate}`,
-	                                    `最佳搭配：${activeIngredientKnowledge.bestPairings.join('、')}`,
+	                                    isEnglish
+	                                      ? `${getIngredientDisplayName(activeIngredientKnowledge.name, locale)} nutrition: ${activeIngredientKnowledge.nutritionValues.join(', ')}`
+	                                      : `${activeIngredientKnowledge.name}的营养价值：${activeIngredientKnowledge.nutritionValues.join('，')}`,
+	                                    isEnglish ? `Origin: ${activeIngredientKnowledge.origin}` : `产地：${activeIngredientKnowledge.origin}`,
+	                                    isEnglish ? `Climate: ${activeIngredientKnowledge.growingClimate}` : `适宜气候：${activeIngredientKnowledge.growingClimate}`,
+	                                    isEnglish ? `Good pairings: ${activeIngredientKnowledge.bestPairings.join(', ')}` : `最佳搭配：${activeIngredientKnowledge.bestPairings.join('、')}`,
 	                                    activeIngredientKnowledge.kidFact,
-	                                  ].join('。')
-	                                : `${activeKnowledgeIngredient.name} 食材知识正在获取中`;
-	                              speak(knowledgeText, 'zh-CN');
+	                                  ].join(isEnglish ? '. ' : '。')
+	                                : t(locale, `${activeKnowledgeIngredient.name} 食材知识正在获取中`, `${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} notes are loading`);
+	                              speak(knowledgeText, isEnglish ? 'en-US' : 'zh-CN');
 	                            }}
-	                            aria-label={`朗读${activeKnowledgeIngredient.name}食材知识`}
+	                            aria-label={t(locale, `朗读${activeKnowledgeIngredient.name}食材知识`, `Read ${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} notes`)}
 	                          >
 	                            <PlayInlineIcon />
 	                          </button>
@@ -2106,6 +2474,23 @@ export default function App() {
                         onClick={() => void handleSearchWithCurrentIngredients(message.ingredients, message.id)}
                         disabled={isRecognizingIngredients || isFetchingRecommendations}
                       >
+                        {recommendConfettiMessageId === message.id ? (
+                          <span className="button-confetti recommend-button-confetti" aria-hidden="true">
+                            {Array.from({ length: 20 }).map((_, index) => (
+                              <span
+                                key={`${message.id}_recommend_confetti_${index}`}
+                                className="button-confetti-piece"
+                                style={{
+                                  '--x': `${((index % 7) - 3) * 14}px`,
+                                  '--y': `${-22 - (index % 5) * 7}px`,
+                                  '--r': `${index * 29}deg`,
+                                  '--delay': `${(index % 5) * 14}ms`,
+                                  '--color': ['#f71972', '#efd4d4', '#f3c9b6', '#dceeb1', '#c5b0f4'][index % 5],
+                                } as CSSProperties}
+                              />
+                            ))}
+                          </span>
+                        ) : null}
                         {isFetchingRecommendations ? (
                           <span className="recommend-loading-inline">
                             <img className="loading-icon recommend-loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
@@ -2128,7 +2513,7 @@ export default function App() {
                 {message.recipes?.length ? (
                   <section
                     className="recipe-carousel-shell"
-                    aria-label="推荐菜谱走马灯"
+                    aria-label={isEnglish ? 'Recommended recipe carousel' : '推荐菜谱走马灯'}
                     aria-roledescription="carousel"
                   >
                     <div className="recipe-carousel-header">
@@ -2137,7 +2522,7 @@ export default function App() {
                     </div>
                     <div
                       className="recipe-carousel"
-                      aria-label="推荐菜谱"
+                      aria-label={isEnglish ? 'Recommended recipes' : '推荐菜谱'}
 	                    >
 	                    {message.recipes.map((recipe) => {
 	                      const recipeDetail = recipeDetailsById[recipe.id];
@@ -2160,10 +2545,10 @@ export default function App() {
                           <button
                             type="button"
                             className="name-audio-button carousel-recipe-name"
-                            onClick={() => speak(recipe.name, 'zh-CN')}
-                            aria-label={`朗读菜名：${recipe.name}`}
+                            onClick={() => speak(recipe.name, isEnglish ? 'en-US' : 'zh-CN')}
+                            aria-label={t(locale, `朗读菜名：${recipe.name}`, `Read recipe name: ${recipe.name}`)}
                           >
-                            <RecipeName as="span" name={recipe.name} pinyin={recipe.namePinyin} />
+                            <RecipeName as="span" name={recipe.name} pinyin={recipe.namePinyin} showPronunciation={isPronunciationModeEnabled} />
                             <PlayInlineIcon />
                           </button>
                           <button
@@ -2181,8 +2566,8 @@ export default function App() {
                           <button
                             type="button"
                             className="mini-speech-button"
-                            onClick={() => speak(recipe.nutritionSummary, 'zh-CN')}
-                            aria-label="朗读营养摘要"
+                            onClick={() => speak(recipe.nutritionSummary, isEnglish ? 'en-US' : 'zh-CN')}
+                            aria-label={isEnglish ? 'Read nutrition summary' : '朗读营养摘要'}
                           >
                             <PlayInlineIcon />
                           </button>
@@ -2193,7 +2578,7 @@ export default function App() {
                             <small>{isEnglish ? 'min' : '分钟'}</small>
                           </span>
                           <span>
-                            <b>{formatRecipeDifficulty(recipe.difficulty)}</b>
+                            <b>{formatRecipeDifficulty(recipe.difficulty, locale)}</b>
                             <small>{isEnglish ? 'Level' : '难度'}</small>
                           </span>
                           <span>
@@ -2209,8 +2594,8 @@ export default function App() {
                                 <button
                                   type="button"
                                   className="mini-speech-button"
-                                  onClick={() => speak(`烹饪注意：${riskAlertText}`, 'zh-CN')}
-                                  aria-label="朗读烹饪注意"
+                                  onClick={() => speak(`${isEnglish ? 'Safety notes: ' : '烹饪注意：'}${riskAlertText}`, isEnglish ? 'en-US' : 'zh-CN')}
+                                  aria-label={isEnglish ? 'Read safety notes' : '朗读烹饪注意'}
                                 >
                                   <PlayInlineIcon />
                                 </button>
@@ -2238,27 +2623,32 @@ export default function App() {
                                   <span>{isEnglish ? 'Name / Amount' : '名称 / 用量'}</span>
                                 </div>
                                 <div className="ingredient-table" role="list">
-                                  {recipeDetail.ingredients.map((ingredient) => (
-                                    <div className="ingredient-row" key={`${recipe.id}_${ingredient.name}`} role="listitem">
-                                      <span className="ingredient-name">
-                                        {ingredient.name}
-                                        {getKnownIngredientVisual(ingredient.name) ? (
-                                          <span className="ingredient-inline-emoji" aria-hidden="true">
-                                            {getKnownIngredientVisual(ingredient.name)?.emoji}
-                                          </span>
-                                        ) : null}
-                                      </span>
-                                      <span className="ingredient-quantity">{ingredient.quantity}</span>
-                                      <button
-                                        type="button"
-                                        className="mini-speech-button ingredient-row-speech"
-                                        onClick={() => speak(`${ingredient.name}，用量 ${ingredient.quantity}`, 'zh-CN')}
-                                        aria-label={`朗读食材用量：${ingredient.name}`}
-                                      >
-                                        <PlayInlineIcon />
-                                      </button>
-                                    </div>
-                                  ))}
+                                  {recipeDetail.ingredients.map((ingredient) => {
+                                    const ingredientDisplayName = getIngredientDisplayName(ingredient.name, locale);
+                                    const visual = getKnownIngredientVisual(ingredient.name);
+
+                                    return (
+                                      <div className="ingredient-row" key={`${recipe.id}_${ingredient.name}`} role="listitem">
+                                        <span className="ingredient-name">
+                                          {ingredientDisplayName}
+                                          {visual ? (
+                                            <span className="ingredient-inline-emoji" aria-hidden="true">
+                                              {visual.emoji}
+                                            </span>
+                                          ) : null}
+                                        </span>
+                                        <span className="ingredient-quantity">{ingredient.quantity}</span>
+                                        <button
+                                          type="button"
+                                          className="mini-speech-button ingredient-row-speech"
+                                          onClick={() => speak(`${ingredientDisplayName}，${isEnglish ? 'amount ' : '用量 '}${ingredient.quantity}`, isEnglish ? 'en-US' : 'zh-CN')}
+                                          aria-label={t(locale, `朗读食材用量：${ingredient.name}`, `Read ingredient amount: ${ingredientDisplayName}`)}
+                                        >
+                                          <PlayInlineIcon />
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               </div>
 	                              <div className="inline-detail-block">
@@ -2266,8 +2656,8 @@ export default function App() {
 	                                  <strong>{isEnglish ? 'Cartoon Cooking Video' : '卡通烹饪步骤视频'}</strong>
 	                                  <span>{isEnglish ? 'Manual generation' : '手动生成'}</span>
 	                                </div>
-	                                <section className={hasGeneratedStepVideo ? 'recipe-video-panel generated' : 'recipe-video-panel'} aria-label={`${recipe.name} 卡通烹饪步骤视频`}>
-	                                  <div className="recipe-video-placeholder" role="img" aria-label={`${recipe.name} 视频占位符`}>
+	                                <section className={hasGeneratedStepVideo ? 'recipe-video-panel generated' : 'recipe-video-panel'} aria-label={t(locale, `${recipe.name} 卡通烹饪步骤视频`, `${recipe.name} cartoon cooking video`)}>
+	                                  <div className="recipe-video-placeholder" role="img" aria-label={t(locale, `${recipe.name} 视频占位符`, `${recipe.name} video placeholder`)}>
 	                                    <div className="video-sun" aria-hidden="true" />
 	                                    <div className="video-family" aria-hidden="true">
 	                                      <span>👩‍🍳</span>
@@ -2317,7 +2707,9 @@ export default function App() {
 	                                <ol className="recipe-step-timeline">
 	                                  {recipeDetail.steps.map((step, stepIndex) => {
 	                                    const speechKey = `step_${recipe.id}_${step.id}`;
-	                                    const speechText = `第${stepIndex + 1}步，${step.title}。${step.description}。${step.tip}。${step.childAction ? `小朋友可以：${step.childAction}。` : ''}${step.requiresParentAssist ? `这一步需要家长协助：${step.parentAction}。` : ''}`;
+	                                    const speechText = isEnglish
+	                                      ? `Step ${stepIndex + 1}. ${step.title}. ${step.description}. Tip: ${step.tip}. ${step.childAction ? `Kids can: ${step.childAction}.` : ''}${step.requiresParentAssist ? `Parent help: ${step.parentAction}.` : ''}`
+	                                      : `第${stepIndex + 1}步，${step.title}。${step.description}。${step.tip}。${step.childAction ? `小朋友可以：${step.childAction}。` : ''}${step.requiresParentAssist ? `这一步需要家长协助：${step.parentAction}。` : ''}`;
 	                                    return (
 	                                      <li key={step.id} className={step.requiresParentAssist ? 'recipe-step-item needs-assist' : 'recipe-step-item'}>
 	                                        <span className="step-index">{stepIndex + 1}</span>
@@ -2327,8 +2719,12 @@ export default function App() {
 	                                            <button
 	                                              type="button"
 	                                              className="step-speech-button"
-	                                              onClick={() => speakText(speechText, 'zh-CN', speechKey)}
-	                                              aria-label={`${activeSpeechKey === speechKey ? '停止朗读' : '朗读'}第${stepIndex + 1}步`}
+	                                              onClick={() => speakText(speechText, isEnglish ? 'en-US' : 'zh-CN', speechKey)}
+	                                              aria-label={
+	                                                isEnglish
+	                                                  ? `${activeSpeechKey === speechKey ? 'Stop' : 'Read'} step ${stepIndex + 1}`
+	                                                  : `${activeSpeechKey === speechKey ? '停止朗读' : '朗读'}第${stepIndex + 1}步`
+	                                              }
 	                                            >
 	                                              <PlayInlineIcon />
 	                                              {activeSpeechKey === speechKey ? (isEnglish ? 'Stop' : '停止') : (isEnglish ? 'Play' : '朗读')}
@@ -2364,7 +2760,7 @@ export default function App() {
                                 {recipeDetailLoadingById[recipe.id] ? (
                                   <>
                                     <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                                    正在重新获取...
+                                    {isEnglish ? 'Retrying...' : '正在重新获取...'}
                                   </>
                                 ) : (
                                   (isEnglish ? 'Try again' : '再次获取')
@@ -2425,10 +2821,12 @@ export default function App() {
           </div>
 
           {seasonalIngredientSuggestions.length > 0 ? (
-            <div className="chat-suggestions" aria-label="季节食材推荐">
+            <div className="chat-suggestions" aria-label={isEnglish ? 'Seasonal ingredient suggestions' : '季节食材推荐'}>
               {seasonalIngredientSuggestions.map((item) => {
                 const visual = getIngredientVisual(item.name);
                 const shouldShowEmoji = visual.name !== defaultIngredientVisual.name;
+                const displayName = getIngredientDisplayName(item.name, locale);
+                const displayReason = getSeasonalReasonDisplay(item.reason, locale);
 
                 return (
                   <button
@@ -2436,14 +2834,14 @@ export default function App() {
                     type="button"
                     onClick={() => handleSeasonalIngredientClick(item)}
                     disabled={isRecognizingIngredients}
-                    title={item.reason}
+                    title={displayReason}
                   >
                     {shouldShowEmoji ? (
-                      <span className="suggestion-emoji" role="img" aria-label={item.name}>
+                      <span className="suggestion-emoji" role="img" aria-label={displayName}>
                         {visual.emoji}
                       </span>
                     ) : null}
-                    <span>{item.name}</span>
+                    <span>{displayName}</span>
                   </button>
                 );
               })}
@@ -2456,7 +2854,7 @@ export default function App() {
               className="composer-icon-button"
               onClick={() => void handleStartVoiceInput()}
               disabled={isListeningVoice || isRecognizingIngredients}
-              aria-label="语音输入"
+              aria-label={isEnglish ? 'Voice input' : '语音输入'}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M12 14.5a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 0 0-7 0v5a3.5 3.5 0 0 0 3.5 3.5Zm-1.7-8.5a1.7 1.7 0 1 1 3.4 0v5a1.7 1.7 0 1 1-3.4 0V6Z" />
@@ -2480,7 +2878,7 @@ export default function App() {
               className="composer-icon-button"
               onClick={() => cameraImageInputRef.current?.click()}
               disabled={isUploadingImage || isRecognizingIngredients}
-              aria-label="拍摄食材"
+              aria-label={isEnglish ? 'Take ingredient photo' : '拍摄食材'}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M8.4 5.1 9.7 3.6c.24-.28.59-.44.96-.44h2.68c.37 0 .72.16.96.44l1.3 1.5h2.8A2.6 2.6 0 0 1 21 7.7v9.5a2.6 2.6 0 0 1-2.6 2.6H5.6A2.6 2.6 0 0 1 3 17.2V7.7a2.6 2.6 0 0 1 2.6-2.6h2.8Zm3.6 12a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6Zm0-1.8a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z" />
@@ -2491,7 +2889,7 @@ export default function App() {
               className="composer-icon-button"
               onClick={() => fileImageInputRef.current?.click()}
               disabled={isUploadingImage || isRecognizingIngredients}
-              aria-label="上传图片"
+              aria-label={isEnglish ? 'Upload image' : '上传图片'}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M11.1 12.9H6.9a.9.9 0 1 1 0-1.8h4.2V6.9a.9.9 0 1 1 1.8 0v4.2h4.2a.9.9 0 1 1 0 1.8h-4.2v4.2a.9.9 0 1 1-1.8 0v-4.2Z" />
@@ -2502,7 +2900,7 @@ export default function App() {
               className="primary-button composer-send-button"
               onClick={() => void handleChatSubmit()}
               disabled={!manualIngredient.trim() || isRecognizingIngredients}
-              aria-label="发送信息"
+              aria-label={isEnglish ? 'Send message' : '发送信息'}
             >
               {isRecognizingIngredients ? (
                 <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
@@ -2518,18 +2916,18 @@ export default function App() {
           <button
             type="button"
             className="drawer-backdrop"
-            aria-label="关闭菜名识字抽屉"
+            aria-label={isEnglish ? 'Close recipe name learning drawer' : '关闭菜名识字抽屉'}
             onClick={closeLearningDrawer}
           />
-          <aside className="learning-drawer" aria-label={`${learningRecipe.name} 菜名识字`}>
+          <aside className="learning-drawer" aria-label={t(locale, `${learningRecipe.name} 菜名识字`, `${learningRecipe.name} name learning`)}>
             <div className="drawer-header">
               <div>
-                <p className="eyebrow">菜名识字</p>
+                <p className="eyebrow">{isEnglish ? 'Name Learning' : '菜名识字'}</p>
                 <h2>{learningRecipe.name}</h2>
                 <p className="english-title">{learningRecipe.englishName}</p>
               </div>
               <button type="button" className="ghost-button" onClick={closeLearningDrawer}>
-                关闭
+                {isEnglish ? 'Close' : '关闭'}
               </button>
             </div>
             <div className="literacy-grid">
@@ -2539,7 +2937,7 @@ export default function App() {
                   type="button"
                   className="literacy-token"
                   onClick={() => speak(buildCharacterSpeech(item), 'zh-CN')}
-                  aria-label={`播报汉字 ${item.character}`}
+                  aria-label={t(locale, `播报汉字 ${item.character}`, `Read name token ${item.character}`)}
                 >
                   <ruby className="literacy-ruby">
                     <span className="literacy-character">{item.character}</span>
@@ -2547,7 +2945,7 @@ export default function App() {
                     <rt>{formatPinyin(item.pinyin)}</rt>
                     <rp>)</rp>
                   </ruby>
-                  <span>{item.strokes} 画 · {item.structure}</span>
+                  <span>{isEnglish ? `${item.strokes} strokes · ${item.structure}` : `${item.strokes} 画 · ${item.structure}`}</span>
                   <small>{item.hint}</small>
                 </button>
               ))}
