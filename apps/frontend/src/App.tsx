@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type TouchEvent } from 'react';
+import { motion, useReducedMotion, type PanInfo } from 'framer-motion';
 import { AppShell } from './components/AppShell';
 import { RecipeName } from './components/RecipeName';
 import audioPlayIcon from './assets/audio-play.svg';
@@ -47,6 +48,12 @@ const defaultChildContext =
 type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
 type TimedCache<T> = Record<string, { createdAt: string; expiresAt: string; data: T }>;
 type AppLocale = 'zh' | 'en';
+type RecipeCarouselMetrics = {
+  viewportWidth: number;
+  cardWidth: number;
+  gap: number;
+  paddingLeft: number;
+};
 
 const defaultChildContextEn =
   'Default audience: grade 1-6 students. Recipe principles: low oil, mild flavor, balanced meals, vitamin-rich ingredients, and balanced staples, protein, and vegetables. Avoid high sugar, high salt, deep-fried, and very spicy food. Unless a severe acute allergy risk is mentioned, do not ask for age, preferences, or allergens.';
@@ -892,6 +899,7 @@ export default function App() {
   const chatInputRef = useRef<HTMLInputElement>(null);
   const chatThreadEndRef = useRef<HTMLDivElement>(null);
   const skipNextChatAutoScrollRef = useRef(false);
+  const recipeCarouselViewportRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const ingredientSwipeRef = useRef({
     startX: 0,
     startY: 0,
@@ -943,8 +951,11 @@ export default function App() {
   const [recommendConfettiMessageId, setRecommendConfettiMessageId] = useState('');
   const [locale, setLocale] = useState<AppLocale>(() => readLocale());
   const [isPronunciationModeEnabled, setIsPronunciationModeEnabled] = useState(() => readPronunciationMode());
+  const [activeCarouselRecipeByMessageId, setActiveCarouselRecipeByMessageId] = useState<Record<string, string>>({});
+  const [recipeCarouselMetricsByMessageId, setRecipeCarouselMetricsByMessageId] = useState<Record<string, RecipeCarouselMetrics>>({});
   const isRecognizingIngredients = isParsingText || isUploadingImage;
   const isEnglish = locale === 'en';
+  const shouldReduceMotion = useReducedMotion();
 
   const handleLocaleChange = (nextLocale: AppLocale) => {
     setLocale(nextLocale);
@@ -1062,6 +1073,117 @@ export default function App() {
   const handleIngredientTouchMove = (event: TouchEvent<HTMLDivElement>) =>
     handleHorizontalTouchMove(event, ingredientSwipeRef);
   const handleIngredientTouchEnd = () => handleHorizontalTouchEnd(ingredientSwipeRef);
+
+  const measureRecipeCarousel = (messageId: string) => {
+    const viewportElement = recipeCarouselViewportRefs.current[messageId];
+    if (!viewportElement) {
+      return;
+    }
+
+    const firstCard = viewportElement.querySelector<HTMLElement>('[data-carousel-recipe-id]');
+    const trackElement = viewportElement.querySelector<HTMLElement>('.recipe-carousel-track');
+    if (!firstCard || !trackElement) {
+      return;
+    }
+
+    const trackStyles = window.getComputedStyle(trackElement);
+    const viewportStyles = window.getComputedStyle(viewportElement);
+    const nextMetrics: RecipeCarouselMetrics = {
+      viewportWidth: Math.round(viewportElement.getBoundingClientRect().width),
+      cardWidth: Math.round(firstCard.getBoundingClientRect().width),
+      gap: Math.round(Number.parseFloat(trackStyles.columnGap || trackStyles.gap || '0')) || 0,
+      paddingLeft: Math.round(Number.parseFloat(viewportStyles.paddingLeft || '0')) || 0,
+    };
+
+    setRecipeCarouselMetricsByMessageId((current) => {
+      const previousMetrics = current[messageId];
+      if (
+        previousMetrics &&
+        previousMetrics.viewportWidth === nextMetrics.viewportWidth &&
+        previousMetrics.cardWidth === nextMetrics.cardWidth &&
+        previousMetrics.gap === nextMetrics.gap &&
+        previousMetrics.paddingLeft === nextMetrics.paddingLeft
+      ) {
+        return current;
+      }
+
+      return { ...current, [messageId]: nextMetrics };
+    });
+  };
+
+  const getRecipeCarouselTrackX = (messageId: string, activeRecipeIndex: number) => {
+    const metrics = recipeCarouselMetricsByMessageId[messageId];
+    if (!metrics) {
+      return 0;
+    }
+
+    return (
+      metrics.viewportWidth / 2 -
+      metrics.paddingLeft -
+      metrics.cardWidth / 2 -
+      activeRecipeIndex * (metrics.cardWidth + metrics.gap)
+    );
+  };
+
+  const handleRecipeCarouselDragEnd = (
+    messageId: string,
+    recipes: RecipeRecommendation[],
+    activeRecipeIndex: number,
+    info: PanInfo,
+  ) => {
+    if (recipes.length <= 1) {
+      return;
+    }
+
+    const cardWidth = recipeCarouselMetricsByMessageId[messageId]?.cardWidth ?? 320;
+    const swipeThreshold = Math.max(42, cardWidth * 0.14);
+    const velocityThreshold = 420;
+    let nextRecipeIndex = activeRecipeIndex;
+
+    if (info.offset.x <= -swipeThreshold || info.velocity.x <= -velocityThreshold) {
+      nextRecipeIndex += 1;
+    } else if (info.offset.x >= swipeThreshold || info.velocity.x >= velocityThreshold) {
+      nextRecipeIndex -= 1;
+    }
+
+    nextRecipeIndex = Math.min(Math.max(nextRecipeIndex, 0), recipes.length - 1);
+    setActiveCarouselRecipeByMessageId((current) => ({
+      ...current,
+      [messageId]: recipes[nextRecipeIndex].id,
+    }));
+  };
+
+  const getCarouselCardMotionState = (recipeIndex: number, activeRecipeIndex: number) => {
+    const distance = Math.min(Math.abs(recipeIndex - activeRecipeIndex), 2);
+    const direction = Math.sign(recipeIndex - activeRecipeIndex);
+
+    return {
+      x: direction * distance * -12,
+      rotateY: direction * -36,
+      rotateZ: direction * -1.4,
+      scale: 1 - distance * 0.13,
+      opacity: 1 - distance * 0.22,
+      zIndex: 40 - distance * 10,
+    };
+  };
+
+  useEffect(() => {
+    const measureAllCarousels = () => {
+      chatMessages.forEach((message) => {
+        if (message.recipes?.length) {
+          measureRecipeCarousel(message.id);
+        }
+      });
+    };
+
+    const frameId = window.requestAnimationFrame(measureAllCarousels);
+    window.addEventListener('resize', measureAllCarousels);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', measureAllCarousels);
+    };
+  }, [chatMessages]);
 
   useEffect(() => {
     async function bootstrap() {
@@ -2111,7 +2233,7 @@ export default function App() {
                       onClick={() => handleDeleteConversation(session.id)}
                       aria-label={isEnglish ? `Delete chat: ${getSessionTitleDisplay(session.title, locale)}` : `删除历史对话：${session.title}`}
                     >
-                      {isEnglish ? 'Delete' : '删除'}
+                      <TrashInlineIcon />
                     </button>
                   </div>
                 ))
@@ -2188,15 +2310,27 @@ export default function App() {
         <div className="tablet-panel-list">
           {chatSessions.length > 0 ? (
             chatSessions.slice(0, 8).map((session) => (
-              <button
+              <div
                 key={`tablet_${session.id}`}
-                type="button"
-                className={session.id === activeChatSessionId ? 'tablet-panel-item active' : 'tablet-panel-item'}
-                onClick={() => handleSelectConversation(session)}
+                className={session.id === activeChatSessionId ? 'tablet-panel-row active' : 'tablet-panel-row'}
               >
-                <strong>{getSessionTitleDisplay(session.title, locale)}</strong>
-                <span>{session.childContext || (isEnglish ? 'Default healthy student profile' : '默认小学阶段健康饮食原则')}</span>
-              </button>
+                <button
+                  type="button"
+                  className="tablet-panel-item"
+                  onClick={() => handleSelectConversation(session)}
+                >
+                  <strong>{getSessionTitleDisplay(session.title, locale)}</strong>
+                  <span>{session.childContext || (isEnglish ? 'Default healthy student profile' : '默认小学阶段健康饮食原则')}</span>
+                </button>
+                <button
+                  type="button"
+                  className="tablet-panel-delete icon-only"
+                  onClick={() => handleDeleteConversation(session.id)}
+                  aria-label={isEnglish ? `Delete chat: ${getSessionTitleDisplay(session.title, locale)}` : `删除历史对话：${session.title}`}
+                >
+                  <TrashInlineIcon />
+                </button>
+              </div>
             ))
           ) : (
             <p className="tablet-panel-empty">{isEnglish ? 'No chats yet' : '暂无历史对话'}</p>
@@ -2214,15 +2348,27 @@ export default function App() {
         <div className="tablet-panel-list">
           {favoriteRecipes.length > 0 ? (
             favoriteRecipes.slice(0, 8).map((recipe) => (
-              <button
+              <div
                 key={`tablet_favorite_${recipe.id}`}
-                type="button"
-                className="tablet-panel-item favorite"
-                onClick={() => handleOpenFavoriteRecipe(recipe)}
+                className="tablet-panel-row"
               >
-                <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} showPronunciation={isPronunciationModeEnabled} />
-                <span>{recipe.englishName} · {recipe.estimatedTimeMinutes} {isEnglish ? 'min' : '分钟'}</span>
-              </button>
+                <button
+                  type="button"
+                  className="tablet-panel-item favorite"
+                  onClick={() => handleOpenFavoriteRecipe(recipe)}
+                >
+                  <RecipeName as="strong" name={recipe.name} pinyin={recipe.namePinyin} showPronunciation={isPronunciationModeEnabled} />
+                  <span>{recipe.englishName} · {recipe.estimatedTimeMinutes} {isEnglish ? 'min' : '分钟'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="tablet-panel-delete"
+                  onClick={() => toggleFavoriteRecipe(recipe)}
+                  aria-label={isEnglish ? `Remove saved recipe: ${recipe.name}` : `删除已收藏菜谱：${recipe.name}`}
+                >
+                  {isEnglish ? 'Remove' : '删除'}
+                </button>
+              </div>
             ))
           ) : (
             <p className="tablet-panel-empty">{isEnglish ? 'No saved recipes' : '暂无收藏菜谱'}</p>
@@ -2268,6 +2414,12 @@ export default function App() {
                 ? ingredientKnowledgeErrorsByName[activeIngredientKnowledgeKey]
                 : '';
               const displayMessageText = localizeStaticText(message.text, locale);
+              const activeCarouselRecipeId = message.recipes?.length
+                ? activeCarouselRecipeByMessageId[message.id] || message.recipes[0].id
+                : '';
+              const activeCarouselRecipeIndex = message.recipes?.length
+                ? Math.max(0, message.recipes.findIndex((recipe) => recipe.id === activeCarouselRecipeId))
+                : 0;
 
               return (
               <article
@@ -2523,19 +2675,43 @@ export default function App() {
                     <div
                       className="recipe-carousel"
                       aria-label={isEnglish ? 'Recommended recipes' : '推荐菜谱'}
+                      ref={(node) => {
+                        recipeCarouselViewportRefs.current[message.id] = node;
+                      }}
 	                    >
-	                    {message.recipes.map((recipe) => {
+                      <motion.div
+                        className="recipe-carousel-track"
+                        drag={message.recipes.length > 1 ? 'x' : false}
+                        dragDirectionLock
+                        dragElastic={0.18}
+                        dragMomentum={false}
+                        animate={{ x: getRecipeCarouselTrackX(message.id, activeCarouselRecipeIndex) }}
+                        transition={
+                          shouldReduceMotion
+                            ? { duration: 0 }
+                            : { type: 'spring', stiffness: 280, damping: 34, mass: 0.85 }
+                        }
+                        onDragEnd={(_, info) =>
+                          handleRecipeCarouselDragEnd(message.id, message.recipes ?? [], activeCarouselRecipeIndex, info)
+                        }
+                      >
+	                    {message.recipes.map((recipe, recipeIndex) => {
 	                      const recipeDetail = recipeDetailsById[recipe.id];
 	                      const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
 	                      const hasHighRiskAllergy = hasHighRiskAllergyAlert(riskAlertText, message.ingredients ?? ingredients);
 	                      const hasGeneratedStepVideo = Boolean(recipeVideoGeneratedById[recipe.id]);
 	                      const isGeneratingStepVideo = Boolean(recipeVideoLoadingById[recipe.id]);
+	                      const isActiveCarouselRecipe = recipe.id === activeCarouselRecipeId || (!activeCarouselRecipeId && recipeIndex === 0);
 
 	                      return (
-                        <article
+                        <motion.article
                           key={`${message.id}_${recipe.id}`}
-                          className="carousel-recipe-card"
+                          className={isActiveCarouselRecipe ? 'carousel-recipe-card coverflow-card active' : 'carousel-recipe-card coverflow-card'}
                           data-recipe-card-id={recipe.id}
+                          data-carousel-recipe-id={recipe.id}
+                          style={{ zIndex: getCarouselCardMotionState(recipeIndex, activeCarouselRecipeIndex).zIndex }}
+                          animate={shouldReduceMotion ? { x: 0, rotateY: 0, rotateZ: 0, scale: 1, opacity: 1 } : getCarouselCardMotionState(recipeIndex, activeCarouselRecipeIndex)}
+                          transition={{ type: 'spring', stiffness: 260, damping: 30, mass: 0.8 }}
                         >
                         <div className="recipe-card-kicker">
                           <span>{isEnglish ? 'Kid-friendly' : '儿童友好食谱'}</span>
@@ -2808,9 +2984,10 @@ export default function App() {
                             {favoriteRecipes.some((item) => item.id === recipe.id) ? (isEnglish ? 'Saved' : '已收藏') : (isEnglish ? 'Save' : '收藏')}
                           </button>
                         </div>
-                      </article>
+                      </motion.article>
                       );
                     })}
+                      </motion.div>
                     </div>
                   </section>
                 ) : null}

@@ -2107,13 +2107,15 @@ button {
 
 .conversation-delete-button {
   flex: 0 0 auto;
-  padding: 7px 9px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border: 1px solid rgba(255, 122, 26, 0.25);
   border-radius: 999px;
   background: rgba(255, 122, 26, 0.08);
   color: #a64600;
-  font-size: 0.78rem;
-  font-weight: 800;
 }
 
 .conversation-delete-button:hover {
@@ -3245,7 +3247,44 @@ button {
 }
 
 .recipe-carousel {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  padding: 6px 18px 16px;
+  perspective: 1400px;
+  scroll-snap-type: none;
+  scrollbar-width: none;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-overflow-scrolling: auto;
+  contain: layout style;
+}
+
+.recipe-carousel-track {
+  display: flex;
+  align-items: flex-start;
   gap: 12px;
+  width: max-content;
+  cursor: grab;
+  transform-style: preserve-3d;
+  touch-action: pan-y;
+  will-change: transform;
+}
+
+.recipe-carousel-track:active {
+  cursor: grabbing;
+}
+
+.recipe-carousel * {
+  user-select: text;
+}
+
+.recipe-carousel-track,
+.recipe-carousel-track * {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.recipe-carousel {
   scrollbar-width: none;
 }
 
@@ -3259,6 +3298,30 @@ button {
   border-radius: 22px;
   background: #ffffff;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.06);
+}
+
+.carousel-recipe-card.coverflow-card {
+  position: relative;
+  transform-origin: center center;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+  will-change: transform, opacity, filter;
+  scroll-snap-align: unset;
+}
+
+.carousel-recipe-card.coverflow-card.active {
+  border-color: #f71972;
+  box-shadow:
+    0 18px 34px rgba(247, 25, 114, 0.12),
+    0 8px 18px rgba(0, 0, 0, 0.05);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel-recipe-card.coverflow-card {
+    transform: none;
+    opacity: 1;
+    transition: none;
+  }
 }
 
 .recipe-card-kicker,
@@ -3438,6 +3501,19 @@ button {
   gap: 8px;
 }
 
+.tablet-panel-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.tablet-panel-row.active .tablet-panel-item,
+.tablet-panel-row:hover .tablet-panel-item {
+  border-color: #f4c4d5;
+  background: #fff3f8;
+}
+
 .tablet-panel-item {
   display: grid;
   gap: 5px;
@@ -3451,10 +3527,34 @@ button {
   text-align: left;
 }
 
-.tablet-panel-item.active,
 .tablet-panel-item:hover {
   border-color: #f4c4d5;
   background: #fff3f8;
+}
+
+.tablet-panel-delete {
+  align-self: stretch;
+  min-width: 44px;
+  padding: 0 8px;
+  border: 1px solid #f4c4d5;
+  border-radius: 14px;
+  background: #fff3f8;
+  color: #d7266f;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.tablet-panel-delete:hover {
+  border-color: #d7266f;
+  background: #ffe5ef;
+}
+
+.tablet-panel-delete.icon-only {
+  display: grid;
+  place-items: center;
+  min-width: 38px;
+  width: 38px;
+  padding: 0;
 }
 
 .tablet-panel-item strong,
