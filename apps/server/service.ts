@@ -227,7 +227,7 @@ export function getMockRecipeRecommendations(profile: ChildProfile, ingredients:
     .filter((entry) => entry.matchedCount > 0)
     .filter((entry) => entry.canCookWithCurrentIngredients)
     .sort((left, right) => right.matchedCount - left.matchedCount)
-    .slice(0, 2)
+    .slice(0, 3)
     .map((entry) => ({
       ...summarizeRecipe(entry.recipe),
       canCookWithCurrentIngredients: entry.canCookWithCurrentIngredients,

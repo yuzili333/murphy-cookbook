@@ -9,6 +9,7 @@ import {
 } from '../../service.js';
 import {
   generateCookingFeedback,
+  generateRecipeDetail,
   generateRecipePlan,
   isSiliconFlowConfigured,
   shouldRequireRealModel,
@@ -110,7 +111,7 @@ test('recommendRecipes uses local recipe catalog after model timeout and ignores
 
   assert.equal(fetchCalls, 2);
   assert.ok(elapsedMs < 500);
-  assert.ok(first.data.recipes.length <= 2);
+  assert.ok(first.data.recipes.length <= 3);
   assert.equal('imageUrl' in first.data.recipes[0], false);
   assert.deepEqual(first.data.recipes[0].fitReasons, []);
   assert.deepEqual(first.data.recipes[0].extraIngredients, []);
@@ -559,7 +560,7 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
   assert.equal(requestBody?.model, 'Qwen/Qwen3.5-27B');
   assert.equal(requestBody?.enable_thinking, false);
   assert.equal(requestBody?.stream, false);
-  assert.equal(requestBody?.max_tokens, 620);
+  assert.equal(requestBody?.max_tokens, 760);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -636,7 +637,7 @@ test('generateRecipePlan uses fast model for simple recommendations without slow
 
   assert.equal(result.recipes[0].name, '番茄鸡蛋');
   assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B']);
-  assert.deepEqual(requestedMaxTokens, [500]);
+  assert.deepEqual(requestedMaxTokens, [660]);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -963,6 +964,71 @@ test('getRecipeDetailForRecommendation strips step ingredients outside submitted
   assert.deepEqual(result.data.extraIngredients, []);
   assert.deepEqual(result.data.ingredients.map((item) => item.name), ['蚕豆', '少许盐']);
   assert.equal(JSON.stringify(result.data.steps).includes('盐'), true);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateRecipeDetail keeps English fallback step text in English mode', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+
+  global.fetch = (async () =>
+    new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            steps: [{
+              title: 'Wash tomato',
+              description: 'Step ingredients: tomato; Action: Wash the tomato under running water. Cut it into small pieces. Put the pieces in a clean bowl. It is done when the tomato is ready.',
+              requiresParentAssist: false,
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  const result = await generateRecipeDetail(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_tomato', name: 'tomato', normalizedName: 'tomato', quantity: '1 piece', source: 'manual' },
+      { id: 'ing_egg', name: 'egg', normalizedName: 'egg', quantity: '1 piece', source: 'manual' },
+    ],
+    {
+      id: 'recipe_en_detail_dynamic',
+      name: 'Tomato Egg Bowl',
+      englishName: 'Tomato Egg Bowl',
+      namePinyin: 'to-ma-to egg bowl',
+      ageRange: '7-12 years',
+      difficulty: 'easy',
+      estimatedTimeMinutes: 12,
+      riskAlerts: [],
+      nutritionSummary: 'Balanced and mild.',
+      canCookWithCurrentIngredients: true,
+    },
+    { locale: 'en', pinyinMode: true },
+  );
+
+  const stepText = JSON.stringify(result.steps);
+  assert.equal(stepText.includes('Extra ingredient action'), true);
+  assert.equal(stepText.includes('补充食材操作'), false);
+  assert.equal(stepText.includes('也要确认'), false);
+  assert.equal(stepText.includes('完成后就是'), false);
 
   global.fetch = originalFetch;
   if (originalKey) {

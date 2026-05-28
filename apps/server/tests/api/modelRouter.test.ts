@@ -16,7 +16,7 @@ test('ModelRouter routes simple recipe recommendation to fast model', () => {
   assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
   assert.equal(route.stream, false);
-  assert.equal(route.maxTokens, 500);
+  assert.equal(route.maxTokens, 660);
 });
 
 test('ModelRouter upgrades complex recipe recommendation to balanced model', () => {
@@ -36,7 +36,7 @@ test('ModelRouter upgrades complex recipe recommendation to balanced model', () 
   assert.deepEqual(route.fallbackModels, []);
   assert.equal(route.enableThinking, false);
   assert.equal(route.stream, false);
-  assert.equal(route.maxTokens, 620);
+  assert.equal(route.maxTokens, 760);
 });
 
 test('ModelRouter routes recipe steps to balanced model without slow fallback', () => {

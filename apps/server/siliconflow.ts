@@ -548,6 +548,22 @@ function compactList(items: unknown[] | undefined, maxItems = 4, maxItemLength =
     .slice(0, maxItems);
 }
 
+function translatePromptTerm(value: string) {
+  const dictionary: Record<string, string> = {
+    低油脂: 'low oil',
+    低油: 'low oil',
+    轻口味: 'mild flavor',
+    清淡: 'mild flavor',
+    膳食均衡: 'balanced meals',
+    维生素丰富: 'vitamin-rich',
+    搭配均衡: 'balanced ingredient pairing',
+    低盐: 'low salt',
+    无: 'none',
+  };
+
+  return dictionary[value] ?? value;
+}
+
 function getPromptIngredients(ingredients: IngredientItem[]) {
   return ingredients.slice(0, 10);
 }
@@ -639,7 +655,7 @@ function normalizeGeneratedRecipeSummaries(
   options: GenerationLocaleOptions = {},
 ) {
   const recipes = (payload.recipes ?? [])
-    .slice(0, 2)
+    .slice(0, 3)
     .filter((recipe) => recipe.name)
     .map((recipe, index) => {
       const name = String(recipe.name);
@@ -656,10 +672,10 @@ function normalizeGeneratedRecipeSummaries(
         ageRange: String(recipe.ageRange ?? `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`),
         difficulty: recipe.difficulty === 'hard' || recipe.difficulty === 'medium' ? recipe.difficulty : 'easy',
         estimatedTimeMinutes: Math.max(1, Number(recipe.estimatedTimeMinutes ?? 20)),
-        fitReasons: Array.isArray(recipe.fitReasons) ? recipe.fitReasons.map(String).slice(0, 3) : [],
+        fitReasons: [],
         riskAlerts: Array.isArray(recipe.riskAlerts) ? recipe.riskAlerts.map(String).slice(0, 3) : [],
         nutritionSummary: String(recipe.nutritionSummary ?? '营养搭配均衡，适合作为儿童一餐。'),
-        extraIngredients: Array.isArray(recipe.extraIngredients) ? recipe.extraIngredients.map(String).slice(0, 4) : [],
+        extraIngredients: [],
         canCookWithCurrentIngredients:
           typeof recipe.canCookWithCurrentIngredients === 'boolean'
             ? recipe.canCookWithCurrentIngredients
@@ -788,6 +804,7 @@ function getRecipeStepText(step: RecipeDetail['steps'][number]) {
 function ensureIngredientOperationsInSteps(
   steps: RecipeDetail['steps'],
   recipeIngredients: RecipeDetail['ingredients'],
+  locale: GenerationLocaleOptions['locale'] = 'zh',
 ) {
   if (steps.length === 0 || recipeIngredients.length === 0) {
     return steps;
@@ -803,7 +820,8 @@ function ensureIngredientOperationsInSteps(
 
   const targetStepIndex = steps.findIndex((step) => step.riskLevel === 'low');
   const fallbackStepIndex = targetStepIndex >= 0 ? targetStepIndex : 0;
-  const missingNamesText = missingIngredientNames.join('、');
+  const isEnglish = locale === 'en';
+  const missingNamesText = missingIngredientNames.join(isEnglish ? ', ' : '、');
 
   return steps.map((step, index) => {
     if (index !== fallbackStepIndex) {
@@ -812,14 +830,24 @@ function ensureIngredientOperationsInSteps(
 
     return {
       ...step,
-      description: `${step.description} 补充食材操作：把${missingNamesText}清洗或整理好，需要时切小，再按这一步一起加入。`,
-      childAction: `${step.childAction} 也要确认${missingNamesText}已经准备好并放到操作台旁。`,
-      expectedResult: `${step.expectedResult} ${missingNamesText}也完成清洗、整理或加入。`,
+      description: isEnglish
+        ? `${step.description} Extra ingredient action: wash or organize ${missingNamesText}, cut it smaller if needed, and add it during this step.`
+        : `${step.description} 补充食材操作：把${missingNamesText}清洗或整理好，需要时切小，再按这一步一起加入。`,
+      childAction: isEnglish
+        ? `${step.childAction} Also confirm ${missingNamesText} is ready and placed near the work area.`
+        : `${step.childAction} 也要确认${missingNamesText}已经准备好并放到操作台旁。`,
+      expectedResult: isEnglish
+        ? `${step.expectedResult} ${missingNamesText} has also been washed, organized, or added.`
+        : `${step.expectedResult} ${missingNamesText}也完成清洗、整理或加入。`,
     };
   });
 }
 
-function ensureRecipeNameInSteps(steps: RecipeDetail['steps'], recipeName: string) {
+function ensureRecipeNameInSteps(
+  steps: RecipeDetail['steps'],
+  recipeName: string,
+  locale: GenerationLocaleOptions['locale'] = 'zh',
+) {
   if (steps.length === 0 || !recipeName.trim()) {
     return steps;
   }
@@ -829,19 +857,22 @@ function ensureRecipeNameInSteps(steps: RecipeDetail['steps'], recipeName: strin
   }
 
   const lastStepIndex = steps.length - 1;
+  const isEnglish = locale === 'en';
 
   return steps.map((step, index) => {
     if (index === 0) {
       return {
         ...step,
-        description: `制作${recipeName}：${step.description}`,
+        description: isEnglish ? `Make ${recipeName}: ${step.description}` : `制作${recipeName}：${step.description}`,
       };
     }
 
     if (index === lastStepIndex) {
       return {
         ...step,
-        expectedResult: `${step.expectedResult || '完成这一步后观察成品状态。'} 完成后就是${recipeName}。`,
+        expectedResult: isEnglish
+          ? `${step.expectedResult || 'After this step, check the final color, texture, and temperature.'} The finished dish is ${recipeName}.`
+          : `${step.expectedResult || '完成这一步后观察成品状态。'} 完成后就是${recipeName}。`,
       };
     }
 
@@ -852,9 +883,11 @@ function ensureRecipeNameInSteps(steps: RecipeDetail['steps'], recipeName: strin
 function normalizeGeneratedCookingSteps(
   rawSteps: Array<Partial<RecipeDetail['steps'][number]>>,
   ingredients: IngredientItem[],
+  options: GenerationLocaleOptions = {},
 ) {
   const inputIngredients = buildAllowedIngredientNameSet(ingredients);
   const disallowedIngredientNames = buildDisallowedIngredientNames({}, [], inputIngredients);
+  const isEnglish = options.locale === 'en';
 
   return rawSteps
     .filter((step) => step?.title && step?.description)
@@ -863,7 +896,7 @@ function normalizeGeneratedCookingSteps(
       title: removeDisallowedIngredientMentions(String(step.title), disallowedIngredientNames),
       description: removeDisallowedIngredientMentions(String(step.description), disallowedIngredientNames),
       tip: removeDisallowedIngredientMentions(
-        String(step.tip ?? '慢慢来，先确认安全再动手。'),
+        String(step.tip ?? (isEnglish ? 'Go slowly and check safety before starting.' : '慢慢来，先确认安全再动手。')),
         disallowedIngredientNames,
       ),
       childAction: removeDisallowedIngredientMentions(
@@ -873,13 +906,19 @@ function normalizeGeneratedCookingSteps(
       parentAction: removeDisallowedIngredientMentions(
         String(
           (step as { parentAction?: string }).parentAction ??
-            (step.requiresParentAssist ? '这一小步建议家长在旁边陪着一起完成。' : ''),
+            (step.requiresParentAssist
+              ? isEnglish
+                ? 'A parent should stay nearby and complete this part together.'
+                : '这一小步建议家长在旁边陪着一起完成。'
+              : ''),
         ),
         disallowedIngredientNames,
       ),
       expectedResult: removeDisallowedIngredientMentions(String(
         (step as { expectedResult?: string }).expectedResult ??
-          '完成这一步后，先停下来看看食材颜色和形状有没有变化。',
+          (isEnglish
+            ? 'After this step, pause and check whether the ingredient color, shape, or texture has changed.'
+            : '完成这一步后，先停下来看看食材颜色和形状有没有变化。'),
       ), disallowedIngredientNames),
       riskLevel: normalizeRiskLevel(String(step.riskLevel ?? 'medium')),
       requiresParentAssist: Boolean(step.requiresParentAssist),
@@ -890,13 +929,15 @@ function buildRecipeDetailFromSteps(
   recipe: RecipeDetailRecipeInput,
   ingredients: IngredientItem[],
   steps: RecipeDetail['steps'],
+  options: GenerationLocaleOptions = {},
 ) {
+  const isEnglish = options.locale === 'en';
   const detailIngredients = ingredients.map((ingredient) => ({
     name: ingredient.normalizedName || ingredient.name,
     quantity: normalizeChildFriendlyQuantity(ingredient.quantity || '1份'),
   }));
-  const normalizedSteps = ensureIngredientOperationsInSteps(steps, detailIngredients);
-  const matchedSteps = ensureRecipeNameInSteps(normalizedSteps, recipe.name);
+  const normalizedSteps = ensureIngredientOperationsInSteps(steps, detailIngredients, options.locale);
+  const matchedSteps = ensureRecipeNameInSteps(normalizedSteps, recipe.name, options.locale);
   const totalMinutes = Math.max(1, Number(recipe.estimatedTimeMinutes ?? 20));
   const prepTimeMinutes = Math.max(1, Math.min(8, Math.round(totalMinutes * 0.35)));
   const cookTimeMinutes = Math.max(1, totalMinutes - prepTimeMinutes);
@@ -910,9 +951,9 @@ function buildRecipeDetailFromSteps(
     ageRange: recipe.ageRange ?? '7-12 岁',
     difficulty: recipe.difficulty ?? 'easy',
     estimatedTimeMinutes: totalMinutes,
-    fitReasons: recipe.fitReasons?.length ? recipe.fitReasons : ['适合当前食材'],
+    fitReasons: recipe.fitReasons?.length ? recipe.fitReasons : [isEnglish ? 'Fits the current ingredients' : '适合当前食材'],
     riskAlerts: recipe.riskAlerts?.length ? recipe.riskAlerts : [],
-    nutritionSummary: recipe.nutritionSummary ?? '营养搭配均衡，适合作为儿童一餐。',
+    nutritionSummary: recipe.nutritionSummary ?? (isEnglish ? 'Balanced and suitable for a kid-friendly meal.' : '营养搭配均衡，适合作为儿童一餐。'),
     extraIngredients: [],
     canCookWithCurrentIngredients:
       typeof recipe.canCookWithCurrentIngredients === 'boolean'
@@ -933,29 +974,55 @@ function buildRecipePlanUserPrompt(
 ) {
   const promptIngredients = getPromptIngredients(ingredients);
   const ingredientLines = promptIngredients
-    .map((item, index) => `${index + 1}.${compactText(item.name, 20)}(${compactText(item.quantity, 12)})`)
+    .map((item, index) =>
+      options.locale === 'en'
+        ? `${index + 1}. ${compactText(item.name, 20)} (${compactText(item.quantity, 12)})`
+        : `${index + 1}.${compactText(item.name, 20)}(${compactText(item.quantity, 12)})`,
+    )
     .join('\n');
-  const tastePreferences = compactList(profile.tastePreferences, 3, 12).join('、') || '低油、轻口味、均衡';
-  const allergens = compactList(profile.allergens, 4, 12).join('、') || '无';
   const compactUserPrompt = compactText(userPrompt, 120);
   const isEnglish = options.locale === 'en';
   const outputLanguage = isEnglish ? 'English' : '简体中文';
-  const pronunciationRule = options.pinyinMode === false
-    ? '读音辅助关闭:namePinyin输出空字符串；nameLearning.characters输出空数组。'
-    : isEnglish
-      ? '读音辅助开启:namePinyin输出英文菜名的音节组合，用连字符或空格分隔，如"to-ma-to egg soup"；nameLearning按英文单词拆分，pinyin字段写该单词音节。'
+  const tastePreferences = compactList(profile.tastePreferences, 3, 12)
+    .map((item) => (isEnglish ? translatePromptTerm(item) : item))
+    .join(isEnglish ? ', ' : '、') || (isEnglish ? 'low oil, mild flavor, balanced meals' : '低油、轻口味、均衡');
+  const allergens = compactList(profile.allergens, 4, 12)
+    .map((item) => (isEnglish ? translatePromptTerm(item) : item))
+    .join(isEnglish ? ', ' : '、') || (isEnglish ? 'none' : '无');
+  const pronunciationRule = isEnglish
+    ? options.pinyinMode === false
+      ? 'Pronunciation help off: set namePinyin to an empty string and nameLearning.characters to an empty array.'
+      : 'Pronunciation help on: namePinyin must be English word syllables separated by hyphens or spaces, such as "to-ma-to egg soup"; nameLearning must split English words, with pinyin storing the word syllables.'
+    : options.pinyinMode === false
+      ? '读音辅助关闭:namePinyin输出空字符串；nameLearning.characters输出空数组。'
       : '读音辅助开启:namePinyin输出中文菜名带声调拼音；nameLearning按中文单字拆分，提供拼音、笔画、结构和识字提示。';
 
+  if (isEnglish) {
+    return [
+      `Generate 3 recipe cards for elementary-school children. Return only a JSON object. Output language: ${outputLanguage}.`,
+      'English mode: name must be an English recipe name; englishName must match name or be a natural English title; do not put Chinese text in any output field.',
+      pronunciationRule,
+      `Child age: ${profile.age}; preferences: ${tastePreferences}; allergens: ${allergens}.`,
+      compactUserPrompt ? `User note: ${compactUserPrompt}` : '',
+      `Ingredients:\n${ingredientLines}`,
+      'Rules: return exactly 3 recipes; keep them simple, low-oil, mild, and nutritionally balanced; prioritize the provided ingredients; do not generate cooking steps or ingredient details.',
+      'Safety: only include riskAlerts for open flame, high heat, hot oil, stir-frying, pressure cooking, steaming, boiling, oven use, or severe allergen risk.',
+      'Allowed fields only: name,namePinyin,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients.',
+      'Forbidden fields: steps,ingredients,fitReasons,extraIngredients,imageUrl,prepTimeMinutes,cookTimeMinutes.',
+    ].join('\n');
+  }
+
   return [
-    `为小学生生成1-2道菜谱卡片，只返回JSON对象。输出语言:${outputLanguage}。`,
+    `为小学生生成3道菜谱卡片，只返回JSON对象。输出语言:${outputLanguage}。`,
     isEnglish ? '英文模式:name使用英文菜名；englishName与name一致或保留英文名；中文内容不要混入字段值。' : '中文模式:name使用中文菜名；englishName输出英文译名。',
     pronunciationRule,
     `儿童:${profile.age}岁；偏好:${tastePreferences}；过敏:${allergens}`,
     compactUserPrompt ? `用户:${compactUserPrompt}` : '',
     `食材:${ingredientLines}`,
-    '规则:简单、低油轻口味、营养均衡；优先用现有食材；不输出steps/ingredients/fitReasons/extraIngredients/imageUrl。',
+    '规则:必须返回3道；简单、低油轻口味、营养均衡；优先用现有食材；不要生成烹饪步骤或配料明细。',
     '安全:仅明火/高温/热油/爆炒/高压/蒸煮/烤箱等高风险操作写riskAlerts；高危过敏原才写高危提醒。',
-    '字段:name,namePinyin,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients。',
+    '只允许字段:name,namePinyin,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients。',
+    '禁止字段:steps,ingredients,fitReasons,extraIngredients,imageUrl,prepTimeMinutes,cookTimeMinutes。',
   ].join('\n');
 }
 
@@ -1006,6 +1073,7 @@ function buildRecipeDetailUserPrompt(
       '8. Each step may be used as subtitles for a child-friendly cartoon cooking video, so title should be short and description should work as narration.',
       `9. The final step expectedResult must say "Finish ${recipe.name}". Every step must include: title, description, tip, childAction, parentAction, expectedResult, riskLevel, requiresParentAssist.`,
       '10. If you cannot keep the recipe and ingredients consistent, return {"steps":[]}. Do not explain. Use double quotes for JSON.',
+      '11. Do not return recipe card fields such as name, englishName, nameLearning, ageRange, difficulty, estimatedTimeMinutes, nutritionSummary, ingredients, imageUrl, fitReasons, or extraIngredients.',
     ].join('\n');
   }
 
@@ -1025,6 +1093,7 @@ function buildRecipeDetailUserPrompt(
     '8.每步内容将用于生成儿童卡通烹饪视频字幕，请让title适合做短字幕，description适合拆成视频旁白。',
     `9.最后一步 expectedResult 写“完成${recipe.name}”；每步必填:title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。`,
     '10.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号。',
+    '11.不要返回菜谱卡字段:name,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,nutritionSummary,ingredients,imageUrl,fitReasons,extraIngredients。',
   ].join('\n');
 }
 
@@ -1101,7 +1170,9 @@ export async function generateRecipePlan(
     {
       role: 'system',
       content:
-        `儿童菜谱推荐。只返回可被 JSON.parse 解析的 JSON 对象，不要 Markdown、代码块、解释、前后缀文字。输出语言:${isEnglish ? 'English' : '简体中文'}。格式：{"recipes":[{"name":"","namePinyin":"","englishName":"","nameLearning":{"characters":[{"character":"","pinyin":"","strokes":1,"structure":"","hint":""}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"riskAlerts":[],"nutritionSummary":"","canCookWithCurrentIngredients":true}]}。返回1-2道；不要fitReasons、extraIngredients、steps、ingredients、imageUrl。`,
+        isEnglish
+          ? 'Kid recipe recommendation. Return only JSON parseable by JSON.parse. No Markdown, code fences, explanations, prefixes, or suffixes. Output language: English. Return exactly 3 recipes. Shape: {"recipes":[{"name":"","namePinyin":"","englishName":"","nameLearning":{"characters":[{"character":"","pinyin":"","strokes":1,"structure":"","hint":""}]},"ageRange":"7-12 years","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"riskAlerts":[],"nutritionSummary":"","canCookWithCurrentIngredients":true}]}. Do not output fitReasons, extraIngredients, steps, ingredients, imageUrl, prepTimeMinutes, or cookTimeMinutes.'
+          : `儿童菜谱推荐。只返回可被 JSON.parse 解析的 JSON 对象，不要 Markdown、代码块、解释、前后缀文字。输出语言:简体中文。必须返回3道菜。格式：{"recipes":[{"name":"","namePinyin":"","englishName":"","nameLearning":{"characters":[{"character":"","pinyin":"","strokes":1,"structure":"","hint":""}]},"ageRange":"7-12 岁","difficulty":"easy|medium|hard","estimatedTimeMinutes":20,"riskAlerts":[],"nutritionSummary":"","canCookWithCurrentIngredients":true}]}。禁止输出fitReasons、extraIngredients、steps、ingredients、imageUrl、prepTimeMinutes、cookTimeMinutes。`,
     },
     {
       role: 'user',
@@ -1151,8 +1222,8 @@ export async function generateRecipeDetail(
       role: 'system',
       content:
         isEnglish
-          ? 'Kids cooking step generator. Return only a JSON object that JSON.parse can parse. Do not output Markdown, code fences, explanations, prefixes, or suffixes. Output language: English. Format: {"steps":[{"title":"","description":"Step ingredients: A; Action: First ... Then ... Next ... It is done when ...","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}. Steps must be detailed enough for elementary-school kids to learn the cooking points, and usable as captions for a cartoon cooking video under 30 seconds. Parent assistance is required only for high-risk heat, open flame, hot oil, stir-frying, pressure cooking, steaming/boiling, or oven steps.'
-          : '儿童菜谱步骤生成。只返回可被 JSON.parse 解析的 JSON 对象，不要 Markdown、代码块、解释、前后缀文字。输出语言:简体中文。格式：{"steps":[{"title":"","description":"本步骤食材：A；操作：先……。再……。接着……。看到……就完成。","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。步骤要详细到小学生能跟着学习烹饪要点，并可作为30秒以内卡通烹饪视频的字幕脚本；仅高风险热源/高温/热油/爆炒/高压/蒸煮要求家长完成。',
+          ? 'Kids cooking step generator. Return only JSON: {"steps":[{"title":"","description":"Step ingredients: A; Action: First ... Then ... Next ... It is done when ...","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}. No Markdown, explanations, recipe card fields, ingredient table, imageUrl, or extra wrapper.'
+          : '儿童菜谱步骤生成。只返回JSON:{"steps":[{"title":"","description":"本步骤食材：A；操作：先……。再……。接着……。看到……就完成。","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。不要Markdown、解释、菜谱卡字段、配料表、imageUrl或额外包裹字段。',
     },
     {
       role: 'user',
@@ -1184,13 +1255,13 @@ export async function generateRecipeDetail(
   }
 
   const rawSteps = stepsPayload.steps;
-  const steps = normalizeGeneratedCookingSteps(rawSteps, ingredients);
+  const steps = normalizeGeneratedCookingSteps(rawSteps, ingredients, options);
 
   if (steps.length === 0) {
     throw new Error(`菜谱详情生成失败，未返回“${recipe.name}”的有效烹饪步骤。`);
   }
 
-  return buildRecipeDetailFromSteps(recipe, ingredients, steps);
+  return buildRecipeDetailFromSteps(recipe, ingredients, steps, options);
 }
 
 export async function generateRecipeDetails(

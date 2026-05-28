@@ -120,7 +120,7 @@ export class ModelRouter {
         task,
         model: useBalanced ? this.balancedModel : this.fastModel,
         fallbackModels: [],
-        maxTokens: useBalanced ? 620 : 500,
+        maxTokens: useBalanced ? 760 : 660,
         temperature: 0.2,
         enableThinking: false,
         stream: false,
