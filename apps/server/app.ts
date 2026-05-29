@@ -45,6 +45,11 @@ interface GenerationLocaleOptions {
   pinyinMode: boolean;
 }
 
+interface IngredientKnowledgeRequestPayload {
+  name: string;
+  generationOptions: GenerationLocaleOptions;
+}
+
 function beginSse(res: Response) {
   res.status(200);
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -299,6 +304,30 @@ export function resolveRecommendationRequestPayload(body: unknown, query: unknow
     ingredients: resolveIngredientItems(payload.ingredients ?? queryPayload.ingredients),
     profile: (payload.profile ?? parseJsonInput(queryPayload.profile, null)) as Partial<ChildProfile> | null,
     userPrompt: String(payload.userPrompt ?? queryPayload.userPrompt ?? ''),
+    generationOptions: resolveGenerationLocaleOptions(payload, queryPayload),
+  };
+}
+
+export function resolveIngredientKnowledgeRequestPayload(body: unknown, query: unknown = {}): IngredientKnowledgeRequestPayload {
+  const nameKeys = ['name', 'ingredientName', 'ingredient', 'food', 'q'];
+  const payload = resolveNestedRequestRecord(body, nameKeys);
+  const queryPayload = resolveNestedRequestRecord(query, nameKeys);
+  const rawBodyText = typeof body === 'string' && !body.trim().startsWith('{') ? body : '';
+  const rawName =
+    payload.name ??
+    payload.ingredientName ??
+    payload.ingredient ??
+    payload.food ??
+    payload.q ??
+    queryPayload.name ??
+    queryPayload.ingredientName ??
+    queryPayload.ingredient ??
+    queryPayload.food ??
+    queryPayload.q ??
+    rawBodyText;
+
+  return {
+    name: normalizeTextInputValue(rawName),
     generationOptions: resolveGenerationLocaleOptions(payload, queryPayload),
   };
 }
@@ -708,12 +737,13 @@ export function createApp(): Express {
 
   app.post('/api/v1/ingredients/seasonal-suggestions', sendSeasonalSuggestionsResponse);
 
-  app.post('/api/v1/ingredients/knowledge', async (req, res) => {
-    const name = normalizeTextInputValue(req.body?.name ?? req.query?.name);
-    const generationOptions = resolveGenerationLocaleOptions(
-      normalizeRequestRecord(req.body),
-      normalizeRequestRecord(req.query),
-    );
+  const sendIngredientKnowledgeResponse = async (req: Request, res: Response) => {
+    let { name, generationOptions } = resolveIngredientKnowledgeRequestPayload(req.body, req.query);
+    if (!name && (req as RequestWithRawBody).rawBody) {
+      const fallbackPayload = resolveIngredientKnowledgeRequestPayload((req as RequestWithRawBody).rawBody, req.query);
+      name = fallbackPayload.name;
+      generationOptions = fallbackPayload.generationOptions;
+    }
     const isEnglish = generationOptions.locale === 'en';
 
     if (!name) {
@@ -778,7 +808,10 @@ export function createApp(): Express {
         },
       });
     }
-  });
+  };
+
+  app.post('/api/ingredients/knowledge', sendIngredientKnowledgeResponse);
+  app.post('/api/v1/ingredients/knowledge', sendIngredientKnowledgeResponse);
 
   app.post('/api/v1/ingredients/recognize-image', upload.single('image'), async (req, res) => {
     if (!req.file) {

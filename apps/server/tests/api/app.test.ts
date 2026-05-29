@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  resolveIngredientKnowledgeRequestPayload,
   resolveIngredientTextInput,
   resolveRecommendationRequestPayload,
   resolveRecipeDetailRequestPayload,
@@ -29,6 +30,16 @@ test('resolveIngredientTextInput accepts deployed string and nested payload shap
 test('resolveIngredientTextInput returns empty string for missing text', () => {
   assert.equal(resolveIngredientTextInput({}), '');
   assert.equal(resolveIngredientTextInput(null), '');
+});
+
+test('resolveIngredientKnowledgeRequestPayload accepts deployed body shapes', () => {
+  assert.equal(resolveIngredientKnowledgeRequestPayload({ name: '番茄' }).name, '番茄');
+  assert.equal(resolveIngredientKnowledgeRequestPayload('{"name":"鸡蛋","locale":"en"}').name, '鸡蛋');
+  assert.equal(resolveIngredientKnowledgeRequestPayload({ body: '{"ingredientName":"黄瓜"}' }).name, '黄瓜');
+  assert.equal(resolveIngredientKnowledgeRequestPayload({ payload: { ingredient: '西兰花' } }).name, '西兰花');
+  assert.equal(resolveIngredientKnowledgeRequestPayload('胡萝卜').name, '胡萝卜');
+  assert.equal(resolveIngredientKnowledgeRequestPayload({}, { q: '土豆', locale: 'en' }).name, '土豆');
+  assert.equal(resolveIngredientKnowledgeRequestPayload({}, { q: '土豆', locale: 'en' }).generationOptions.locale, 'en');
 });
 
 test('resolveRecipeDetailRequestPayload accepts body-only payload', () => {

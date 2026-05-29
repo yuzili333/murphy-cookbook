@@ -900,6 +900,7 @@ export default function App() {
   const chatThreadEndRef = useRef<HTMLDivElement>(null);
   const skipNextChatAutoScrollRef = useRef(false);
   const recipeCarouselViewportRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const ingredientBounceTimeoutsRef = useRef<number[]>([]);
   const ingredientSwipeRef = useRef({
     startX: 0,
     startY: 0,
@@ -953,6 +954,7 @@ export default function App() {
   const [isPronunciationModeEnabled, setIsPronunciationModeEnabled] = useState(() => readPronunciationMode());
   const [activeCarouselRecipeByMessageId, setActiveCarouselRecipeByMessageId] = useState<Record<string, string>>({});
   const [recipeCarouselMetricsByMessageId, setRecipeCarouselMetricsByMessageId] = useState<Record<string, RecipeCarouselMetrics>>({});
+  const [bouncingIngredientKeys, setBouncingIngredientKeys] = useState<string[]>([]);
   const isRecognizingIngredients = isParsingText || isUploadingImage;
   const isEnglish = locale === 'en';
   const shouldReduceMotion = useReducedMotion();
@@ -1376,6 +1378,13 @@ export default function App() {
   }, [recommendConfettiMessageId]);
 
   useEffect(() => {
+    return () => {
+      ingredientBounceTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      ingredientBounceTimeoutsRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
     if (!pendingScrollRecipeId) {
       return;
     }
@@ -1403,6 +1412,21 @@ export default function App() {
     };
     setChatMessages((current) => [...current, nextMessage].slice(-40));
     return nextMessage;
+  };
+
+  const triggerIngredientEmojiBounce = (messageId: string, ingredientIds: string[]) => {
+    if (shouldReduceMotion || ingredientIds.length === 0) {
+      return;
+    }
+
+    const nextKeys = ingredientIds.map((ingredientId) => `${messageId}_${ingredientId}`);
+    setBouncingIngredientKeys((current) => [...new Set([...current, ...nextKeys])]);
+
+    const timeoutId = window.setTimeout(() => {
+      setBouncingIngredientKeys((current) => current.filter((key) => !nextKeys.includes(key)));
+      ingredientBounceTimeoutsRef.current = ingredientBounceTimeoutsRef.current.filter((item) => item !== timeoutId);
+    }, 5000);
+    ingredientBounceTimeoutsRef.current.push(timeoutId);
   };
 
   const patchChatMessageNodes = (messageId: string, event: StreamEvent) => {
@@ -1833,7 +1857,7 @@ export default function App() {
       role: 'user',
       text: getIngredientDisplayName(suggestion.name, locale),
     });
-    addChatMessage({
+    const ingredientMessage = addChatMessage({
       role: 'assistant',
       text: t(
         locale,
@@ -1842,6 +1866,7 @@ export default function App() {
       ),
       ingredients: nextIngredients,
     });
+    triggerIngredientEmojiBounce(ingredientMessage.id, nextIngredients.map((ingredient) => ingredient.id));
   };
 
   const handleChatSubmit = async (text?: string) => {
@@ -1870,6 +1895,7 @@ export default function App() {
       }
 
       const parsed = await parseIngredientText(prompt);
+      const previousIngredientNames = new Set(ingredients.map((ingredient) => ingredient.name));
       const nextIngredients = mergeIngredientItems(ingredients, parsed.ingredients);
       if (nextIngredients.length > 10) {
         setError(t(locale, '一次最多支持 10 个食材，请减少食材后再继续添加。', 'Up to 10 ingredients are supported at once. Please remove some before adding more.'));
@@ -1888,13 +1914,19 @@ export default function App() {
       if (chatInputRef.current) {
         chatInputRef.current.value = '';
       }
-      addChatMessage({
+      const ingredientMessage = addChatMessage({
         role: 'assistant',
         text: parsed.ingredients.length > 0
           ? t(locale, '我识别到了这些食材。你可以继续补充食材，也可以直接搜索菜谱。', 'I found these ingredients. You can add more or get recipe ideas now.')
           : t(locale, '我暂时没有识别到明确食材，可以换一种说法再试。', 'I could not find a clear ingredient yet. Try saying it another way.'),
         ingredients: nextIngredients,
       });
+      triggerIngredientEmojiBounce(
+        ingredientMessage.id,
+        nextIngredients
+          .filter((ingredient) => !previousIngredientNames.has(ingredient.name))
+          .map((ingredient) => ingredient.id),
+      );
     } catch (chatError) {
       setError(chatError instanceof Error ? chatError.message : t(locale, '食材识别失败。', 'Ingredient recognition failed.'));
       addChatMessage({
@@ -1924,6 +1956,7 @@ export default function App() {
       });
 
       const data = await uploadIngredientImage(file);
+      const previousIngredientNames = new Set(ingredients.map((ingredient) => ingredient.name));
       const nextIngredients = mergeIngredientItems(ingredients, data.ingredients);
       if (nextIngredients.length > 10) {
         setError(t(locale, '一次最多支持 10 个食材，请减少食材后再继续添加。', 'Up to 10 ingredients are supported at once. Please remove some before adding more.'));
@@ -1934,13 +1967,19 @@ export default function App() {
         return;
       }
       setIngredients(nextIngredients);
-      addChatMessage({
+      const ingredientMessage = addChatMessage({
         role: 'assistant',
         text: data.ingredients.length > 0
           ? t(locale, '我从图片里识别到了这些食材。', 'I found these ingredients in the photo.')
           : t(locale, '我暂时没有从图片里识别到明确食材。', 'I could not find clear ingredients in the photo yet.'),
         ingredients: nextIngredients,
       });
+      triggerIngredientEmojiBounce(
+        ingredientMessage.id,
+        nextIngredients
+          .filter((ingredient) => !previousIngredientNames.has(ingredient.name))
+          .map((ingredient) => ingredient.id),
+      );
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : t(locale, '图片上传失败。', 'Image upload failed.'));
     } finally {
@@ -2468,6 +2507,8 @@ export default function App() {
                       const isFallback = visual.name === defaultIngredientVisual.name;
                       const ingredientDisplayName = getIngredientDisplayName(ingredient.name, locale);
                       const ingredientPronunciation = isEnglish ? ingredientDisplayName : visual.pinyin;
+                      const bounceKey = `${message.id}_${ingredient.id}`;
+                      const shouldBounceIngredientEmoji = bouncingIngredientKeys.includes(bounceKey);
 
 	                      return (
 	                        <article
@@ -2492,9 +2533,23 @@ export default function App() {
 	                        >
                           <span className="ingredient-pinyin">{ingredientPronunciation}</span>
                           <strong>{ingredientDisplayName}</strong>
-                          <div className="ingredient-emoji" role="img" aria-label={isFallback ? t(locale, '默认食材占位', 'Default ingredient placeholder') : ingredientDisplayName}>
+                          <motion.div
+                            className={shouldBounceIngredientEmoji ? 'ingredient-emoji bouncing' : 'ingredient-emoji'}
+                            role="img"
+                            aria-label={isFallback ? t(locale, '默认食材占位', 'Default ingredient placeholder') : ingredientDisplayName}
+                            animate={
+                              shouldBounceIngredientEmoji
+                                ? { y: [0, -9, 0, -5, 0], scale: [1, 1.05, 1, 1.03, 1] }
+                                : { y: 0, scale: 1 }
+                            }
+                            transition={{
+                              duration: 0.8,
+                              repeat: shouldBounceIngredientEmoji ? 5 : 0,
+                              ease: 'easeInOut',
+                            }}
+                          >
                             {visual.emoji}
-                          </div>
+                          </motion.div>
                           <div className="ingredient-card-toolbar">
 	                            <button
 	                              type="button"
