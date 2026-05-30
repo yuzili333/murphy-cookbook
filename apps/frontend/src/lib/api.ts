@@ -38,6 +38,69 @@ interface ApiEnvelope<T> {
   data: T;
 }
 
+function getCurrentLocale() {
+  try {
+    return window.localStorage.getItem('murphy-cookbook.locale.v1') === 'en' ? 'en' : 'zh';
+  } catch {
+    return 'zh';
+  }
+}
+
+function localizeApiErrorMessage(message: string) {
+  if (getCurrentLocale() !== 'en') {
+    return message;
+  }
+
+  if (!message) {
+    return 'Request failed. Please try again later.';
+  }
+
+  const exactTranslations: Record<string, string> = {
+    '请求失败，请稍后再试。': 'Request failed. Please try again later.',
+    '请求失败，请稍后尝试。': 'Request failed. Please try again later.',
+    '流式消息解析失败。': 'Failed to parse the streaming response.',
+    '菜谱推荐模型返回内容无法解析为有效JSON。': 'The recipe recommendation response could not be parsed.',
+    '菜谱推荐模型返回内容无法解析为有效JSON': 'The recipe recommendation response could not be parsed.',
+    '菜谱步骤模型返回内容无法解析为有效JSON。': 'The cooking steps response could not be parsed.',
+    '菜谱步骤模型返回内容无法解析为有效JSON': 'The cooking steps response could not be parsed.',
+    '接口数据响应超时': 'Request timed out.',
+    '接口超时，稍后重试。': 'Request timed out. Please try again later.',
+    '推荐失败，请稍后重试。': 'Recipe recommendation failed. Please try again later.',
+    '菜谱推荐生成失败。': 'Recipe generation failed.',
+    '菜谱详情生成失败。': 'Cooking steps generation failed.',
+    '菜谱步骤获取失败。': 'Failed to get cooking steps.',
+    '文本理解失败。': 'Failed to understand the text.',
+    '图片识别失败。': 'Image recognition failed.',
+    '图片上传失败。': 'Image upload failed.',
+    '食材知识获取失败。': 'Failed to get ingredient notes.',
+    '食材识别失败。': 'Ingredient recognition failed.',
+    '食材识别失败，请稍后再试。': 'Ingredient recognition failed. Please try again later.',
+    '语音文本解析失败。': 'Voice text parsing failed.',
+    '语音文本理解失败。': 'Failed to understand the voice input.',
+  };
+  const normalized = message.replace(/\s+/g, '').replace(/JSON/g, 'JSON');
+  if (exactTranslations[message]) {
+    return exactTranslations[message];
+  }
+  if (exactTranslations[normalized]) {
+    return exactTranslations[normalized];
+  }
+  if (message.includes('菜谱推荐模型返回内容无法解析')) {
+    return 'The recipe recommendation response could not be parsed. Please try again.';
+  }
+  if (message.includes('菜谱步骤模型返回内容无法解析')) {
+    return 'The cooking steps response could not be parsed. Please try again.';
+  }
+  if (message.includes('未返回') || message.includes('无效')) {
+    return 'The response did not include valid data. Please try again.';
+  }
+  if (/[\u4e00-\u9fa5]/.test(message)) {
+    return 'Request failed. Please try again later.';
+  }
+
+  return message;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
   const headers = new Headers(init?.headers ?? {});
@@ -52,16 +115,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    let message = '请求失败，请稍后再试。';
+    let message = getCurrentLocale() === 'en' ? 'Request failed. Please try again later.' : '请求失败，请稍后再试。';
 
     try {
       const payload = (await response.json()) as { error?: { message?: string } };
-      message = payload.error?.message ?? message;
+      message = localizeApiErrorMessage(payload.error?.message ?? message);
     } catch {
       // Ignore JSON parse errors and keep default message.
     }
 
-    throw new Error(message);
+    throw new Error(localizeApiErrorMessage(message));
   }
 
   const payload = (await response.json()) as ApiEnvelope<T>;
@@ -80,14 +143,14 @@ async function streamRequest(path: string, init: RequestInit, onEvent: (event: S
   });
 
   if (!response.ok || !response.body) {
-    let message = '请求失败，请稍后再试。';
+    let message = getCurrentLocale() === 'en' ? 'Request failed. Please try again later.' : '请求失败，请稍后再试。';
     try {
       const payload = (await response.json()) as { error?: { message?: string } };
-      message = payload.error?.message ?? message;
+      message = localizeApiErrorMessage(payload.error?.message ?? message);
     } catch {
       // Keep default message.
     }
-    throw new Error(message);
+    throw new Error(localizeApiErrorMessage(message));
   }
 
   const reader = response.body.getReader();

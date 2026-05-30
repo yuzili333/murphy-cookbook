@@ -83,6 +83,30 @@ function isTimeoutError(error: unknown) {
   return error.message === '接口数据响应超时' || error.name === 'AbortError' || /timeout|aborted/i.test(error.message);
 }
 
+function localizeServiceErrorMessage(message: string, locale: GenerationLocaleOptions['locale'] = 'zh') {
+  if (locale !== 'en') {
+    return message;
+  }
+
+  if (message === '接口数据响应超时' || message === '接口超时，稍后重试。') {
+    return 'Request timed out. Please try again later.';
+  }
+  if (message.includes('菜谱推荐模型返回内容无法解析')) {
+    return 'The recipe recommendation response could not be parsed. Please try again.';
+  }
+  if (message.includes('菜谱步骤模型返回内容无法解析')) {
+    return 'The cooking steps response could not be parsed. Please try again.';
+  }
+  if (message.includes('未返回') || message.includes('无效')) {
+    return 'The response did not include valid data. Please try again.';
+  }
+  if (/[\u4e00-\u9fa5]/.test(message)) {
+    return 'Request failed. Please try again later.';
+  }
+
+  return message;
+}
+
 function findLocalRecipeDetailFallback(
   recipe: RecipeDetailRecipeInput | RecipeDetail,
   ingredients: IngredientItem[],
@@ -301,7 +325,13 @@ export async function recommendRecipes(
     return {
       error: {
         code: 'RECIPE_RECOMMENDATION_FAILED',
-        message: isTimeoutError(error) ? '接口超时，稍后重试。' : error instanceof Error ? error.message : '菜谱推荐生成失败。',
+        message: isTimeoutError(error)
+          ? localizeServiceErrorMessage('接口超时，稍后重试。', generationOptions.locale)
+          : error instanceof Error
+            ? localizeServiceErrorMessage(error.message, generationOptions.locale)
+            : generationOptions.locale === 'en'
+              ? 'Recipe generation failed.'
+              : '菜谱推荐生成失败。',
       },
     };
   }
@@ -364,7 +394,13 @@ export async function getRecipeDetailForRecommendation(input: {
     return {
       error: {
         code: 'RECIPE_DETAIL_UNAVAILABLE',
-        message: isTimeoutError(error) ? '接口超时，稍后重试。' : error instanceof Error ? error.message : '菜谱详情生成失败。',
+        message: isTimeoutError(error)
+          ? localizeServiceErrorMessage('接口超时，稍后重试。', input.generationOptions?.locale)
+          : error instanceof Error
+            ? localizeServiceErrorMessage(error.message, input.generationOptions?.locale)
+            : input.generationOptions?.locale === 'en'
+              ? 'Cooking steps generation failed.'
+              : '菜谱详情生成失败。',
       },
     };
   }

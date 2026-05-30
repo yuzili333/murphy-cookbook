@@ -41,6 +41,7 @@ const ingredientKnowledgeCacheStorageKey = 'murphy-cookbook.ingredient-knowledge
 const legacyRecipeDetailCacheStorageKey = 'murphy-cookbook.recipe-detail-cache.v1';
 const localeStorageKey = 'murphy-cookbook.locale.v1';
 const pronunciationModeStorageKey = 'murphy-cookbook.pronunciation-mode.v1';
+const splashDismissedStorageKey = 'murphy-cookbook.splash-dismissed.v1';
 const webCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const conversationProfileId = 'chat_context_profile';
 const defaultChildContext =
@@ -88,6 +89,60 @@ const staticTextTranslations: Record<string, string> = {
   '菜谱详情生成失败。': 'Cooking steps generation failed.',
   '请提供有效的推荐菜谱卡片信息。': 'Please provide a valid recipe card.',
 };
+
+function localizeErrorMessage(message: string, locale: AppLocale) {
+  if (locale !== 'en') {
+    return message;
+  }
+
+  if (!message) {
+    return 'Request failed. Please try again later.';
+  }
+
+  const normalized = message.replace(/\s+/g, '');
+  const exactTranslations: Record<string, string> = {
+    '请求失败，请稍后再试。': 'Request failed. Please try again later.',
+    '请求失败，请稍后尝试。': 'Request failed. Please try again later.',
+    '流式消息解析失败。': 'Failed to parse the streaming response.',
+    '菜谱推荐模型返回内容无法解析为有效JSON。': 'The recipe recommendation response could not be parsed.',
+    '菜谱步骤模型返回内容无法解析为有效JSON。': 'The cooking steps response could not be parsed.',
+    '接口数据响应超时': 'Request timed out.',
+    '接口超时，稍后重试。': 'Request timed out. Please try again later.',
+    '推荐失败，请稍后重试。': 'Recipe recommendation failed. Please try again later.',
+    '菜谱推荐生成失败。': 'Recipe generation failed.',
+    '菜谱详情生成失败。': 'Cooking steps generation failed.',
+    '菜谱步骤获取失败。': 'Failed to get cooking steps.',
+    '食材知识获取失败。': 'Failed to get ingredient notes.',
+    '食材识别失败。': 'Ingredient recognition failed.',
+    '食材识别失败，请稍后再试。': 'Ingredient recognition failed. Please try again later.',
+    '图片上传失败。': 'Image upload failed.',
+    '图片识别失败。': 'Image recognition failed.',
+    '文本理解失败。': 'Failed to understand the text.',
+    '语音文本解析失败。': 'Voice text parsing failed.',
+    '语音文本理解失败。': 'Failed to understand the voice input.',
+  };
+
+  if (exactTranslations[message]) {
+    return exactTranslations[message];
+  }
+  if (exactTranslations[normalized]) {
+    return exactTranslations[normalized];
+  }
+  if (message.includes('菜谱推荐模型返回内容无法解析')) {
+    return 'The recipe recommendation response could not be parsed. Please try again.';
+  }
+  if (message.includes('菜谱步骤模型返回内容无法解析')) {
+    return 'The cooking steps response could not be parsed. Please try again.';
+  }
+  if (message.includes('未返回') || message.includes('无效')) {
+    return 'The response did not include valid data. Please try again.';
+  }
+  if (/[\u4e00-\u9fa5]/.test(message)) {
+    return 'Request failed. Please try again later.';
+  }
+
+  return message;
+}
 
 const ingredientEnglishNameMap: Record<string, string> = {
   菠菜: 'Spinach',
@@ -311,6 +366,257 @@ function persistPronunciationMode(enabled: boolean) {
   }
 
   window.localStorage.setItem(pronunciationModeStorageKey, enabled ? 'on' : 'off');
+}
+
+function readSplashDismissed() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return window.localStorage.getItem(splashDismissedStorageKey) === 'true';
+}
+
+function persistSplashDismissed() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(splashDismissedStorageKey, 'true');
+}
+
+const landingSceneImages = [
+  new URL('../../../design-image/landing-page/storyboard_01_image.png', import.meta.url).href,
+  new URL('../../../design-image/landing-page/storyboard_02_image.png', import.meta.url).href,
+  new URL('../../../design-image/landing-page/storyboard_03_image.png', import.meta.url).href,
+  new URL('../../../design-image/landing-page/storyboard_04_image.png', import.meta.url).href,
+  new URL('../../../design-image/landing-page/storyboard_05_image.png', import.meta.url).href,
+  new URL('../../../design-image/landing-page/storyboard_06_image.png', import.meta.url).href,
+];
+
+const splashStoryScenes = [
+  {
+    id: 'ingredient_discovery',
+    scene: 1,
+    zhTitle: '走进热闹菜市场',
+    enTitle: 'Enter the Bustling Market',
+    zhSubtitle: '发现新鲜好食材',
+    enSubtitle: 'Discover fresh ingredients',
+    zhNarration: '小墨菲和爸爸妈妈来到热闹的菜市场。琳琅满目的新鲜食材，让小朋友充满好奇。',
+    enNarration: 'Murphy and the family arrive at a lively market. Surrounded by colorful fresh ingredients, the child becomes curious about everything they see.',
+    image: landingSceneImages[0],
+  },
+  {
+    id: 'ingredient_recognition',
+    scene: 2,
+    zhTitle: '识别食材',
+    enTitle: 'Recognize Ingredients',
+    zhSubtitle: '了解来源与营养',
+    enSubtitle: 'Learn origins and nutrition',
+    zhNarration: '小朋友看到喜欢的食材，只要用小墨菲扫一扫，就能知道它叫什么、从哪里来、现在是不是当季。',
+    enNarration: 'When the child sees an interesting ingredient, Murphy can scan it and tell them its name, where it comes from, and whether it is in season.',
+    image: landingSceneImages[1],
+  },
+  {
+    id: 'ingredient_education',
+    scene: 3,
+    zhTitle: '科普食材知识',
+    enTitle: 'Learn Ingredient Knowledge',
+    zhSubtitle: '发现可制作的美味',
+    enSubtitle: 'Discover delicious possibilities',
+    zhNarration: '小墨菲把食材知识变成孩子看得懂的卡片，告诉小朋友食材的营养价值，还能推荐可以做成什么菜。',
+    enNarration: 'Murphy turns ingredient knowledge into simple cards children can understand. It explains nutrition in a friendly way and shows what dishes can be made.',
+    image: landingSceneImages[2],
+  },
+  {
+    id: 'recipe_recommendation',
+    scene: 4,
+    zhTitle: '推荐菜谱',
+    enTitle: 'Recommend Recipes',
+    zhSubtitle: '为你量身定制',
+    enSubtitle: 'Tailored to your ingredients',
+    zhNarration: '根据一家人选好的食材，小墨菲会推荐适合孩子的营养菜谱，让今天买到的食材都能派上用场。',
+    enNarration: 'Based on the ingredients the family has chosen, Murphy recommends nutritious recipes that are simple, fun, and suitable for kids.',
+    image: landingSceneImages[3],
+  },
+  {
+    id: 'guided_cooking_safety',
+    scene: 5,
+    zhTitle: '亲子烹饪',
+    enTitle: 'Cook Together with Parents',
+    zhSubtitle: '安全步骤与提醒',
+    enSubtitle: 'Safe step-by-step guidance',
+    zhNarration: '回到厨房后，小墨菲会一步一步告诉孩子怎么做。遇到刀具、热锅、明火和开水时，还会提醒必须由爸爸妈妈陪同完成。',
+    enNarration: 'Back in the kitchen, Murphy guides the child step by step. When a step involves knives, hot pans, open flames, or boiling water, Murphy reminds the child to ask parents for help.',
+    image: landingSceneImages[4],
+  },
+  {
+    id: 'family_meal_sharing',
+    scene: 6,
+    zhTitle: '美味上桌',
+    enTitle: 'Enjoy the Meal Together',
+    zhSubtitle: '共享幸福时刻',
+    enSubtitle: 'Share a happy family meal',
+    zhNarration: '一道道菜端上餐桌，全家人一起品尝努力完成的美味。小朋友不只学会了做菜，也收获了自信和快乐。',
+    enNarration: 'The dishes are served, and the whole family enjoys the meal together. The child not only learns how to cook, but also gains confidence and joy.',
+    image: landingSceneImages[5],
+  },
+];
+
+interface SplashStoryboardOpeningProps {
+  locale: AppLocale;
+  onEnter: () => void;
+  onLocaleChange: (locale: AppLocale) => void;
+  shouldReduceMotion: boolean;
+}
+
+function SplashLocaleSwitch({
+  locale,
+  onLocaleChange,
+}: {
+  locale: AppLocale;
+  onLocaleChange: (locale: AppLocale) => void;
+}) {
+  const isEnglish = locale === 'en';
+  return (
+    <div className="landing-locale-switch" role="group" aria-label={isEnglish ? 'Switch opening language' : '切换开屏页语言'}>
+      <button type="button" className={!isEnglish ? 'active' : undefined} onClick={() => onLocaleChange('zh')}>
+        中文
+      </button>
+      <span aria-hidden="true">|</span>
+      <button type="button" className={isEnglish ? 'active' : undefined} onClick={() => onLocaleChange('en')}>
+        EN
+      </button>
+    </div>
+  );
+}
+
+function SplashStoryboardOpening({
+  locale,
+  onEnter,
+  onLocaleChange,
+  shouldReduceMotion,
+}: SplashStoryboardOpeningProps) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const isEnglish = locale === 'en';
+  const lastIndex = splashStoryScenes.length - 1;
+  const goToScene = (index: number) => {
+    setActiveIndex((index + splashStoryScenes.length) % splashStoryScenes.length);
+  };
+  const handlePadDragEnd = (_: globalThis.MouseEvent | globalThis.TouchEvent | PointerEvent, info: PanInfo) => {
+    if (info.offset.x < -64 || info.velocity.x < -420) {
+      goToScene(activeIndex + 1);
+      return;
+    }
+    if (info.offset.x > 64 || info.velocity.x > 420) {
+      goToScene(activeIndex - 1);
+    }
+  };
+
+  return (
+    <section className="splash-screen landing-splash" aria-label={isEnglish ? 'Opening carousel' : '开屏轮播'}>
+      <div className="landing-mobile-stack" aria-label={isEnglish ? 'Opening storyboard stack' : '手机端开屏分镜长页'}>
+        <div className="landing-floating-controls">
+          <div className="landing-brand">
+            <span>👩‍🍳</span>
+            <strong>{isEnglish ? "Murphy's Cookbook" : '小墨菲的美食宝典'}</strong>
+          </div>
+          <SplashLocaleSwitch locale={locale} onLocaleChange={onLocaleChange} />
+        </div>
+
+        <div className="landing-mobile-story-list">
+          {splashStoryScenes.map((scene) => (
+            <article key={scene.id} className="landing-mobile-story-card">
+              <img src={scene.image} alt={isEnglish ? scene.enTitle : scene.zhTitle} loading="eager" decoding="sync" />
+              <div className="landing-image-title">
+                <span>{String(scene.scene).padStart(2, '0')}</span>
+                <strong>{isEnglish ? scene.enTitle : scene.zhTitle}</strong>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="landing-bottom-actions">
+          <button type="button" className="landing-primary-action" onClick={onEnter}>
+            {isEnglish ? 'Start Exploring' : '开始探索'}
+          </button>
+          <button type="button" className="landing-secondary-action" onClick={onEnter}>
+            {isEnglish ? 'Skip' : '跳过'}
+          </button>
+        </div>
+      </div>
+
+      <div className="landing-carousel landing-pad-carousel" aria-label={isEnglish ? 'Paginated opening carousel' : 'PAD 端分页开屏轮播'}>
+        <div className="landing-floating-controls">
+          <div className="landing-brand">
+            <span>👩‍🍳</span>
+            <div>
+              <strong>{isEnglish ? "Murphy's Cookbook" : '小墨菲的美食宝典'}</strong>
+              <small>{isEnglish ? 'AI Recipe Buddy for Kids' : '专为儿童设计的智能美食伙伴'}</small>
+            </div>
+          </div>
+          <SplashLocaleSwitch locale={locale} onLocaleChange={onLocaleChange} />
+        </div>
+
+        <button
+          type="button"
+          className="landing-arrow landing-arrow-prev"
+          onClick={() => goToScene(activeIndex - 1)}
+          aria-label={isEnglish ? 'Previous scene' : '上一张分镜'}
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          className="landing-arrow landing-arrow-next"
+          onClick={() => goToScene(activeIndex + 1)}
+          aria-label={isEnglish ? 'Next scene' : '下一张分镜'}
+        >
+          →
+        </button>
+
+        <div className="landing-pad-window">
+          <motion.div
+            className="landing-pad-track"
+            animate={{ x: `-${activeIndex * 100}%` }}
+            drag={shouldReduceMotion ? false : 'x'}
+            dragElastic={0.12}
+            dragMomentum={false}
+            onDragEnd={handlePadDragEnd}
+            transition={{ type: 'spring', stiffness: 260, damping: 32 }}
+          >
+            {splashStoryScenes.map((scene, index) => (
+              <article key={scene.id} className="landing-pad-slide" aria-hidden={index !== activeIndex}>
+                <div className="landing-pad-art">
+                  <img src={scene.image} alt={isEnglish ? scene.enTitle : scene.zhTitle} loading="eager" decoding="sync" />
+                  <div className="landing-image-title landing-pad-title">
+                    <span>{String(scene.scene).padStart(2, '0')} / {String(lastIndex + 1).padStart(2, '0')}</span>
+                    <strong>{isEnglish ? scene.enTitle : scene.zhTitle}</strong>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </motion.div>
+        </div>
+
+        <div className="landing-pad-pagination">
+          {splashStoryScenes.map((scene, index) => (
+            <button
+              key={`${scene.id}_pad_dot`}
+              type="button"
+              className={index === activeIndex ? 'active' : undefined}
+              onClick={() => goToScene(index)}
+              aria-label={isEnglish ? `Go to scene ${scene.scene}` : `跳转到第 ${scene.scene} 张分镜`}
+            >
+              <span />
+            </button>
+          ))}
+        </div>
+        <button type="button" className="landing-primary-action landing-pad-enter" onClick={onEnter}>
+          {isEnglish ? 'Enter Chatbox' : '进入应用'}
+        </button>
+      </div>
+    </section>
+  );
 }
 
 interface ChatMessage {
@@ -925,6 +1231,7 @@ export default function App() {
   const [activeChatSessionId, setActiveChatSessionId] = useState('');
   const [isConversationDrawerOpen, setIsConversationDrawerOpen] = useState(false);
   const [isFavoriteDrawerOpen, setIsFavoriteDrawerOpen] = useState(false);
+  const [isSplashVisible, setIsSplashVisible] = useState(() => !readSplashDismissed());
   const [pendingScrollRecipeId, setPendingScrollRecipeId] = useState('');
   const [pendingIngredientMessageId, setPendingIngredientMessageId] = useState('');
   const [childContext, setChildContext] = useState('');
@@ -1009,6 +1316,12 @@ export default function App() {
     stopSpeaking();
     setActiveSpeechKey('');
     setLearningRecipe(null);
+  };
+
+  const handleEnterApp = () => {
+    persistSplashDismissed();
+    setIsSplashVisible(false);
+    window.setTimeout(() => chatInputRef.current?.focus(), 80);
   };
 
   const handleHorizontalTouchStart = (
@@ -1577,13 +1890,16 @@ export default function App() {
         locale,
         pinyinMode: isPronunciationModeEnabled,
       }, (event) => {
-        patchRecipeDetailStreamNodes(recipe.id, event);
-        const detailFromEvent = getRecipeDetailFromStreamEvent(event);
+        const localizedEvent = event.type === 'error'
+          ? { ...event, message: localizeErrorMessage(event.message, locale) }
+          : event;
+        patchRecipeDetailStreamNodes(recipe.id, localizedEvent);
+        const detailFromEvent = getRecipeDetailFromStreamEvent(localizedEvent);
         if (detailFromEvent) {
           streamedDetail = detailFromEvent;
         }
-        if (event.type === 'error') {
-          streamErrorMessage = event.message;
+        if (localizedEvent.type === 'error') {
+          streamErrorMessage = localizedEvent.message;
         }
       });
       if (!streamedDetail && streamErrorMessage) {
@@ -1597,11 +1913,14 @@ export default function App() {
       mergeRecipeDetailIntoCurrentSession(messageId, detail);
       writeCachedValue(recipeStepCacheStorageKey, stepCacheKey, detail);
     } catch (detailError) {
-      const message = detailError instanceof Error ? detailError.message : t(locale, '菜谱步骤获取失败。', 'Failed to get cooking steps.');
+      const message = localizeErrorMessage(
+        detailError instanceof Error ? detailError.message : t(locale, '菜谱步骤获取失败。', 'Failed to get cooking steps.'),
+        locale,
+      );
       setRecipeDetailErrorsById((current) => ({ ...current, [recipe.id]: message }));
       if (showToast) {
         setToastMessage(
-          message === '接口数据响应超时'
+          message === '接口数据响应超时' || message === 'Request timed out.'
             ? t(locale, '接口数据响应超时', 'Request timed out')
             : t(locale, `${recipe.name} 步骤获取失败，请稍后重试。`, `Failed to get steps for ${recipe.name}. Please try again later.`),
         );
@@ -1643,7 +1962,10 @@ export default function App() {
       setIngredientKnowledgeByName((current) => ({ ...current, [knowledgeKey]: knowledge }));
       writeCachedValue(ingredientKnowledgeCacheStorageKey, knowledgeKey, knowledge);
     } catch (knowledgeError) {
-      const message = knowledgeError instanceof Error ? knowledgeError.message : t(locale, '食材知识获取失败。', 'Failed to get ingredient notes.');
+      const message = localizeErrorMessage(
+        knowledgeError instanceof Error ? knowledgeError.message : t(locale, '食材知识获取失败。', 'Failed to get ingredient notes.'),
+        locale,
+      );
       setIngredientKnowledgeErrorsByName((current) => ({ ...current, [knowledgeKey]: message }));
       setToastMessage(t(locale, `${ingredient.name} 知识卡片获取失败，请稍后重试。`, `Failed to get notes for ${getIngredientDisplayName(ingredient.name, locale)}. Please try again later.`));
     } finally {
@@ -1691,6 +2013,26 @@ export default function App() {
       '';
     setIsFetchingRecommendations(true);
     setError('');
+
+    const streamingRecipeMessageId = `chat_${crypto.randomUUID()}`;
+    let hasCreatedStreamingRecipeMessage = false;
+    const ensureStreamingRecipeMessage = () => {
+      if (hasCreatedStreamingRecipeMessage) {
+        return;
+      }
+
+      hasCreatedStreamingRecipeMessage = true;
+      const streamingRecipeMessage: ChatMessage = {
+        id: streamingRecipeMessageId,
+        createdAt: new Date().toISOString(),
+        role: 'assistant',
+        text: t(locale, '正在生成菜谱推荐...', 'Generating recipe ideas...'),
+        nodes: [],
+        ingredientsKey,
+        ingredients: nextIngredients,
+      };
+      setChatMessages((current) => [...current, streamingRecipeMessage].slice(-40));
+    };
 
     try {
       const recommendationPrompt = [
@@ -1745,6 +2087,10 @@ export default function App() {
       }
       setChatMessages((current) =>
         current.filter((message) => {
+          if (message.ingredientsKey === ingredientsKey && !message.recipes?.length) {
+            return false;
+          }
+
           if (!message.recipes?.length) {
             return true;
           }
@@ -1757,15 +2103,11 @@ export default function App() {
         }),
       );
       skipNextChatAutoScrollRef.current = true;
-      const streamingRecipeMessage = addChatMessage({
-        role: 'assistant',
-        text: t(locale, '正在生成菜谱推荐...', 'Generating recipe ideas...'),
-        nodes: [{ id: 'recommendation_stream_intro', type: 'text', content: '' }],
-        ingredientsKey,
-        ingredients: nextIngredients,
-      });
       let data = cachedRecommendation;
       let streamErrorMessage = '';
+      if (cachedRecommendation) {
+        ensureStreamingRecipeMessage();
+      }
       if (!data) {
         await streamRecommendations(
           selectedProfile,
@@ -1776,7 +2118,10 @@ export default function App() {
             pinyinMode: isPronunciationModeEnabled,
           },
           (event) => {
-            patchChatMessageNodes(streamingRecipeMessage.id, event);
+            if (event.type === 'text-delta' || event.type === 'markdown-delta' || event.type === 'card') {
+              ensureStreamingRecipeMessage();
+              patchChatMessageNodes(streamingRecipeMessageId, event);
+            }
             const streamData = getRecommendationDataFromStreamEvent(event);
             if (streamData) {
               data = streamData;
@@ -1803,7 +2148,7 @@ export default function App() {
       setRecipeDetailErrorsById({});
       setChatMessages((current) =>
         current.map((message) =>
-          message.id === streamingRecipeMessage.id
+          message.id === streamingRecipeMessageId
             ? {
                 ...message,
                 text: t(
@@ -1817,10 +2162,14 @@ export default function App() {
             : message,
         ),
       );
-      setPendingIngredientMessageId(ingredientMessageId || streamingRecipeMessage.id);
+      setPendingIngredientMessageId(ingredientMessageId || streamingRecipeMessageId);
       setManualIngredient('');
     } catch (recommendationError) {
-      const message = recommendationError instanceof Error ? recommendationError.message : t(locale, '推荐失败，请稍后重试。', 'Recipe recommendation failed. Please try again later.');
+      setChatMessages((current) => current.filter((message) => message.id !== streamingRecipeMessageId));
+      const message = localizeErrorMessage(
+        recommendationError instanceof Error ? recommendationError.message : t(locale, '推荐失败，请稍后重试。', 'Recipe recommendation failed. Please try again later.'),
+        locale,
+      );
       setError(message);
       addChatMessage({
         role: 'assistant',
@@ -1928,10 +2277,14 @@ export default function App() {
           .map((ingredient) => ingredient.id),
       );
     } catch (chatError) {
-      setError(chatError instanceof Error ? chatError.message : t(locale, '食材识别失败。', 'Ingredient recognition failed.'));
+      const message = localizeErrorMessage(
+        chatError instanceof Error ? chatError.message : t(locale, '食材识别失败。', 'Ingredient recognition failed.'),
+        locale,
+      );
+      setError(message);
       addChatMessage({
         role: 'assistant',
-        text: chatError instanceof Error ? chatError.message : t(locale, '食材识别失败，请稍后再试。', 'Ingredient recognition failed. Please try again later.'),
+        text: message,
       });
     } finally {
       setIsParsingText(false);
@@ -1981,7 +2334,10 @@ export default function App() {
           .map((ingredient) => ingredient.id),
       );
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : t(locale, '图片上传失败。', 'Image upload failed.'));
+      setError(localizeErrorMessage(
+        uploadError instanceof Error ? uploadError.message : t(locale, '图片上传失败。', 'Image upload failed.'),
+        locale,
+      ));
     } finally {
       setIsUploadingImage(false);
       event.target.value = '';
@@ -2082,7 +2438,10 @@ export default function App() {
         try {
           await handleChatSubmit(transcript);
         } catch (parseError) {
-          setError(parseError instanceof Error ? parseError.message : t(locale, '语音文本解析失败。', 'Voice text parsing failed.'));
+          setError(localizeErrorMessage(
+            parseError instanceof Error ? parseError.message : t(locale, '语音文本解析失败。', 'Voice text parsing failed.'),
+            locale,
+          ));
         }
       };
 
@@ -2228,6 +2587,15 @@ export default function App() {
         accept="image/*"
         onChange={(event) => void handleImageFileChange(event)}
       />
+
+      {isSplashVisible ? (
+        <SplashStoryboardOpening
+          locale={locale}
+          onEnter={handleEnterApp}
+          onLocaleChange={handleLocaleChange}
+          shouldReduceMotion={Boolean(shouldReduceMotion)}
+        />
+      ) : null}
 
       {isConversationDrawerOpen ? (
         <div className="conversation-layer" role="presentation">

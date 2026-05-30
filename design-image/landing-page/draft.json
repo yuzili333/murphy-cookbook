@@ -1,0 +1,62 @@
+[
+  {
+    "scene": 1,
+    "zhTitle": "走进热闹菜市场",
+    "enTitle": "Enter the Bustling Market",
+    "zhSubtitle": "发现新鲜好食材",
+    "enSubtitle": "Discover fresh ingredients",
+    "zhNarration": "小墨菲和爸爸妈妈来到热闹的菜市场。琳琅满目的新鲜食材，让小朋友充满好奇。",
+    "enNarration": "Murphy and the family arrive at a lively market. Surrounded by colorful fresh ingredients, the child becomes curious about everything they see.",
+    "capability": "ingredient_discovery"
+  },
+  {
+    "scene": 2,
+    "zhTitle": "识别食材",
+    "enTitle": "Recognize Ingredients",
+    "zhSubtitle": "了解来源与营养",
+    "enSubtitle": "Learn origins and nutrition",
+    "zhNarration": "小朋友看到喜欢的食材，只要用小墨菲扫一扫，就能知道它叫什么、从哪里来、现在是不是当季。",
+    "enNarration": "When the child sees an interesting ingredient, Murphy can scan it and tell them its name, where it comes from, and whether it is in season.",
+    "capability": "ingredient_recognition"
+  },
+  {
+    "scene": 3,
+    "zhTitle": "科普食材知识",
+    "enTitle": "Learn Ingredient Knowledge",
+    "zhSubtitle": "发现可制作的美味",
+    "enSubtitle": "Discover delicious possibilities",
+    "zhNarration": "小墨菲把食材知识变成孩子看得懂的卡片，告诉小朋友食材的营养价值，还能推荐可以做成什么菜。",
+    "enNarration": "Murphy turns ingredient knowledge into simple cards children can understand. It explains nutrition in a friendly way and shows what dishes can be made.",
+    "capability": "ingredient_education"
+  },
+  {
+    "scene": 4,
+    "zhTitle": "推荐菜谱",
+    "enTitle": "Recommend Recipes",
+    "zhSubtitle": "为你量身定制",
+    "enSubtitle": "Tailored to your ingredients",
+    "zhNarration": "根据一家人选好的食材，小墨菲会推荐适合孩子的营养菜谱，让今天买到的食材都能派上用场。",
+    "enNarration": "Based on the ingredients the family has chosen, Murphy recommends nutritious recipes that are simple, fun, and suitable for kids.",
+    "capability": "recipe_recommendation"
+  },
+  {
+    "scene": 5,
+    "zhTitle": "亲子烹饪",
+    "enTitle": "Cook Together with Parents",
+    "zhSubtitle": "安全步骤与提醒",
+    "enSubtitle": "Safe step-by-step guidance",
+    "zhNarration": "回到厨房后，小墨菲会一步一步告诉孩子怎么做。遇到刀具、热锅、明火和开水时，还会提醒必须由爸爸妈妈陪同完成。",
+    "enNarration": "Back in the kitchen, Murphy guides the child step by step. When a step involves knives, hot pans, open flames, or boiling water, Murphy reminds the child to ask parents for help.",
+    "capability": "guided_cooking_safety"
+  },
+  {
+    "scene": 6,
+    "zhTitle": "美味上桌",
+    "enTitle": "Enjoy the Meal Together",
+    "zhSubtitle": "共享幸福时刻",
+    "enSubtitle": "Share a happy family meal",
+    "zhNarration": "一道道菜端上餐桌，全家人一起品尝努力完成的美味。小朋友不只学会了做菜，也收获了自信和快乐。",
+    "enNarration": "The dishes are served, and the whole family enjoys the meal together. The child not only learns how to cook, but also gains confidence and joy.",
+    "capability": "family_meal_sharing"
+  }
+]

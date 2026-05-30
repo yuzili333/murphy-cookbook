@@ -1,5 +1,13 @@
 import type { MessageNode, StreamEvent } from '../types';
 
+function getCurrentLocale() {
+  try {
+    return window.localStorage.getItem('murphy-cookbook.locale.v1') === 'en' ? 'en' : 'zh';
+  } catch {
+    return 'zh';
+  }
+}
+
 export function applyStreamEvent(nodes: MessageNode[], event: StreamEvent): MessageNode[] {
   if (event.type === 'text-delta' || event.type === 'markdown-delta') {
     const nodeType: 'text' | 'markdown' = event.type === 'text-delta' ? 'text' : 'markdown';
@@ -83,7 +91,7 @@ export function parseSseChunk(buffer: string) {
     } catch {
       events.push({
         type: 'error',
-        message: '流式消息解析失败。',
+        message: getCurrentLocale() === 'en' ? 'Failed to parse the streaming response.' : '流式消息解析失败。',
       });
     }
   }

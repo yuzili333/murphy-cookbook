@@ -472,7 +472,7 @@ function extractObjectsFromArrayByKey<T>(content: string, key: string) {
   return results;
 }
 
-function parseRecipePlanPayload(content: string) {
+function parseRecipePlanPayload(content: string, options: GenerationLocaleOptions = {}) {
   const normalizedContent = extractJsonObjectCandidate(content);
 
   try {
@@ -490,11 +490,13 @@ function parseRecipePlanPayload(content: string) {
       return { recipes: salvagedRecipes };
     }
 
-    throw new Error('菜谱推荐模型返回内容无法解析为有效 JSON。');
+    throw new Error(options.locale === 'en'
+      ? 'The recipe recommendation response could not be parsed as valid JSON.'
+      : '菜谱推荐模型返回内容无法解析为有效 JSON。');
   }
 }
 
-function parseRecipeStepsPayload(content: string) {
+function parseRecipeStepsPayload(content: string, options: GenerationLocaleOptions = {}) {
   const normalizedContent = extractJsonObjectCandidate(content);
 
   try {
@@ -529,7 +531,9 @@ function parseRecipeStepsPayload(content: string) {
       };
     }
 
-    throw new Error('菜谱步骤模型返回内容无法解析为有效 JSON。');
+    throw new Error(options.locale === 'en'
+      ? 'The cooking steps response could not be parsed as valid JSON.'
+      : '菜谱步骤模型返回内容无法解析为有效 JSON。');
   }
 }
 
@@ -1199,7 +1203,7 @@ export async function generateRecipePlan(
   });
 
   return normalizeGeneratedRecipeSummaries(
-    parseRecipePlanPayload(content),
+    parseRecipePlanPayload(content, options),
     profile,
     options,
   );
@@ -1249,7 +1253,7 @@ export async function generateRecipeDetail(
     },
   });
 
-  const stepsPayload = parseRecipeStepsPayload(content);
+  const stepsPayload = parseRecipeStepsPayload(content, options);
   if (stepsPayload.sourceRecipeName && !hasSameRecipeName(stepsPayload.sourceRecipeName, recipe.name)) {
     throw new Error(`菜谱详情生成失败，返回菜谱与“${recipe.name}”不一致。`);
   }
