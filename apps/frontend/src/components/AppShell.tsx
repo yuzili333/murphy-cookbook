@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import historyIcon from '../assets/history.svg';
 
+const murphyAvatarImage = new URL('../../../../design-image/murphy-avatar.png', import.meta.url).href;
+
 interface AppShellProps {
   onOpenConversations?: () => void;
   onOpenFavorites?: () => void;
@@ -36,7 +38,9 @@ export function AppShell({
           </svg>
         </button>
         <div className="brand-block">
-          <span className="shell-mascot" aria-hidden="true">👩‍🍳</span>
+          <span className="shell-mascot" aria-hidden="true">
+            <img src={murphyAvatarImage} alt="" aria-hidden="true" />
+          </span>
           <div>
             <h1>{isChinese ? '食谱Agent' : "AI Cookbook"}</h1>
           </div>

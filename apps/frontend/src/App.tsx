@@ -56,6 +56,8 @@ type RecipeCarouselMetrics = {
   paddingLeft: number;
 };
 
+const murphyAvatarImage = new URL('../../../design-image/murphy-avatar.png', import.meta.url).href;
+
 const defaultChildContextEn =
   'Default audience: grade 1-6 students. Recipe principles: low oil, mild flavor, balanced meals, vitamin-rich ingredients, and balanced staples, protein, and vegetables. Avoid high sugar, high salt, deep-fried, and very spicy food. Unless a severe acute allergy risk is mentioned, do not ask for age, preferences, or allergens.';
 
@@ -393,6 +395,15 @@ const landingSceneImages = [
   new URL('../../../design-image/landing-page/storyboard_06_image.png', import.meta.url).href,
 ];
 
+const englishLandingSceneImages = [
+  landingSceneImages[0],
+  new URL('../../../design-image/landing-page/storyboard_02_image_en.png', import.meta.url).href,
+  new URL('../../../design-image/landing-page/storyboard_03_image_en.png', import.meta.url).href,
+  new URL('../../../design-image/landing-page/storyboard_04_image_en.png', import.meta.url).href,
+  new URL('../../../design-image/landing-page/storyboard_05_image_en.png', import.meta.url).href,
+  landingSceneImages[5],
+];
+
 const splashStoryScenes = [
   {
     id: 'ingredient_discovery',
@@ -403,7 +414,8 @@ const splashStoryScenes = [
     enSubtitle: 'Discover fresh ingredients',
     zhNarration: '小墨菲和爸爸妈妈来到热闹的菜市场。琳琅满目的新鲜食材，让小朋友充满好奇。',
     enNarration: 'Murphy and the family arrive at a lively market. Surrounded by colorful fresh ingredients, the child becomes curious about everything they see.',
-    image: landingSceneImages[0],
+    zhImage: landingSceneImages[0],
+    enImage: englishLandingSceneImages[0],
   },
   {
     id: 'ingredient_recognition',
@@ -414,7 +426,8 @@ const splashStoryScenes = [
     enSubtitle: 'Learn origins and nutrition',
     zhNarration: '小朋友看到喜欢的食材，只要用小墨菲扫一扫，就能知道它叫什么、从哪里来、现在是不是当季。',
     enNarration: 'When the child sees an interesting ingredient, Murphy can scan it and tell them its name, where it comes from, and whether it is in season.',
-    image: landingSceneImages[1],
+    zhImage: landingSceneImages[1],
+    enImage: englishLandingSceneImages[1],
   },
   {
     id: 'ingredient_education',
@@ -425,7 +438,8 @@ const splashStoryScenes = [
     enSubtitle: 'Discover delicious possibilities',
     zhNarration: '小墨菲把食材知识变成孩子看得懂的卡片，告诉小朋友食材的营养价值，还能推荐可以做成什么菜。',
     enNarration: 'Murphy turns ingredient knowledge into simple cards children can understand. It explains nutrition in a friendly way and shows what dishes can be made.',
-    image: landingSceneImages[2],
+    zhImage: landingSceneImages[2],
+    enImage: englishLandingSceneImages[2],
   },
   {
     id: 'recipe_recommendation',
@@ -436,7 +450,8 @@ const splashStoryScenes = [
     enSubtitle: 'Tailored to your ingredients',
     zhNarration: '根据一家人选好的食材，小墨菲会推荐适合孩子的营养菜谱，让今天买到的食材都能派上用场。',
     enNarration: 'Based on the ingredients the family has chosen, Murphy recommends nutritious recipes that are simple, fun, and suitable for kids.',
-    image: landingSceneImages[3],
+    zhImage: landingSceneImages[3],
+    enImage: englishLandingSceneImages[3],
   },
   {
     id: 'guided_cooking_safety',
@@ -447,7 +462,8 @@ const splashStoryScenes = [
     enSubtitle: 'Safe step-by-step guidance',
     zhNarration: '回到厨房后，小墨菲会一步一步告诉孩子怎么做。遇到刀具、热锅、明火和开水时，还会提醒必须由爸爸妈妈陪同完成。',
     enNarration: 'Back in the kitchen, Murphy guides the child step by step. When a step involves knives, hot pans, open flames, or boiling water, Murphy reminds the child to ask parents for help.',
-    image: landingSceneImages[4],
+    zhImage: landingSceneImages[4],
+    enImage: englishLandingSceneImages[4],
   },
   {
     id: 'family_meal_sharing',
@@ -458,9 +474,14 @@ const splashStoryScenes = [
     enSubtitle: 'Share a happy family meal',
     zhNarration: '一道道菜端上餐桌，全家人一起品尝努力完成的美味。小朋友不只学会了做菜，也收获了自信和快乐。',
     enNarration: 'The dishes are served, and the whole family enjoys the meal together. The child not only learns how to cook, but also gains confidence and joy.',
-    image: landingSceneImages[5],
+    zhImage: landingSceneImages[5],
+    enImage: englishLandingSceneImages[5],
   },
 ];
+
+function getSplashSceneImage(scene: typeof splashStoryScenes[number], locale: AppLocale) {
+  return locale === 'en' ? scene.enImage : scene.zhImage;
+}
 
 interface SplashStoryboardOpeningProps {
   locale: AppLocale;
@@ -517,7 +538,7 @@ function SplashStoryboardOpening({
       <div className="landing-mobile-stack" aria-label={isEnglish ? 'Opening storyboard stack' : '手机端开屏分镜长页'}>
         <div className="landing-floating-controls">
           <div className="landing-brand">
-            <span>👩‍🍳</span>
+            <span><img src={murphyAvatarImage} alt="" aria-hidden="true" /></span>
             <strong>{isEnglish ? "Murphy's Cookbook" : '小墨菲的美食宝典'}</strong>
           </div>
           <SplashLocaleSwitch locale={locale} onLocaleChange={onLocaleChange} />
@@ -526,7 +547,7 @@ function SplashStoryboardOpening({
         <div className="landing-mobile-story-list">
           {splashStoryScenes.map((scene) => (
             <article key={scene.id} className="landing-mobile-story-card">
-              <img src={scene.image} alt={isEnglish ? scene.enTitle : scene.zhTitle} loading="eager" decoding="sync" />
+              <img src={getSplashSceneImage(scene, locale)} alt={isEnglish ? scene.enTitle : scene.zhTitle} loading="eager" decoding="sync" />
               <div className="landing-image-title">
                 <span>{String(scene.scene).padStart(2, '0')}</span>
                 <strong>{isEnglish ? scene.enTitle : scene.zhTitle}</strong>
@@ -548,7 +569,7 @@ function SplashStoryboardOpening({
       <div className="landing-carousel landing-pad-carousel" aria-label={isEnglish ? 'Paginated opening carousel' : 'PAD 端分页开屏轮播'}>
         <div className="landing-floating-controls">
           <div className="landing-brand">
-            <span>👩‍🍳</span>
+            <span><img src={murphyAvatarImage} alt="" aria-hidden="true" /></span>
             <div>
               <strong>{isEnglish ? "Murphy's Cookbook" : '小墨菲的美食宝典'}</strong>
               <small>{isEnglish ? 'AI Recipe Buddy for Kids' : '专为儿童设计的智能美食伙伴'}</small>
@@ -587,7 +608,7 @@ function SplashStoryboardOpening({
             {splashStoryScenes.map((scene, index) => (
               <article key={scene.id} className="landing-pad-slide" aria-hidden={index !== activeIndex}>
                 <div className="landing-pad-art">
-                  <img src={scene.image} alt={isEnglish ? scene.enTitle : scene.zhTitle} loading="eager" decoding="sync" />
+                  <img src={getSplashSceneImage(scene, locale)} alt={isEnglish ? scene.enTitle : scene.zhTitle} loading="eager" decoding="sync" />
                   <div className="landing-image-title landing-pad-title">
                     <span>{String(scene.scene).padStart(2, '0')} / {String(lastIndex + 1).padStart(2, '0')}</span>
                     <strong>{isEnglish ? scene.enTitle : scene.zhTitle}</strong>
@@ -2792,9 +2813,7 @@ export default function App() {
       >
           <div className="kids-chat-hero" aria-label={isEnglish ? 'Kids cooking assistant' : '儿童烹饪助手'}>
             <div className="mascot-badge" aria-hidden="true">
-              <span className="mascot-chef-hat">▴</span>
-              <span className="mascot-face">😊</span>
-              <span className="mascot-spoon">🥄</span>
+              <img src={murphyAvatarImage} alt="" aria-hidden="true" />
             </div>
             <div>
               <h3>{isEnglish ? 'What ingredients should we turn into something delicious?' : '今天想把哪些食材变成好吃的？'}</h3>
@@ -2834,6 +2853,9 @@ export default function App() {
                 className={message.role === 'user' ? 'chat-message user' : 'chat-message assistant'}
                 data-chat-message-id={message.id}
               >
+                {message.role === 'assistant' ? (
+                  <img className="assistant-message-avatar" src={murphyAvatarImage} alt="" aria-hidden="true" />
+                ) : null}
                 <div className="chat-bubble">
                   <div className="chat-bubble-content">
                     {message.nodes?.length ? <StreamNodesRenderer nodes={message.nodes} /> : <p>{displayMessageText}</p>}

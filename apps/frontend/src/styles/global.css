@@ -2621,6 +2621,17 @@ button {
   border-radius: 999px;
   background: #efd4d4;
   font-size: 1.35rem;
+  overflow: hidden;
+}
+
+.landing-brand span img,
+.shell-mascot img,
+.mascot-badge img,
+.assistant-message-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .landing-brand strong {
@@ -3513,7 +3524,27 @@ button {
 }
 
 .chat-message.assistant {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
   justify-items: start;
+}
+
+.assistant-message-avatar {
+  grid-column: 1;
+  width: 42px;
+  height: 42px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(247, 25, 114, 0.14);
+}
+
+.chat-message.assistant .chat-bubble,
+.chat-message.assistant .ingredient-list-card,
+.chat-message.assistant .recipe-carousel-shell,
+.chat-message.assistant .stream-content,
+.chat-message.assistant .inline-detail-block {
+  grid-column: 2;
 }
 
 .chat-bubble {
@@ -6188,6 +6219,7 @@ button {
   background: #ffffff;
   font-size: 1.45rem;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 
 .topbar-actions {
@@ -6303,7 +6335,8 @@ button {
   height: 72px;
   border: 2px solid #ffffff;
   border-radius: 50%;
-  background: linear-gradient(135deg, #efd4d4, #ff8fba);
+  overflow: hidden;
+  background: #ffffff;
   box-shadow: 0 10px 22px rgba(247, 25, 114, 0.18);
   animation: none;
 }
