@@ -1077,7 +1077,7 @@ function buildRecipeDetailUserPrompt(
       '8. Each step may be used as subtitles for a child-friendly cartoon cooking video, so title should be short and description should work as narration.',
       `9. The final step expectedResult must say "Finish ${recipe.name}". Every step must include: title, description, tip, childAction, parentAction, expectedResult, riskLevel, requiresParentAssist.`,
       '10. If you cannot keep the recipe and ingredients consistent, return {"steps":[]}. Do not explain. Use double quotes for JSON.',
-      '11. Do not return recipe card fields such as name, englishName, nameLearning, ageRange, difficulty, estimatedTimeMinutes, nutritionSummary, ingredients, imageUrl, fitReasons, or extraIngredients.',
+      '11. Do not return recipe card fields such as name, englishName, nameLearning, ageRange, difficulty, estimatedTimeMinutes, prepTimeMinutes, cookTimeMinutes, nutritionSummary, ingredients, imageUrl, fitReasons, or extraIngredients.',
     ].join('\n');
   }
 
@@ -1097,7 +1097,7 @@ function buildRecipeDetailUserPrompt(
     '8.每步内容将用于生成儿童卡通烹饪视频字幕，请让title适合做短字幕，description适合拆成视频旁白。',
     `9.最后一步 expectedResult 写“完成${recipe.name}”；每步必填:title,description,tip,childAction,parentAction,expectedResult,riskLevel,requiresParentAssist。`,
     '10.无法一致生成则返回{"steps":[]}；不要解释；JSON用双引号。',
-    '11.不要返回菜谱卡字段:name,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,nutritionSummary,ingredients,imageUrl,fitReasons,extraIngredients。',
+    '11.不要返回菜谱卡字段:name,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,prepTimeMinutes,cookTimeMinutes,nutritionSummary,ingredients,imageUrl,fitReasons,extraIngredients。',
   ].join('\n');
 }
 
@@ -1226,8 +1226,8 @@ export async function generateRecipeDetail(
       role: 'system',
       content:
         isEnglish
-          ? 'Kids cooking step generator. Return only JSON: {"steps":[{"title":"","description":"Step ingredients: A; Action: First ... Then ... Next ... It is done when ...","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}. No Markdown, explanations, recipe card fields, ingredient table, imageUrl, or extra wrapper.'
-          : '儿童菜谱步骤生成。只返回JSON:{"steps":[{"title":"","description":"本步骤食材：A；操作：先……。再……。接着……。看到……就完成。","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。不要Markdown、解释、菜谱卡字段、配料表、imageUrl或额外包裹字段。',
+          ? 'Kids cooking step generator. Return only JSON: {"steps":[{"title":"","description":"Step ingredients: A; Action: First ... Then ... Next ... It is done when ...","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}. No Markdown, explanations, recipe card fields, ingredient table, imageUrl, prepTimeMinutes, cookTimeMinutes, or extra wrapper.'
+          : '儿童菜谱步骤生成。只返回JSON:{"steps":[{"title":"","description":"本步骤食材：A；操作：先……。再……。接着……。看到……就完成。","tip":"","childAction":"","parentAction":"","expectedResult":"","riskLevel":"low|medium|high","requiresParentAssist":false}]}。不要Markdown、解释、菜谱卡字段、配料表、imageUrl、prepTimeMinutes、cookTimeMinutes或额外包裹字段。',
     },
     {
       role: 'user',

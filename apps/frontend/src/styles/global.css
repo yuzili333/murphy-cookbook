@@ -7580,3 +7580,42 @@ body {
     overscroll-behavior: contain;
   }
 }
+
+@media (max-width: 767px) {
+  .recipe-carousel-shell {
+    width: 100vw;
+    max-width: 100vw;
+    margin-inline: calc(50% - 50vw);
+  }
+
+  .recipe-carousel {
+    container-type: inline-size;
+    padding-inline: 10vw;
+  }
+
+  .carousel-recipe-card,
+  .carousel-recipe-card.coverflow-card {
+    flex: 0 0 80cqw;
+    width: 80cqw;
+    max-width: 80cqw;
+  }
+}
+
+@media (min-width: 768px) {
+  .recipe-carousel-shell {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .recipe-carousel {
+    container-type: inline-size;
+    padding-inline: 7.5%;
+  }
+
+  .carousel-recipe-card,
+  .carousel-recipe-card.coverflow-card {
+    flex: 0 0 85cqw;
+    width: 85cqw;
+    max-width: 85cqw;
+  }
+}

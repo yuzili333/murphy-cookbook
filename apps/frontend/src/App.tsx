@@ -1951,6 +1951,55 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    const cachedDetails: Record<string, RecipeDetail> = {};
+
+    for (const message of chatMessages) {
+      if (!message.recipes?.length) {
+        continue;
+      }
+
+      const messageIngredients = message.ingredients?.length ? message.ingredients : ingredients;
+      for (const recipe of message.recipes) {
+        if (recipeDetailsById[recipe.id] || recipeDetailLoadingById[recipe.id]) {
+          continue;
+        }
+
+        const stepCacheKey = buildRecipeStepCacheKey(
+          recipe,
+          messageIngredients,
+          locale,
+          isPronunciationModeEnabled,
+        );
+        const cachedDetail = readCachedValue<RecipeDetail>(recipeStepCacheStorageKey, stepCacheKey);
+        if (isValidCachedRecipeDetail(recipe, messageIngredients, cachedDetail)) {
+          cachedDetails[recipe.id] = normalizeCachedRecipeDetail(recipe, cachedDetail);
+        }
+      }
+    }
+
+    const cachedRecipeIds = Object.keys(cachedDetails);
+    if (cachedRecipeIds.length === 0) {
+      return;
+    }
+
+    setRecipeDetailsById((current) => ({ ...current, ...cachedDetails }));
+    setRecipeDetailErrorsById((current) => {
+      const next = { ...current };
+      for (const recipeId of cachedRecipeIds) {
+        delete next[recipeId];
+      }
+      return next;
+    });
+  }, [
+    chatMessages,
+    ingredients,
+    isPronunciationModeEnabled,
+    locale,
+    recipeDetailLoadingById,
+    recipeDetailsById,
+  ]);
+
   const handleIngredientKnowledgeClick = async (ingredient: IngredientItem) => {
     const knowledgeKey = buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale);
     if (!knowledgeKey) {
@@ -3228,16 +3277,6 @@ export default function App() {
                         <div className="inline-recipe-detail recipe-dossier">
                           {recipeDetail ? (
                             <>
-                              <div className="inline-detail-meta">
-                                <span>
-                                  <b>{recipeDetail.prepTimeMinutes}</b>
-                                  {isEnglish ? 'prep min' : '备料分钟'}
-                                </span>
-                                <span>
-                                  <b>{recipeDetail.cookTimeMinutes}</b>
-                                  {isEnglish ? 'cook min' : '烹饪分钟'}
-                                </span>
-                              </div>
                               <div className="inline-detail-block">
                                 <div className="detail-block-heading">
                                   <strong>{isEnglish ? 'Ingredients' : '食材配料清单'}</strong>

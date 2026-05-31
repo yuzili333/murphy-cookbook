@@ -64,9 +64,7 @@ function isRecipeDetailPayload(recipe: RecipeRecommendation | RecipeDetailRecipe
     Array.isArray(candidate.ingredients) &&
     candidate.ingredients.length > 0 &&
     Array.isArray(candidate.steps) &&
-    candidate.steps.length > 0 &&
-    Number.isFinite(Number(candidate.prepTimeMinutes)) &&
-    Number.isFinite(Number(candidate.cookTimeMinutes))
+    candidate.steps.length > 0
   );
 }
 
