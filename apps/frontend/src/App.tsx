@@ -2620,8 +2620,6 @@ export default function App() {
         onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
         locale={locale}
         onLocaleChange={handleLocaleChange}
-        pronunciationMode={isPronunciationModeEnabled}
-        onPronunciationModeChange={handlePronunciationModeChange}
       >
         <section className="page-grid">
           <div className="panel">
@@ -2639,8 +2637,6 @@ export default function App() {
       onOpenFavorites={() => setIsFavoriteDrawerOpen(true)}
       locale={locale}
       onLocaleChange={handleLocaleChange}
-      pronunciationMode={isPronunciationModeEnabled}
-      onPronunciationModeChange={handlePronunciationModeChange}
     >
       <input
         ref={cameraImageInputRef}
@@ -2688,6 +2684,18 @@ export default function App() {
               <img src={newChatIcon} alt="" aria-hidden="true" />
               {isEnglish ? 'New Chat' : '新建对话'}
             </button>
+            <div className="conversation-drawer-tools">
+              <span>{isEnglish ? 'Pronunciation guide' : '开启拼音'}</span>
+              <button
+                type="button"
+                className={isPronunciationModeEnabled ? 'drawer-pronunciation-toggle active' : 'drawer-pronunciation-toggle'}
+                onClick={() => handlePronunciationModeChange(!isPronunciationModeEnabled)}
+                aria-pressed={isPronunciationModeEnabled}
+                aria-label={isEnglish ? 'Toggle pronunciation guide' : '切换拼音模式'}
+              >
+                {isPronunciationModeEnabled ? (isEnglish ? 'On' : '开启') : (isEnglish ? 'Off' : '关闭')}
+              </button>
+            </div>
             <div className="conversation-list">
               <p className="conversation-group-title">{isEnglish ? 'Recent' : '最近'}</p>
               {chatSessions.length > 0 ? (
@@ -2801,7 +2809,7 @@ export default function App() {
                 </button>
                 <button
                   type="button"
-                  className="tablet-panel-delete icon-only"
+                  className="tablet-panel-delete"
                   onClick={() => handleDeleteConversation(session.id)}
                   aria-label={isEnglish ? `Delete chat: ${getSessionTitleDisplay(session.title, locale)}` : `删除历史对话：${session.title}`}
                 >
@@ -2843,7 +2851,7 @@ export default function App() {
                   onClick={() => toggleFavoriteRecipe(recipe)}
                   aria-label={isEnglish ? `Remove saved recipe: ${recipe.name}` : `删除已收藏菜谱：${recipe.name}`}
                 >
-                  {isEnglish ? 'Remove' : '删除'}
+                  <TrashInlineIcon />
                 </button>
               </div>
             ))

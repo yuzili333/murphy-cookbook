@@ -5250,6 +5250,40 @@ button {
   font-weight: 800;
 }
 
+.conversation-drawer-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e6e6e6;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #000000;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.drawer-pronunciation-toggle {
+  flex: 0 0 auto;
+  min-width: 58px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #e6e6e6;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #525252;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.drawer-pronunciation-toggle.active {
+  border-color: rgba(247, 25, 114, 0.18);
+  background: #dceeb1;
+  color: #16313a;
+}
+
 .conversation-list {
   display: grid;
   gap: 8px;
@@ -6230,12 +6264,21 @@ button {
 }
 
 .favorite-entry-trigger {
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 42px;
+  min-width: 42px;
   height: 42px;
   padding: 0;
   border-radius: 999px;
+}
+
+.favorite-entry-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 
 .locale-switch {
@@ -7617,5 +7660,175 @@ body {
     flex: 0 0 85cqw;
     width: 85cqw;
     max-width: 85cqw;
+  }
+}
+
+/* Top navigation and PAD list actions: keep mobile favorites visible and align delete buttons with the mobile drawer. */
+.favorite-entry-trigger {
+  display: inline-flex;
+}
+
+.tablet-panel-delete {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid rgba(255, 122, 26, 0.25);
+  border-radius: 999px;
+  background: rgba(255, 122, 26, 0.08);
+  color: #a64600;
+  font-size: 0;
+  box-shadow: none;
+}
+
+.tablet-panel-delete:hover {
+  border-color: rgba(255, 122, 26, 0.38);
+  background: rgba(255, 122, 26, 0.16);
+}
+
+.tablet-panel-delete .inline-trash-icon,
+.conversation-delete-button .inline-trash-icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 430px) {
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  .favorite-entry-trigger {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .favorite-entry-icon {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Conversation and collection delete rows match the storyboard reference card. */
+.conversation-list,
+.tablet-panel-list {
+  gap: 12px;
+}
+
+.conversation-item,
+.tablet-panel-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px;
+  border: 1px solid #f4c4d5;
+  border-radius: 28px;
+  background: #fff7fb;
+  color: #000000;
+}
+
+.conversation-item:hover,
+.conversation-item.active,
+.tablet-panel-row:hover,
+.tablet-panel-row.active {
+  border-color: #f4c4d5;
+  background: #fff7fb;
+}
+
+.conversation-select-button,
+.tablet-panel-item,
+.tablet-panel-item.favorite {
+  align-self: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #000000;
+}
+
+.conversation-select-button strong,
+.tablet-panel-item strong {
+  color: #000000;
+  font-size: 1.08rem;
+  font-weight: 900;
+  line-height: 1.24;
+}
+
+.conversation-select-button span,
+.tablet-panel-item span {
+  color: #666666;
+  font-size: 0.92rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.conversation-delete-button,
+.tablet-panel-delete {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  min-width: 50px;
+  height: 50px;
+  min-height: 50px;
+  padding: 0;
+  border: 1px solid #ffc2a3;
+  border-radius: 999px;
+  background: #fff1ea;
+  color: #c54800;
+  box-shadow: none;
+}
+
+.conversation-delete-button:hover,
+.tablet-panel-delete:hover {
+  border-color: #f29c74;
+  background: #ffe7dc;
+  color: #a93c00;
+}
+
+.conversation-delete-button .inline-trash-icon,
+.tablet-panel-delete .inline-trash-icon {
+  width: 19px;
+  height: 19px;
+}
+
+@media (min-width: 900px) and (orientation: landscape) and (pointer: coarse) {
+  .favorite-entry-trigger {
+    display: none;
+  }
+
+  .tablet-panel-list {
+    gap: 10px;
+  }
+
+  .tablet-panel-row {
+    gap: 10px;
+    padding: 16px 14px;
+    border-radius: 20px;
+  }
+
+  .tablet-panel-delete {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    min-height: 42px;
+  }
+
+  .tablet-panel-delete .inline-trash-icon {
+    width: 17px;
+    height: 17px;
+  }
+
+  .tablet-panel-item strong {
+    font-size: 0.9rem;
+  }
+
+  .tablet-panel-item span {
+    font-size: 0.76rem;
   }
 }

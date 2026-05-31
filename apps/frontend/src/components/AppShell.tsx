@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import historyIcon from '../assets/history.svg';
+import favoriteIcon from '../assets/favorite.svg';
 
 const murphyAvatarImage = new URL('../../../../design-image/murphy-avatar.png', import.meta.url).href;
 
@@ -8,8 +8,6 @@ interface AppShellProps {
   onOpenFavorites?: () => void;
   locale?: 'zh' | 'en';
   onLocaleChange?: (locale: 'zh' | 'en') => void;
-  pronunciationMode?: boolean;
-  onPronunciationModeChange?: (enabled: boolean) => void;
   children: ReactNode;
 }
 
@@ -18,8 +16,6 @@ export function AppShell({
   onOpenFavorites,
   locale = 'zh',
   onLocaleChange,
-  pronunciationMode = true,
-  onPronunciationModeChange,
   children,
 }: AppShellProps) {
   const isChinese = locale === 'zh';
@@ -46,14 +42,6 @@ export function AppShell({
           </div>
         </div>
         <div className="topbar-actions">
-          <button
-            type="button"
-            className="favorite-entry-trigger"
-            onClick={onOpenFavorites}
-            aria-label={isChinese ? '打开菜谱收藏' : 'Open recipe collection'}
-          >
-            <img className="settings-trigger-icon" src={historyIcon} alt="" aria-hidden="true" />
-          </button>
           <div className="locale-switch" role="group" aria-label={isChinese ? '切换语言' : 'Switch language'}>
             <button
               type="button"
@@ -73,12 +61,16 @@ export function AppShell({
           </div>
           <button
             type="button"
-            className={pronunciationMode ? 'pronunciation-toggle active' : 'pronunciation-toggle'}
-            onClick={() => onPronunciationModeChange?.(!pronunciationMode)}
-            aria-pressed={pronunciationMode}
-            aria-label={isChinese ? '切换拼音模式' : 'Toggle pronunciation mode'}
+            className="favorite-entry-trigger"
+            onClick={onOpenFavorites}
+            aria-label={isChinese ? '打开菜谱收藏' : 'Open recipe collection'}
           >
-            {isChinese ? '拼音' : 'ABC'}
+            <img
+              className="favorite-entry-icon"
+              src={favoriteIcon}
+              alt=""
+              aria-hidden="true"
+            />
           </button>
         </div>
       </aside>
