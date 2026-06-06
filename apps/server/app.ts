@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express, { type Express, type Request, type Response } from 'express';
 import multer from 'multer';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import {
   childProfiles,
   recipeCatalog,
@@ -27,6 +28,15 @@ import {
   understandIngredientsFromText,
 } from './siliconflow.js';
 import { getLocalSeasonalIngredientSuggestions } from './seasonalIngredients.js';
+import {
+  createRecipeVideo,
+  deleteRecipeVideo,
+  listRecipeVideos,
+  matchRecipeVideo,
+  parseRecipeVideoInput,
+  updateRecipeVideo,
+  type RecipeVideoListOptions,
+} from './recipeVideos.js';
 
 interface RequestWithRawBody {
   rawBody?: string;
@@ -48,6 +58,68 @@ interface GenerationLocaleOptions {
 interface IngredientKnowledgeRequestPayload {
   name: string;
   generationOptions: GenerationLocaleOptions;
+}
+
+const videoConfigAdminUser = process.env.VIDEO_CONFIG_ADMIN_USER ?? 'yuzili';
+const videoConfigAdminPassword = process.env.VIDEO_CONFIG_ADMIN_PASSWORD ?? 'yuzili333';
+const videoConfigTokenSecret = process.env.VIDEO_CONFIG_TOKEN_SECRET ?? 'murphy-cookbook-video-config-local-secret';
+
+function signVideoConfigToken(username: string, expiresAt: number) {
+  return createHmac('sha256', videoConfigTokenSecret).update(`${username}.${expiresAt}`).digest('hex');
+}
+
+function createVideoConfigToken(username: string) {
+  const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+  return `${username}.${expiresAt}.${signVideoConfigToken(username, expiresAt)}`;
+}
+
+function getVideoConfigTokenStatus(token: string) {
+  const [username, expiresAtText, signature] = token.split('.');
+  const expiresAt = Number(expiresAtText);
+  if (!token) return { ok: false, reason: 'missing_token' };
+  if (!username || !expiresAt || !signature) return { ok: false, reason: 'malformed_token' };
+  if (username !== videoConfigAdminUser) return { ok: false, reason: 'invalid_user' };
+  if (expiresAt < Date.now()) return { ok: false, reason: 'expired_token' };
+
+  const expected = signVideoConfigToken(username, expiresAt);
+  const actualBuffer = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actualBuffer.length !== expectedBuffer.length) {
+    return { ok: false, reason: 'signature_length_mismatch' };
+  }
+
+  return timingSafeEqual(actualBuffer, expectedBuffer)
+    ? { ok: true, reason: 'valid_token' }
+    : { ok: false, reason: 'invalid_signature' };
+}
+
+function isLocalVideoConfigDebugRequest(req: Request) {
+  const host = String(req.headers.host ?? '').toLocaleLowerCase();
+  const isLocalHost = host.startsWith('localhost:') || host.startsWith('127.0.0.1:') || host.startsWith('[::1]:');
+  const isProductionRuntime = process.env.NODE_ENV === 'production'
+    || Boolean(process.env.NETLIFY)
+    || Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.LAMBDA_TASK_ROOT);
+  return isLocalHost && !isProductionRuntime && process.env.VIDEO_CONFIG_DEV_AUTH_BYPASS !== 'false';
+}
+
+function requireVideoConfigPermission(req: Request, res: Response) {
+  const authorization = req.headers.authorization ?? '';
+  const token = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length).trim() : '';
+  const tokenStatus = getVideoConfigTokenStatus(token);
+  if (tokenStatus.ok) {
+    return true;
+  }
+
+  if (isLocalVideoConfigDebugRequest(req)) {
+    console.log(`[video-config] local dev auth bypass: ${req.method} ${req.originalUrl} reason=${tokenStatus.reason}`);
+    return true;
+  }
+
+  console.log(`[video-config] forbidden: ${req.method} ${req.originalUrl} reason=${tokenStatus.reason}`);
+  res.status(403).json({
+    error: { code: 'VIDEO_CONFIG_FORBIDDEN', message: '没有 video_config_manage 权限，无法访问菜谱视频配置。' },
+  });
+  return false;
 }
 
 function beginSse(res: Response) {
@@ -1085,6 +1157,85 @@ export function createApp(): Express {
         apiKeyLength: (process.env.SILICONFLOW_API_KEY ?? '').trim().length,
       },
     });
+  });
+
+  app.post('/api/v1/video-config/auth', (req, res) => {
+    const username = String(req.body?.username ?? '').trim();
+    const password = String(req.body?.password ?? '');
+
+    if (username !== videoConfigAdminUser || password !== videoConfigAdminPassword) {
+      res.status(401).json({
+        error: { code: 'VIDEO_CONFIG_AUTH_FAILED', message: '管理员账号或密码错误。' },
+      });
+      return;
+    }
+
+    res.json({
+      data: {
+        token: createVideoConfigToken(username),
+        user: {
+          username,
+          permissions: ['video_config_manage'],
+        },
+      },
+    });
+  });
+
+  app.get('/api/v1/video-config/recipes', (req, res) => {
+    if (!requireVideoConfigPermission(req, res)) return;
+
+    const options: RecipeVideoListOptions = {
+      keyword: typeof req.query.keyword === 'string' ? req.query.keyword : '',
+      resolution: req.query.resolution === '720p' || req.query.resolution === '1080p' ? req.query.resolution : '',
+      sortBy: req.query.sortBy === 'recipeName' || req.query.sortBy === 'durationSeconds' || req.query.sortBy === 'updatedAt' ? req.query.sortBy : 'updatedAt',
+      sortOrder: req.query.sortOrder === 'asc' ? 'asc' : 'desc',
+      page: typeof req.query.page === 'string' ? Number(req.query.page) : 1,
+      pageSize: typeof req.query.pageSize === 'string' ? Number(req.query.pageSize) : 10,
+    };
+
+    res.json({ data: listRecipeVideos(options) });
+  });
+
+  app.post('/api/v1/video-config/recipes', (req, res) => {
+    if (!requireVideoConfigPermission(req, res)) return;
+
+    try {
+      res.status(201).json({ data: createRecipeVideo(parseRecipeVideoInput(req.body)) });
+    } catch (error) {
+      res.status(400).json({
+        error: { code: 'VIDEO_CONFIG_INVALID', message: error instanceof Error ? error.message : '视频配置提交失败。' },
+      });
+    }
+  });
+
+  app.put('/api/v1/video-config/recipes/:id', (req, res) => {
+    if (!requireVideoConfigPermission(req, res)) return;
+
+    try {
+      res.json({ data: updateRecipeVideo(req.params.id, parseRecipeVideoInput(req.body)) });
+    } catch (error) {
+      res.status(400).json({
+        error: { code: 'VIDEO_CONFIG_INVALID', message: error instanceof Error ? error.message : '视频配置更新失败。' },
+      });
+    }
+  });
+
+  app.delete('/api/v1/video-config/recipes/:id', (req, res) => {
+    if (!requireVideoConfigPermission(req, res)) return;
+
+    try {
+      deleteRecipeVideo(req.params.id);
+      res.json({ data: { ok: true } });
+    } catch (error) {
+      res.status(404).json({
+        error: { code: 'VIDEO_CONFIG_NOT_FOUND', message: error instanceof Error ? error.message : '视频配置删除失败。' },
+      });
+    }
+  });
+
+  app.post('/api/v1/recipe-videos/match', (req, res) => {
+    const recipeName = String(req.body?.recipeName ?? '').trim();
+    res.json({ data: { video: matchRecipeVideo(recipeName) } });
   });
 
   app.get('/api/v1/debug/llm-logs', (req, res) => {

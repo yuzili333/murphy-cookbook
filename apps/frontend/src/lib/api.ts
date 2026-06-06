@@ -7,6 +7,9 @@ import type {
   ImageRecognitionResponse,
   LlmLogQueryResult,
   RecipeDetail,
+  RecipeCookingVideo,
+  RecipeVideoConfigInput,
+  RecipeVideoConfigListResult,
   RecipeRecommendation,
   RecommendationResponse,
   SeasonalIngredientSuggestion,
@@ -36,6 +39,18 @@ export interface GenerationLocaleOptions {
 
 interface ApiEnvelope<T> {
   data: T;
+}
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+  }
 }
 
 function getCurrentLocale() {
@@ -116,15 +131,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     let message = getCurrentLocale() === 'en' ? 'Request failed. Please try again later.' : '请求失败，请稍后再试。';
+    let code: string | undefined;
 
     try {
-      const payload = (await response.json()) as { error?: { message?: string } };
+      const payload = (await response.json()) as { error?: { code?: string; message?: string } };
+      code = payload.error?.code;
       message = localizeApiErrorMessage(payload.error?.message ?? message);
     } catch {
       // Ignore JSON parse errors and keep default message.
     }
 
-    throw new Error(localizeApiErrorMessage(message));
+    throw new ApiError(localizeApiErrorMessage(message), response.status, code);
   }
 
   const payload = (await response.json()) as ApiEnvelope<T>;
@@ -410,4 +427,63 @@ export function fetchLlmLogs(params: {
 
   const query = search.toString();
   return request<LlmLogQueryResult>(`/debug/llm-logs${query ? `?${query}` : ''}`);
+}
+
+export function loginVideoConfig(payload: { username: string; password: string }) {
+  return request<{ token: string; user: { username: string; permissions: string[] } }>('/video-config/auth', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function fetchRecipeVideoConfigs(params: {
+  token: string;
+  page: number;
+  pageSize: number;
+  keyword?: string;
+  resolution?: '' | '720p' | '1080p';
+  sortBy?: 'recipeName' | 'durationSeconds' | 'updatedAt';
+  sortOrder?: 'asc' | 'desc';
+}) {
+  const search = new URLSearchParams();
+  search.set('page', String(params.page));
+  search.set('pageSize', String(params.pageSize));
+  if (params.keyword) search.set('keyword', params.keyword);
+  if (params.resolution) search.set('resolution', params.resolution);
+  if (params.sortBy) search.set('sortBy', params.sortBy);
+  if (params.sortOrder) search.set('sortOrder', params.sortOrder);
+
+  return request<RecipeVideoConfigListResult>(`/video-config/recipes?${search.toString()}`, {
+    headers: { Authorization: `Bearer ${params.token}` },
+  });
+}
+
+export function createRecipeVideoConfig(token: string, payload: RecipeVideoConfigInput) {
+  return request<RecipeCookingVideo>('/video-config/recipes', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateRecipeVideoConfig(token: string, id: string, payload: RecipeVideoConfigInput) {
+  return request<RecipeCookingVideo>(`/video-config/recipes/${id}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteRecipeVideoConfig(token: string, id: string) {
+  return request<{ ok: boolean }>(`/video-config/recipes/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function matchRecipeVideo(recipeName: string) {
+  return request<{ video: RecipeCookingVideo | null }>('/recipe-videos/match', {
+    method: 'POST',
+    body: JSON.stringify({ recipeName }),
+  });
 }

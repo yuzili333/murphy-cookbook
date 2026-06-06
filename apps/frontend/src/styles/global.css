@@ -4138,6 +4138,20 @@ button {
   box-shadow: inset 0 0 0 2px rgba(247, 25, 114, 0.08);
 }
 
+.recipe-video-panel.playable {
+  border-color: rgba(30, 166, 74, 0.28);
+  background: linear-gradient(135deg, rgba(246, 255, 229, 0.94), rgba(255, 255, 255, 0.96));
+}
+
+.recipe-video-player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  background: #000000;
+  object-fit: cover;
+}
+
 .recipe-video-copy {
   display: flex;
   align-items: center;
@@ -4156,6 +4170,7 @@ button {
   min-height: 34px;
   padding: 7px 10px;
   font-size: 0.76rem;
+  text-decoration: none;
 }
 
 .inline-step-list,
@@ -5923,6 +5938,373 @@ button {
   overflow: visible;
 }
 
+.video-config-page {
+  min-height: 100vh;
+  padding: clamp(16px, 3vw, 32px);
+  background:
+    linear-gradient(135deg, rgba(220, 238, 177, 0.62), transparent 30%),
+    linear-gradient(315deg, rgba(239, 212, 212, 0.56), transparent 30%),
+    #ffffff;
+  color: #000000;
+}
+
+.video-config-login,
+.video-config-list {
+  min-width: 0;
+  border: 1px solid #000000;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 8px 8px 0 #000000;
+}
+
+.video-config-login {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 32px;
+  max-width: 980px;
+  margin: 8vh auto 0;
+  padding: clamp(22px, 5vw, 48px);
+}
+
+.video-config-list {
+  width: 100%;
+  min-height: calc(100vh - clamp(16px, 3vw, 32px) * 2);
+  padding: clamp(18px, 3vw, 34px);
+}
+
+.video-config-list-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.video-config-list-actions,
+.video-config-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.video-config-eyebrow {
+  margin: 0 0 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.video-config-page h1,
+.video-config-page h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.video-config-page h1 {
+  font-size: clamp(2.1rem, 4vw, 3.7rem);
+  font-weight: 800;
+  line-height: 1.04;
+}
+
+.video-config-page h2 {
+  font-size: 1.18rem;
+}
+
+.video-config-page p {
+  margin: 10px 0 0;
+  color: rgba(0, 0, 0, 0.68);
+  line-height: 1.5;
+}
+
+.video-config-toolbar,
+.video-config-pagination,
+.video-config-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.video-config-pagination {
+  justify-content: space-between;
+}
+
+.video-config-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.video-config-alert {
+  max-width: 100%;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid #000000;
+  border-radius: 14px;
+  font-weight: 850;
+}
+
+.video-config-alert.success {
+  background: #dceeb1;
+}
+
+.video-config-alert.error {
+  background: #efd4d4;
+}
+
+.video-config-toolbar {
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.video-config-query-field {
+  flex: 1 1 360px;
+}
+
+.video-config-resolution-filter {
+  flex: 0 0 auto;
+  min-width: 270px;
+}
+
+.video-config-toolbar .ui-button {
+  flex: 0 0 auto;
+}
+
+.ui-radio-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 3px;
+  border: 1px solid #000000;
+  border-radius: 9999px;
+  background: #ffffff;
+}
+
+.ui-radio-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.58);
+  padding: 6px 11px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.ui-radio-item[aria-checked='true'] {
+  background: #ff3d8b;
+  color: #ffffff;
+}
+
+.ui-radio-dot {
+  width: 10px;
+  height: 10px;
+  border: 1px solid currentColor;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+.ui-radio-item[aria-checked='true'] .ui-radio-dot {
+  background: currentColor;
+}
+
+.ui-radio-item:focus-visible {
+  outline: 2px solid #000000;
+  outline-offset: 2px;
+}
+
+.video-config-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #000000;
+  border-radius: 16px;
+}
+
+.video-config-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  background: #ffffff;
+}
+
+.video-config-table th,
+.video-config-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e6e6e6;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.88rem;
+}
+
+.video-config-table th {
+  background: #f7f7f5;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.video-config-table td strong,
+.video-config-table td span,
+.video-config-table td a {
+  display: block;
+}
+
+.video-config-table td span {
+  margin-top: 4px;
+  color: #1ea64a;
+  font-weight: 900;
+}
+
+.video-config-table td a {
+  width: fit-content;
+  color: #000000;
+  font-weight: 850;
+}
+
+.video-config-empty {
+  height: 120px;
+  color: rgba(0, 0, 0, 0.56);
+  text-align: center !important;
+  vertical-align: middle !important;
+}
+
+.video-config-row-actions {
+  align-items: flex-start;
+}
+
+.video-config-pagination {
+  margin-top: 14px;
+  color: rgba(0, 0, 0, 0.66);
+  font-weight: 800;
+}
+
+.ui-button {
+  min-height: 42px;
+  border: 1px solid #000000;
+  border-radius: 9999px;
+  padding: 8px 18px;
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.ui-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.ui-button:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.ui-button-default {
+  background: #ff3d8b;
+  color: #ffffff;
+  border-color: #ff3d8b;
+}
+
+.ui-button-secondary {
+  background: #ffffff;
+  color: #000000;
+}
+
+.ui-button-ghost {
+  background: #ffffff;
+  color: #000000;
+  border-color: #e6e6e6;
+}
+
+.ui-button-danger {
+  background: #efd4d4;
+  color: #b91c1c;
+}
+
+.ui-input,
+.ui-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid #000000;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #000000;
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 0.92rem;
+}
+
+.ui-input[aria-invalid='true'],
+.ui-select[aria-invalid='true'] {
+  border-color: #b91c1c;
+}
+
+.ui-field-group,
+.ui-form {
+  display: grid;
+  gap: 14px;
+}
+
+.ui-field {
+  display: grid;
+  gap: 6px;
+}
+
+.ui-field-label,
+.ui-label {
+  font-weight: 850;
+}
+
+.ui-field-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.ui-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(4px);
+}
+
+.ui-dialog-content {
+  width: min(100%, 620px);
+  max-height: min(860px, calc(100vh - 36px));
+  overflow: auto;
+  border: 1px solid #000000;
+  border-radius: 22px;
+  background: #ffffff;
+  box-shadow: 8px 8px 0 #000000;
+  padding: 20px;
+}
+
+.ui-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.video-config-auth-dialog {
+  width: min(100%, 480px);
+}
+
 .button-confetti {
   position: absolute;
   inset: 0;
@@ -7397,6 +7779,42 @@ button {
 
   .carousel-recipe-card {
     flex-basis: min(420px, 74vw);
+  }
+}
+
+@media (max-width: 920px) {
+  .video-config-login {
+    grid-template-columns: 1fr;
+  }
+
+  .video-config-list-head {
+    display: grid;
+  }
+}
+
+@media (max-width: 560px) {
+  .video-config-page {
+    padding: 14px;
+  }
+
+  .video-config-login,
+  .video-config-list {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 18px;
+    box-shadow: 4px 4px 0 #000000;
+  }
+
+  .video-config-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .video-config-toolbar > *,
+  .video-config-pagination,
+  .video-config-pagination > div,
+  .video-config-list-actions,
+  .video-config-dialog-actions {
+    width: 100%;
   }
 }
 

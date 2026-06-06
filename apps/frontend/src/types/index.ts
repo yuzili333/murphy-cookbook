@@ -57,6 +57,7 @@ export interface RecipeRecommendation {
   nutritionSummary: string;
   extraIngredients: string[];
   canCookWithCurrentIngredients?: boolean;
+  cookingVideo?: RecipeCookingVideo | null;
 }
 
 export interface CookingStep {
@@ -76,6 +77,39 @@ export interface RecipeDetail extends RecipeRecommendation {
   cookTimeMinutes: number;
   ingredients: Array<{ name: string; quantity: string; imageUrl?: string }>;
   steps: CookingStep[];
+}
+
+export type RecipeVideoResolution = '720p' | '1080p';
+
+export interface RecipeCookingVideo {
+  id: string;
+  recipeName: string;
+  recipeAliases: string[];
+  ingredients: string[];
+  videoUrl: string;
+  coverUrl: string;
+  durationSeconds: number;
+  resolution: RecipeVideoResolution;
+  status: 'approved';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecipeVideoConfigInput {
+  recipeName: string;
+  recipeAliases: string[];
+  ingredients: string[];
+  videoUrl: string;
+  coverUrl: string;
+  durationSeconds: number;
+  resolution: RecipeVideoResolution;
+}
+
+export interface RecipeVideoConfigListResult {
+  items: RecipeCookingVideo[];
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface RecommendationResponse {
