@@ -2857,7 +2857,7 @@ export default function App() {
               </div>
             ))
           ) : (
-            <p className="tablet-panel-empty">{isEnglish ? 'No chats yet' : '暂无历史对话'}</p>
+            <p className="tablet-panel-empty">{isEnglish ? 'No chats' : '暂无历史对话'}</p>
           )}
         </div>
       </aside>
