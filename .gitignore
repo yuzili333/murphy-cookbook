@@ -27,3 +27,5 @@ apps/frontend/qianwen
 apps/frontend/card
 
 demo-assets
+
+.DS_Store
