@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent, type
 import { motion, useReducedMotion, type PanInfo } from 'framer-motion';
 import { AppShell } from './components/AppShell';
 import { RecipeName } from './components/RecipeName';
+import { RecipeVideoPlayer } from './components/RecipeVideoPlayer';
 import audioPlayIcon from './assets/audio-play.svg';
 import loadingIcon from './assets/loading.svg';
 import newChatIcon from './assets/new-chat.svg';
@@ -1270,6 +1271,7 @@ export default function App() {
   const [recipeDetailLoadingById, setRecipeDetailLoadingById] = useState<Record<string, boolean>>({});
   const [recipeDetailErrorsById, setRecipeDetailErrorsById] = useState<Record<string, string>>({});
   const [recipeDetailStreamNodesById, setRecipeDetailStreamNodesById] = useState<Record<string, MessageNode[]>>({});
+  const [recipeDetailRequestedById, setRecipeDetailRequestedById] = useState<Record<string, boolean>>({});
   const [recipeVideoLoadingById, setRecipeVideoLoadingById] = useState<Record<string, boolean>>({});
   const [recipeVideoByRecipeId, setRecipeVideoByRecipeId] = useState<Record<string, RecipeCookingVideo | null>>({});
   const [recipeVideoErrorsById, setRecipeVideoErrorsById] = useState<Record<string, string>>({});
@@ -1883,6 +1885,9 @@ export default function App() {
     messageId: string,
     showToast = false,
   ) => {
+    setRecipeDetailRequestedById((current) => ({ ...current, [recipe.id]: true }));
+    void loadRecipeVideoForCard(recipe, { force: true });
+
     const stepCacheKey = buildRecipeStepCacheKey(
       recipe,
       nextIngredients,
@@ -2011,14 +2016,19 @@ export default function App() {
     recipeDetailsById,
   ]);
 
-  const loadRecipeVideoForCard = async (recipe: RecipeRecommendation) => {
+  const loadRecipeVideoForCard = async (recipe: RecipeRecommendation, options: { force?: boolean } = {}) => {
     const cacheKey = buildRecipeVideoCacheKey(recipe.name);
-    if (!cacheKey || recipeVideoLoadingById[recipe.id] || Object.prototype.hasOwnProperty.call(recipeVideoByRecipeId, recipe.id)) {
+    const forceRefresh = options.force === true;
+    if (
+      !cacheKey ||
+      recipeVideoLoadingById[recipe.id] ||
+      (!forceRefresh && Object.prototype.hasOwnProperty.call(recipeVideoByRecipeId, recipe.id))
+    ) {
       return;
     }
 
     const cachedVideo = readCachedValue<RecipeVideoCacheValue>(recipeVideoMatchCacheStorageKey, cacheKey);
-    if (cachedVideo) {
+    if (!forceRefresh && cachedVideo) {
       setRecipeVideoByRecipeId((current) => ({ ...current, [recipe.id]: cachedVideo.video }));
       return;
     }
@@ -2191,6 +2201,9 @@ export default function App() {
           Object.fromEntries(Object.entries(current).filter(([recipeId]) => !obsoleteRecipeIdSet.has(recipeId))),
         );
         setRecipeDetailStreamNodesById((current) =>
+          Object.fromEntries(Object.entries(current).filter(([recipeId]) => !obsoleteRecipeIdSet.has(recipeId))),
+        );
+        setRecipeDetailRequestedById((current) =>
           Object.fromEntries(Object.entries(current).filter(([recipeId]) => !obsoleteRecipeIdSet.has(recipeId))),
         );
       }
@@ -3243,6 +3256,17 @@ export default function App() {
 	                      const cookingVideo = recipeVideoByRecipeId[recipe.id] ?? null;
 	                      const isLoadingCookingVideo = Boolean(recipeVideoLoadingById[recipe.id]);
 	                      const cookingVideoError = recipeVideoErrorsById[recipe.id] ?? '';
+	                      const isRecipeDetailRequested = Boolean(recipeDetailRequestedById[recipe.id]);
+	                      const shouldShowRecipeMedia = Boolean(recipeDetail || (isRecipeDetailRequested && cookingVideo));
+	                      const mediaIngredients = recipeDetail?.ingredients ?? (
+	                        shouldShowRecipeMedia && cookingVideo
+	                          ? (cookingVideo.ingredients.length ? cookingVideo.ingredients : (message.ingredients ?? ingredients).map((ingredient) => ingredient.name))
+	                              .map((name) => ({
+	                                name,
+	                                quantity: isEnglish ? 'Configured' : '视频配置',
+	                              }))
+	                          : []
+	                      );
 	                      const isActiveCarouselRecipe = recipe.id === activeCarouselRecipeId || (!activeCarouselRecipeId && recipeIndex === 0);
 
 	                      return (
@@ -3323,7 +3347,7 @@ export default function App() {
                           ) : null}
                         </div>
                         <div className="inline-recipe-detail recipe-dossier">
-                          {recipeDetail ? (
+                          {shouldShowRecipeMedia ? (
                             <>
                               <div className="inline-detail-block">
                                 <div className="detail-block-heading">
@@ -3331,7 +3355,7 @@ export default function App() {
                                   <span>{isEnglish ? 'Name / Amount' : '名称 / 用量'}</span>
                                 </div>
                                 <div className="ingredient-table" role="list">
-                                  {recipeDetail.ingredients.map((ingredient) => {
+                                  {mediaIngredients.map((ingredient) => {
                                     const ingredientDisplayName = getIngredientDisplayName(ingredient.name, locale);
                                     const visual = getKnownIngredientVisual(ingredient.name);
 
@@ -3367,13 +3391,10 @@ export default function App() {
 	                                <section className={cookingVideo ? 'recipe-video-panel generated playable' : 'recipe-video-panel'} aria-label={t(locale, `${recipe.name} 烹饪视频`, `${recipe.name} cooking video`)}>
 	                                  {cookingVideo ? (
                                       <>
-                                        <video
-                                          className="recipe-video-player"
-                                          controls
-                                          preload="metadata"
-                                          poster={cookingVideo.coverUrl}
-                                          src={cookingVideo.videoUrl}
-                                          aria-label={t(locale, `${recipe.name} 烹饪视频播放器`, `${recipe.name} cooking video player`)}
+                                        <RecipeVideoPlayer
+                                          video={cookingVideo}
+                                          title={t(locale, `${recipe.name} 烹饪视频播放器`, `${recipe.name} cooking video player`)}
+                                          locale={locale}
                                         />
                                         <div className="recipe-video-copy">
                                           <p>{t(locale, `已匹配 ${cookingVideo.recipeName} 烹饪视频，${cookingVideo.resolution}，${cookingVideo.durationSeconds} 秒。`, `Matched ${cookingVideo.recipeName} cooking video, ${cookingVideo.resolution}, ${cookingVideo.durationSeconds}s.`)}</p>
@@ -3384,7 +3405,7 @@ export default function App() {
                                       </>
                                     ) : (
                                       <>
-                                        <div className="recipe-video-placeholder" role="img" aria-label={t(locale, `${recipe.name} 烹饪视频制作中`, `${recipe.name} cooking video in progress`)}>
+                                        <div className="recipe-video-placeholder" role="img" aria-label={t(locale, `${recipe.name} 默认菜谱封面图`, `${recipe.name} default recipe cover`)}>
                                           <div className="video-sun" aria-hidden="true" />
                                           <div className="video-family" aria-hidden="true">
                                             <span>👩‍🍳</span>
@@ -3392,21 +3413,22 @@ export default function App() {
                                             <span>👨‍🍳</span>
                                           </div>
                                           <div className="video-ingredients" aria-hidden="true">
-                                            {recipeDetail.ingredients.slice(0, 4).map((ingredient) => {
+                                            {mediaIngredients.slice(0, 4).map((ingredient) => {
                                               const visual = getKnownIngredientVisual(ingredient.name);
                                               return visual ? <span key={`${recipe.id}_video_${ingredient.name}`}>{visual.emoji}</span> : null;
                                             })}
                                           </div>
-                                          <p>{isLoadingCookingVideo ? (isEnglish ? 'Matching cooking video...' : '正在匹配烹饪视频...') : (isEnglish ? 'Cooking video in production...' : '烹饪视频制作中...')}</p>
+                                          <p>{isLoadingCookingVideo ? (isEnglish ? 'Matching cooking video...' : '正在匹配烹饪视频...') : (isEnglish ? 'No cooking video found' : '未查询到菜谱烹饪视频')}</p>
                                           <strong>{recipe.name}</strong>
                                         </div>
                                         <div className="recipe-video-copy">
-                                          <p>{cookingVideoError || (isEnglish ? 'A reviewed cooking video will appear here after upload.' : '审核通过的视频上传后，会自动显示在这里。')}</p>
+                                          <p>{cookingVideoError || (isLoadingCookingVideo ? (isEnglish ? 'Checking the cooking video library.' : '正在查询菜谱烹饪视频库。') : (isEnglish ? 'No cooking video was found for this recipe.' : '未查询到菜谱烹饪视频'))}</p>
                                         </div>
                                       </>
                                     )}
 	                                </section>
 	                              </div>
+	                              {recipeDetail ? (
 	                              <div className="inline-detail-block">
 	                                <div className="detail-block-heading">
 	                                  <strong>{isEnglish ? 'Cooking Steps' : '烹饪步骤'}</strong>
@@ -3448,6 +3470,28 @@ export default function App() {
 	                                  })}
 	                                </ol>
 	                              </div>
+	                              ) : null}
+	                              {!recipeDetail && recipeDetailLoadingById[recipe.id] ? (
+	                                <div className="muted compact-copy inline-loading-copy">
+	                                  <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+	                                  <StreamNodesRenderer nodes={recipeDetailStreamNodesById[recipe.id]} />
+	                                  {recipeDetailStreamNodesById[recipe.id]?.length ? null : <span>{isEnglish ? 'Generating cooking steps...' : '正在生成烹饪步骤...'}</span>}
+	                                </div>
+	                              ) : null}
+	                              {!recipeDetail && !recipeDetailLoadingById[recipe.id] && recipeDetailErrorsById[recipe.id] ? (
+	                                <div className="detail-error-block">
+	                                  <strong>{isEnglish ? 'Steps failed' : '步骤获取失败'}</strong>
+	                                  <p>{recipeDetailErrorsById[recipe.id]}</p>
+	                                  <button
+	                                    type="button"
+	                                    className="secondary-button"
+	                                    onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
+	                                    disabled={recipeDetailLoadingById[recipe.id]}
+	                                  >
+	                                    {isEnglish ? 'Try again' : '再次获取'}
+	                                  </button>
+	                                </div>
+	                              ) : null}
                             </>
                           ) : recipeDetailLoadingById[recipe.id] ? (
                             <div className="muted compact-copy inline-loading-copy">

@@ -51,6 +51,58 @@ test('local home recipe catalog provides 50 generated common recipes', () => {
   assert.ok(recipeCatalog.length >= 50);
   assert.ok(recipeCatalog.some((recipe) => recipe.name === '番茄炒鸡蛋'));
   assert.ok(recipeCatalog.some((recipe) => recipe.name === '草莓奶昔'));
+  assert.ok(recipeCatalog.some((recipe) => recipe.name === '凉拌手撕鸡'));
+});
+
+test('recommendRecipes includes configured cold shredded chicken recipe for chicken input locally', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalNetlify = process.env.NETLIFY;
+  const originalLambda = process.env.AWS_LAMBDA_FUNCTION_NAME;
+  const originalLambdaTaskRoot = process.env.LAMBDA_TASK_ROOT;
+
+  delete process.env.SILICONFLOW_API_KEY;
+  process.env.NODE_ENV = 'development';
+  delete process.env.NETLIFY;
+  delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+  delete process.env.LAMBDA_TASK_ROOT;
+
+  const result = await recommendRecipes('cp_001', [
+    { id: 'ing_chicken', name: '鸡肉', normalizedName: '鸡肉', quantity: '100克', source: 'manual' },
+  ]);
+
+  if ('error' in result) {
+    assert.fail(`expected local recommendation data, got ${result.error.code}`);
+  }
+
+  assert.ok(result.data.recipes.some((recipe) => recipe.name === '凉拌手撕鸡'));
+  assert.ok(result.data.recipeDetails.some((recipe) => recipe.name === '凉拌手撕鸡'));
+
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+  if (originalNodeEnv === undefined) {
+    delete process.env.NODE_ENV;
+  } else {
+    process.env.NODE_ENV = originalNodeEnv;
+  }
+  if (originalNetlify === undefined) {
+    delete process.env.NETLIFY;
+  } else {
+    process.env.NETLIFY = originalNetlify;
+  }
+  if (originalLambda === undefined) {
+    delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+  } else {
+    process.env.AWS_LAMBDA_FUNCTION_NAME = originalLambda;
+  }
+  if (originalLambdaTaskRoot === undefined) {
+    delete process.env.LAMBDA_TASK_ROOT;
+  } else {
+    process.env.LAMBDA_TASK_ROOT = originalLambdaTaskRoot;
+  }
 });
 
 test('generated local recipes follow model prompt output constraints', () => {
@@ -638,6 +690,90 @@ test('generateRecipePlan uses fast model for simple recommendations without slow
   assert.equal(result.recipes[0].name, '番茄鸡蛋');
   assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B']);
   assert.deepEqual(requestedMaxTokens, [660]);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateRecipePlan enforces configured cold shredded chicken recipe for chicken input', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  let userPromptContent = '';
+
+  global.fetch = (async (_input, init) => {
+    const requestBody = JSON.parse(String(init?.body ?? '{}')) as {
+      messages?: Array<{ role: string; content: string }>;
+    };
+    userPromptContent = String(requestBody.messages?.find((message) => message.role === 'user')?.content ?? '');
+
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [
+              {
+                name: '鸡肉蔬菜汤',
+                englishName: 'Chicken Vegetable Soup',
+                ageRange: '7-12 岁',
+                difficulty: 'easy',
+                estimatedTimeMinutes: 20,
+                riskAlerts: ['煮汤需家长陪同'],
+                nutritionSummary: '营养均衡。',
+                canCookWithCurrentIngredients: true,
+              },
+              {
+                name: '鸡肉土豆泥',
+                englishName: 'Chicken Potato Mash',
+                ageRange: '7-12 岁',
+                difficulty: 'easy',
+                estimatedTimeMinutes: 18,
+                riskAlerts: [],
+                nutritionSummary: '口感柔软。',
+                canCookWithCurrentIngredients: true,
+              },
+              {
+                name: '清炒鸡肉丁',
+                englishName: 'Stir Fried Chicken Cubes',
+                ageRange: '7-12 岁',
+                difficulty: 'medium',
+                estimatedTimeMinutes: 15,
+                riskAlerts: ['热锅需家长陪同'],
+                nutritionSummary: '蛋白质充足。',
+                canCookWithCurrentIngredients: true,
+              },
+            ],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await generateRecipePlan(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_chicken', name: '鸡肉', normalizedName: '鸡肉', quantity: '100克', source: 'manual' },
+    ],
+  );
+
+  assert.match(userPromptContent, /凉拌手撕鸡/);
+  assert.equal(result.recipes.length, 3);
+  assert.ok(result.recipes.some((recipe) => recipe.name === '凉拌手撕鸡'));
+  assert.equal(result.recipes.find((recipe) => recipe.name === '凉拌手撕鸡')?.canCookWithCurrentIngredients, true);
 
   global.fetch = originalFetch;
   if (originalKey) {

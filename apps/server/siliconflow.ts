@@ -651,6 +651,95 @@ interface GenerationLocaleOptions {
   pinyinMode?: boolean;
 }
 
+const configuredChickenVideoRecipeName = '凉拌手撕鸡';
+
+function isChickenIngredientName(value?: string | null) {
+  if (!value) {
+    return false;
+  }
+
+  const rawName = String(value).trim().toLowerCase();
+  const normalizedName = normalizeIngredientName(rawName).toLowerCase();
+
+  return (
+    rawName.includes('鸡肉') ||
+    rawName.includes('鸡胸') ||
+    rawName.includes('鸡腿') ||
+    rawName.includes('chicken') ||
+    normalizedName.includes('鸡肉') ||
+    normalizedName.includes('chicken')
+  );
+}
+
+function hasChickenIngredient(ingredients: IngredientItem[]) {
+  return ingredients.some((item) =>
+    isChickenIngredientName(item.name) || isChickenIngredientName(item.normalizedName),
+  );
+}
+
+function buildConfiguredChickenVideoRecipeRecommendation(
+  profile: ChildProfile,
+  options: GenerationLocaleOptions = {},
+): RecipeRecommendation {
+  const isEnglish = options.locale === 'en';
+  const namePinyin = options.pinyinMode === false ? '' : 'liáng bàn shǒu sī jī';
+
+  return {
+    id: `recipe_gen_summary_${slugifyRecipeName(configuredChickenVideoRecipeName)}_configured_video`,
+    name: configuredChickenVideoRecipeName,
+    namePinyin,
+    englishName: 'Cold Shredded Chicken Salad',
+    nameLearning: options.pinyinMode === false
+      ? { characters: [] }
+      : {
+          characters: [
+            { character: '凉', pinyin: 'liáng', strokes: 10, structure: '左右结构', hint: '两点水表示和温度有关。' },
+            { character: '拌', pinyin: 'bàn', strokes: 8, structure: '左右结构', hint: '提手旁提示用手搅拌。' },
+            { character: '手', pinyin: 'shǒu', strokes: 4, structure: '独体字', hint: '像张开的手掌。' },
+            { character: '撕', pinyin: 'sī', strokes: 15, structure: '左右结构', hint: '提手旁提示动作和手有关。' },
+            { character: '鸡', pinyin: 'jī', strokes: 7, structure: '左右结构', hint: '右边的鸟提示它和家禽有关。' },
+          ],
+        },
+    ageRange: isEnglish ? `${Math.max(3, profile.age - 1)}-${profile.age + 3} years` : `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`,
+    difficulty: 'easy',
+    estimatedTimeMinutes: 18,
+    fitReasons: [],
+    riskAlerts: isEnglish
+      ? ['A parent must confirm the chicken is fully cooked before shredding.']
+      : ['鸡肉必须由家长确认完全煮熟后再撕拌'],
+    nutritionSummary: isEnglish
+      ? 'Chicken provides lean protein, and the chilled shredded style keeps the dish light and kid-friendly.'
+      : '鸡肉提供优质蛋白，凉拌做法清爽，适合作为儿童轻食或正餐配菜。',
+    extraIngredients: [],
+    canCookWithCurrentIngredients: true,
+  };
+}
+
+function ensureConfiguredChickenVideoRecipe(
+  payload: GeneratedRecommendationPayload,
+  profile: ChildProfile,
+  ingredients: IngredientItem[],
+  options: GenerationLocaleOptions = {},
+) {
+  if (!hasChickenIngredient(ingredients)) {
+    return payload;
+  }
+
+  if (payload.recipes.some((recipe) => normalizeRecipeIdentity(recipe.name) === normalizeRecipeIdentity(configuredChickenVideoRecipeName))) {
+    return payload;
+  }
+
+  const configuredRecipe = buildConfiguredChickenVideoRecipeRecommendation(profile, options);
+  const recipes = payload.recipes.length >= 3
+    ? [...payload.recipes.slice(0, 2), configuredRecipe]
+    : [...payload.recipes, configuredRecipe];
+
+  return {
+    ...payload,
+    recipes: recipes.slice(0, 3),
+  } satisfies GeneratedRecommendationPayload;
+}
+
 function normalizeGeneratedRecipeSummaries(
   payload: {
     recipes?: Array<Partial<RecipeRecommendation>>;
@@ -1000,15 +1089,23 @@ function buildRecipePlanUserPrompt(
     : options.pinyinMode === false
       ? '读音辅助关闭:namePinyin输出空字符串；nameLearning.characters输出空数组。'
       : '读音辅助开启:namePinyin输出中文菜名带声调拼音；nameLearning按中文单字拆分，提供拼音、笔画、结构和识字提示。';
+  const chickenVideoRecipeRule = hasChickenIngredient(ingredients)
+    ? isEnglish
+      ? `Configured video recipe rule: because the ingredients include chicken, exactly one of the 3 recipe cards must use name "${configuredChickenVideoRecipeName}" and englishName "Cold Shredded Chicken Salad"; this configured Chinese name is the only exception to English-only names because it matches the uploaded cooking video.`
+      : `视频菜谱规则:检测到食材包含鸡肉/鸡胸肉/鸡腿肉，3道推荐中必须指定其中1道菜名为“${configuredChickenVideoRecipeName}”，englishName为“Cold Shredded Chicken Salad”，canCookWithCurrentIngredients设为true。`
+    : '';
 
   if (isEnglish) {
     return [
       `Generate 3 recipe cards for elementary-school children. Return only a JSON object. Output language: ${outputLanguage}.`,
-      'English mode: name must be an English recipe name; englishName must match name or be a natural English title; do not put Chinese text in any output field.',
+      chickenVideoRecipeRule
+        ? 'English mode: name must be an English recipe name except the configured chicken video recipe named "凉拌手撕鸡"; englishName must match name or be a natural English title; do not put Chinese text in other output fields.'
+        : 'English mode: name must be an English recipe name; englishName must match name or be a natural English title; do not put Chinese text in any output field.',
       pronunciationRule,
       `Child age: ${profile.age}; preferences: ${tastePreferences}; allergens: ${allergens}.`,
       compactUserPrompt ? `User note: ${compactUserPrompt}` : '',
       `Ingredients:\n${ingredientLines}`,
+      chickenVideoRecipeRule,
       'Rules: return exactly 3 recipes; keep them simple, low-oil, mild, and nutritionally balanced; prioritize the provided ingredients; do not generate cooking steps or ingredient details.',
       'Safety: only include riskAlerts for open flame, high heat, hot oil, stir-frying, pressure cooking, steaming, boiling, oven use, or severe allergen risk.',
       'Allowed fields only: name,namePinyin,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients.',
@@ -1023,6 +1120,7 @@ function buildRecipePlanUserPrompt(
     `儿童:${profile.age}岁；偏好:${tastePreferences}；过敏:${allergens}`,
     compactUserPrompt ? `用户:${compactUserPrompt}` : '',
     `食材:${ingredientLines}`,
+    chickenVideoRecipeRule,
     '规则:必须返回3道；简单、低油轻口味、营养均衡；优先用现有食材；不要生成烹饪步骤或配料明细。',
     '安全:仅明火/高温/热油/爆炒/高压/蒸煮/烤箱等高风险操作写riskAlerts；高危过敏原才写高危提醒。',
     '只允许字段:name,namePinyin,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients。',
@@ -1202,9 +1300,14 @@ export async function generateRecipePlan(
     },
   });
 
-  return normalizeGeneratedRecipeSummaries(
-    parseRecipePlanPayload(content, options),
+  return ensureConfiguredChickenVideoRecipe(
+    normalizeGeneratedRecipeSummaries(
+      parseRecipePlanPayload(content, options),
+      profile,
+      options,
+    ),
     profile,
+    ingredients,
     options,
   );
 }

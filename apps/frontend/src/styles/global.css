@@ -4143,13 +4143,102 @@ button {
   background: linear-gradient(135deg, rgba(246, 255, 229, 0.94), rgba(255, 255, 255, 0.96));
 }
 
-.recipe-video-player {
+.recipe-video-player-shell {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 14px;
   background: #000000;
-  object-fit: cover;
+}
+
+.recipe-video-player-shell .video-js,
+.recipe-video-player-shell .vjs-poster img {
+  width: 100%;
+  min-height: 190px;
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.recipe-video-player-shell .video-js {
+  background: #000000;
+  color: #ffffff;
+  font-family: inherit;
+}
+
+.recipe-video-player-shell .video-js .vjs-tech,
+.recipe-video-player-shell .vjs-poster {
+  border-radius: 14px;
+}
+
+.recipe-video-player-shell .vjs-big-play-button {
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 999px;
+  background: rgba(247, 25, 114, 0.92);
+  transform: translate(-50%, -50%);
+}
+
+.recipe-video-player-shell .vjs-control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 40px;
+  padding: 0 8px;
+  flex-wrap: wrap;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.82));
+}
+
+.recipe-video-player-shell .vjs-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+}
+
+.recipe-video-player-shell .vjs-button > .vjs-icon-placeholder::before {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.recipe-video-player-shell .vjs-time-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: auto;
+  height: 40px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.recipe-video-player-shell .vjs-progress-control {
+  display: flex;
+  align-items: center;
+  min-width: 120px;
+}
+
+.recipe-video-player-shell .vjs-play-progress,
+.recipe-video-player-shell .vjs-volume-level {
+  background-color: #f71972;
+}
+
+.recipe-video-player-shell .vjs-play-progress::before,
+.recipe-video-player-shell .vjs-volume-level::before {
+  color: #f71972;
+}
+
+.recipe-video-player-shell .vjs-menu-button-popup .vjs-menu {
+  bottom: 2.8em;
 }
 
 .recipe-video-copy {

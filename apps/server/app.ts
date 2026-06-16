@@ -1181,7 +1181,7 @@ export function createApp(): Express {
     });
   });
 
-  app.get('/api/v1/video-config/recipes', (req, res) => {
+  app.get('/api/v1/video-config/recipes', async (req, res) => {
     if (!requireVideoConfigPermission(req, res)) return;
 
     const options: RecipeVideoListOptions = {
@@ -1193,14 +1193,20 @@ export function createApp(): Express {
       pageSize: typeof req.query.pageSize === 'string' ? Number(req.query.pageSize) : 10,
     };
 
-    res.json({ data: listRecipeVideos(options) });
+    try {
+      res.json({ data: await listRecipeVideos(options) });
+    } catch (error) {
+      res.status(500).json({
+        error: { code: 'VIDEO_CONFIG_STORAGE_FAILED', message: error instanceof Error ? error.message : '视频配置读取失败。' },
+      });
+    }
   });
 
-  app.post('/api/v1/video-config/recipes', (req, res) => {
+  app.post('/api/v1/video-config/recipes', async (req, res) => {
     if (!requireVideoConfigPermission(req, res)) return;
 
     try {
-      res.status(201).json({ data: createRecipeVideo(parseRecipeVideoInput(req.body)) });
+      res.status(201).json({ data: await createRecipeVideo(parseRecipeVideoInput(req.body)) });
     } catch (error) {
       res.status(400).json({
         error: { code: 'VIDEO_CONFIG_INVALID', message: error instanceof Error ? error.message : '视频配置提交失败。' },
@@ -1208,11 +1214,11 @@ export function createApp(): Express {
     }
   });
 
-  app.put('/api/v1/video-config/recipes/:id', (req, res) => {
+  app.put('/api/v1/video-config/recipes/:id', async (req, res) => {
     if (!requireVideoConfigPermission(req, res)) return;
 
     try {
-      res.json({ data: updateRecipeVideo(req.params.id, parseRecipeVideoInput(req.body)) });
+      res.json({ data: await updateRecipeVideo(req.params.id, parseRecipeVideoInput(req.body)) });
     } catch (error) {
       res.status(400).json({
         error: { code: 'VIDEO_CONFIG_INVALID', message: error instanceof Error ? error.message : '视频配置更新失败。' },
@@ -1220,11 +1226,11 @@ export function createApp(): Express {
     }
   });
 
-  app.delete('/api/v1/video-config/recipes/:id', (req, res) => {
+  app.delete('/api/v1/video-config/recipes/:id', async (req, res) => {
     if (!requireVideoConfigPermission(req, res)) return;
 
     try {
-      deleteRecipeVideo(req.params.id);
+      await deleteRecipeVideo(req.params.id);
       res.json({ data: { ok: true } });
     } catch (error) {
       res.status(404).json({
@@ -1233,9 +1239,15 @@ export function createApp(): Express {
     }
   });
 
-  app.post('/api/v1/recipe-videos/match', (req, res) => {
+  app.post('/api/v1/recipe-videos/match', async (req, res) => {
     const recipeName = String(req.body?.recipeName ?? '').trim();
-    res.json({ data: { video: matchRecipeVideo(recipeName) } });
+    try {
+      res.json({ data: { video: await matchRecipeVideo(recipeName) } });
+    } catch (error) {
+      res.status(500).json({
+        error: { code: 'RECIPE_VIDEO_MATCH_FAILED', message: error instanceof Error ? error.message : '菜谱视频匹配失败。' },
+      });
+    }
   });
 
   app.get('/api/v1/debug/llm-logs', (req, res) => {

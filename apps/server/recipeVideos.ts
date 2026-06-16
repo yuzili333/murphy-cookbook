@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { MongoClient, type Collection, type ObjectId } from 'mongodb';
 
 export type RecipeVideoResolution = '720p' | '1080p';
 export type RecipeVideoStatus = 'approved';
@@ -37,9 +38,34 @@ export interface RecipeVideoListOptions {
   pageSize?: number;
 }
 
-const dataFilePath = resolve(process.cwd(), '.local', 'recipe-videos.json');
+export interface RecipeVideoListResult {
+  items: RecipeVideoConfig[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
 
-function normalizeName(value: string) {
+export interface RecipeVideoStore {
+  list(options?: RecipeVideoListOptions): Promise<RecipeVideoListResult>;
+  create(input: RecipeVideoInput): Promise<RecipeVideoConfig>;
+  update(id: string, input: RecipeVideoInput): Promise<RecipeVideoConfig>;
+  delete(id: string): Promise<void>;
+  match(recipeName: string): Promise<RecipeVideoConfig | null>;
+}
+
+interface RecipeVideoDocument extends RecipeVideoConfig {
+  _id?: ObjectId;
+  normalizedRecipeName: string;
+  normalizedRecipeAliases: string[];
+  searchableText: string;
+}
+
+const defaultDataFilePath = resolve(process.cwd(), '.local', 'recipe-videos.json');
+let mongoClientPromise: Promise<MongoClient> | null = null;
+let mongoIndexesReadyPromise: Promise<void> | null = null;
+let recipeVideoStoreForTest: RecipeVideoStore | null = null;
+
+export function normalizeRecipeVideoName(value: string) {
   return value
     .trim()
     .toLocaleLowerCase()
@@ -48,7 +74,31 @@ function normalizeName(value: string) {
     .normalize('NFKC');
 }
 
+function getLocalDataFilePath() {
+  return process.env.RECIPE_VIDEO_LOCAL_FILE
+    ? resolve(process.env.RECIPE_VIDEO_LOCAL_FILE)
+    : defaultDataFilePath;
+}
+
+function getMongoUri() {
+  return (process.env.RECIPE_VIDEO_MONGODB_URI || process.env.MONGODB_URI || '').trim();
+}
+
+function getMongoDatabaseName() {
+  return (process.env.RECIPE_VIDEO_MONGODB_DB || process.env.MONGODB_DB_NAME || 'murphy_cookbook').trim();
+}
+
+function getMongoCollectionName() {
+  return (process.env.RECIPE_VIDEO_MONGODB_COLLECTION || 'recipe_videos').trim();
+}
+
+function getMongoServerSelectionTimeoutMs() {
+  const value = Number(process.env.RECIPE_VIDEO_MONGODB_SERVER_SELECTION_TIMEOUT_MS ?? 5000);
+  return Number.isFinite(value) && value > 0 ? value : 5000;
+}
+
 function ensureDataFile() {
+  const dataFilePath = getLocalDataFilePath();
   if (existsSync(dataFilePath)) {
     return;
   }
@@ -60,7 +110,7 @@ function ensureDataFile() {
 function readAllRecipeVideos() {
   ensureDataFile();
   try {
-    const parsed = JSON.parse(readFileSync(dataFilePath, 'utf8')) as RecipeVideoConfig[];
+    const parsed = JSON.parse(readFileSync(getLocalDataFilePath(), 'utf8')) as RecipeVideoConfig[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -69,7 +119,7 @@ function readAllRecipeVideos() {
 
 function writeAllRecipeVideos(items: RecipeVideoConfig[]) {
   ensureDataFile();
-  writeFileSync(dataFilePath, `${JSON.stringify(items, null, 2)}\n`, 'utf8');
+  writeFileSync(getLocalDataFilePath(), `${JSON.stringify(items, null, 2)}\n`, 'utf8');
 }
 
 function toPositiveInteger(value: unknown) {
@@ -79,6 +129,87 @@ function toPositiveInteger(value: unknown) {
 
 function validateUrl(value: string) {
   return /^https?:\/\//i.test(value);
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildRecipeVideoId() {
+  return `recipe_video_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function toSearchableText(input: Pick<RecipeVideoConfig, 'recipeName' | 'recipeAliases' | 'ingredients'>) {
+  return normalizeRecipeVideoName([input.recipeName, ...input.recipeAliases, ...input.ingredients].join(','));
+}
+
+function toDocument(item: RecipeVideoConfig): RecipeVideoDocument {
+  return {
+    ...item,
+    normalizedRecipeName: normalizeRecipeVideoName(item.recipeName),
+    normalizedRecipeAliases: item.recipeAliases.map(normalizeRecipeVideoName).filter(Boolean),
+    searchableText: toSearchableText(item),
+  };
+}
+
+function fromDocument(document: RecipeVideoDocument): RecipeVideoConfig {
+  const item = { ...document } as Partial<RecipeVideoDocument>;
+  delete item._id;
+  delete item.normalizedRecipeName;
+  delete item.normalizedRecipeAliases;
+  delete item.searchableText;
+
+  return item as RecipeVideoConfig;
+}
+
+function isDuplicateKeyError(error: unknown) {
+  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 11000);
+}
+
+async function getMongoClient() {
+  const uri = getMongoUri();
+  if (!uri) {
+    return null;
+  }
+
+  if (!mongoClientPromise) {
+    mongoClientPromise = new MongoClient(uri, {
+      serverSelectionTimeoutMS: getMongoServerSelectionTimeoutMs(),
+    }).connect();
+  }
+
+  return mongoClientPromise;
+}
+
+async function getMongoRecipeVideoCollection(): Promise<Collection<RecipeVideoDocument> | null> {
+  const client = await getMongoClient();
+  if (!client) {
+    return null;
+  }
+
+  const collection = client.db(getMongoDatabaseName()).collection<RecipeVideoDocument>(getMongoCollectionName());
+  if (!mongoIndexesReadyPromise) {
+    mongoIndexesReadyPromise = Promise.all([
+      collection.createIndex({ normalizedRecipeName: 1 }, { unique: true }),
+      collection.createIndex({ normalizedRecipeAliases: 1 }),
+      collection.createIndex({ searchableText: 1 }),
+      collection.createIndex({ updatedAt: -1 }),
+    ]).then(() => undefined);
+  }
+  await mongoIndexesReadyPromise;
+
+  return collection;
+}
+
+function sortRecipeVideos(items: RecipeVideoConfig[], sortBy: NonNullable<RecipeVideoListOptions['sortBy']>, sortOrder: 'asc' | 'desc') {
+  return [...items].sort((left, right) => {
+    const leftValue = left[sortBy];
+    const rightValue = right[sortBy];
+    const result = typeof leftValue === 'number' && typeof rightValue === 'number'
+      ? leftValue - rightValue
+      : String(leftValue).localeCompare(String(rightValue), 'zh-Hans-CN');
+    return sortOrder === 'asc' ? result : -result;
+  });
 }
 
 export function parseRecipeVideoInput(value: unknown): RecipeVideoInput {
@@ -117,103 +248,275 @@ export function parseRecipeVideoInput(value: unknown): RecipeVideoInput {
   return { recipeName, recipeAliases, ingredients, videoUrl, coverUrl, durationSeconds, resolution };
 }
 
-export function listRecipeVideos(options: RecipeVideoListOptions = {}) {
-  const page = Math.max(1, Number(options.page) || 1);
-  const pageSize = Math.min(50, Math.max(1, Number(options.pageSize) || 10));
-  const keyword = normalizeName(options.keyword ?? '');
-  const resolution = options.resolution === '720p' || options.resolution === '1080p' ? options.resolution : '';
-  const sortBy = options.sortBy ?? 'updatedAt';
-  const sortOrder = options.sortOrder === 'asc' ? 'asc' : 'desc';
-  let items = readAllRecipeVideos();
-
-  if (keyword) {
-    items = items.filter((item) => {
-      const text = normalizeName([item.recipeName, ...item.recipeAliases, ...item.ingredients].join(','));
-      return text.includes(keyword);
-    });
-  }
-
-  if (resolution) {
-    items = items.filter((item) => item.resolution === resolution);
-  }
-
-  items = [...items].sort((left, right) => {
-    const leftValue = left[sortBy];
-    const rightValue = right[sortBy];
-    const result = typeof leftValue === 'number' && typeof rightValue === 'number'
-      ? leftValue - rightValue
-      : String(leftValue).localeCompare(String(rightValue), 'zh-Hans-CN');
-    return sortOrder === 'asc' ? result : -result;
-  });
-
-  const total = items.length;
+export function createLocalRecipeVideoStore(): RecipeVideoStore {
   return {
-    items: items.slice((page - 1) * pageSize, page * pageSize),
-    page,
-    pageSize,
-    total,
+    async list(options: RecipeVideoListOptions = {}) {
+      const page = Math.max(1, Number(options.page) || 1);
+      const pageSize = Math.min(50, Math.max(1, Number(options.pageSize) || 10));
+      const keyword = normalizeRecipeVideoName(options.keyword ?? '');
+      const resolution = options.resolution === '720p' || options.resolution === '1080p' ? options.resolution : '';
+      const sortBy = options.sortBy ?? 'updatedAt';
+      const sortOrder = options.sortOrder === 'asc' ? 'asc' : 'desc';
+      let items = readAllRecipeVideos();
+
+      if (keyword) {
+        items = items.filter((item) => toSearchableText(item).includes(keyword));
+      }
+
+      if (resolution) {
+        items = items.filter((item) => item.resolution === resolution);
+      }
+
+      items = sortRecipeVideos(items, sortBy, sortOrder);
+
+      const total = items.length;
+      return {
+        items: items.slice((page - 1) * pageSize, page * pageSize),
+        page,
+        pageSize,
+        total,
+      };
+    },
+
+    async create(input: RecipeVideoInput) {
+      const items = readAllRecipeVideos();
+      const normalized = normalizeRecipeVideoName(input.recipeName);
+      if (items.some((item) => normalizeRecipeVideoName(item.recipeName) === normalized)) {
+        throw new Error('菜谱名称不能重复。');
+      }
+
+      const now = new Date().toISOString();
+      const item: RecipeVideoConfig = {
+        ...input,
+        id: buildRecipeVideoId(),
+        status: 'approved',
+        createdAt: now,
+        updatedAt: now,
+      };
+      writeAllRecipeVideos([item, ...items]);
+      return item;
+    },
+
+    async update(id: string, input: RecipeVideoInput) {
+      const items = readAllRecipeVideos();
+      const index = items.findIndex((item) => item.id === id);
+      if (index < 0) {
+        throw new Error('未找到对应的视频配置。');
+      }
+
+      const normalized = normalizeRecipeVideoName(input.recipeName);
+      if (items.some((item) => item.id !== id && normalizeRecipeVideoName(item.recipeName) === normalized)) {
+        throw new Error('菜谱名称不能重复。');
+      }
+
+      const updated: RecipeVideoConfig = {
+        ...items[index],
+        ...input,
+        status: 'approved',
+        updatedAt: new Date().toISOString(),
+      };
+      items[index] = updated;
+      writeAllRecipeVideos(items);
+      return updated;
+    },
+
+    async delete(id: string) {
+      const items = readAllRecipeVideos();
+      const nextItems = items.filter((item) => item.id !== id);
+      if (nextItems.length === items.length) {
+        throw new Error('未找到对应的视频配置。');
+      }
+      writeAllRecipeVideos(nextItems);
+    },
+
+    async match(recipeName: string) {
+      const normalized = normalizeRecipeVideoName(recipeName);
+      if (!normalized) {
+        return null;
+      }
+
+      return readAllRecipeVideos().find((item) => {
+        if (item.status !== 'approved') return false;
+        return [item.recipeName, ...item.recipeAliases].some((name) => normalizeRecipeVideoName(name) === normalized);
+      }) ?? null;
+    },
   };
+}
+
+export function createMongoRecipeVideoStore(): RecipeVideoStore {
+  return {
+    async list(options: RecipeVideoListOptions = {}) {
+      const collection = await getMongoRecipeVideoCollection();
+      if (!collection) {
+        return createLocalRecipeVideoStore().list(options);
+      }
+
+      const page = Math.max(1, Number(options.page) || 1);
+      const pageSize = Math.min(50, Math.max(1, Number(options.pageSize) || 10));
+      const keyword = normalizeRecipeVideoName(options.keyword ?? '');
+      const resolution = options.resolution === '720p' || options.resolution === '1080p' ? options.resolution : '';
+      const sortBy = options.sortBy ?? 'updatedAt';
+      const sortOrder = options.sortOrder === 'asc' ? 1 : -1;
+      const filter: Record<string, unknown> = {};
+
+      if (keyword) {
+        filter.searchableText = { $regex: escapeRegExp(keyword) };
+      }
+      if (resolution) {
+        filter.resolution = resolution;
+      }
+
+      const [total, documents] = await Promise.all([
+        collection.countDocuments(filter),
+        collection
+          .find(filter)
+          .sort({ [sortBy]: sortOrder })
+          .skip((page - 1) * pageSize)
+          .limit(pageSize)
+          .toArray(),
+      ]);
+
+      return {
+        items: documents.map(fromDocument),
+        page,
+        pageSize,
+        total,
+      };
+    },
+
+    async create(input: RecipeVideoInput) {
+      const collection = await getMongoRecipeVideoCollection();
+      if (!collection) {
+        return createLocalRecipeVideoStore().create(input);
+      }
+
+      const now = new Date().toISOString();
+      const item: RecipeVideoConfig = {
+        ...input,
+        id: buildRecipeVideoId(),
+        status: 'approved',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      try {
+        await collection.insertOne(toDocument(item));
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          throw new Error('菜谱名称不能重复。');
+        }
+        throw error;
+      }
+
+      return item;
+    },
+
+    async update(id: string, input: RecipeVideoInput) {
+      const collection = await getMongoRecipeVideoCollection();
+      if (!collection) {
+        return createLocalRecipeVideoStore().update(id, input);
+      }
+
+      const existing = await collection.findOne({ id });
+      if (!existing) {
+        throw new Error('未找到对应的视频配置。');
+      }
+
+      const updated: RecipeVideoConfig = {
+        ...fromDocument(existing),
+        ...input,
+        status: 'approved',
+        updatedAt: new Date().toISOString(),
+      };
+
+      try {
+        const result = await collection.updateOne({ id }, { $set: toDocument(updated) });
+        if (!result.matchedCount) {
+          throw new Error('未找到对应的视频配置。');
+        }
+      } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          throw new Error('菜谱名称不能重复。');
+        }
+        throw error;
+      }
+
+      return updated;
+    },
+
+    async delete(id: string) {
+      const collection = await getMongoRecipeVideoCollection();
+      if (!collection) {
+        return createLocalRecipeVideoStore().delete(id);
+      }
+
+      const result = await collection.deleteOne({ id });
+      if (!result.deletedCount) {
+        throw new Error('未找到对应的视频配置。');
+      }
+    },
+
+    async match(recipeName: string) {
+      const collection = await getMongoRecipeVideoCollection();
+      if (!collection) {
+        return createLocalRecipeVideoStore().match(recipeName);
+      }
+
+      const normalized = normalizeRecipeVideoName(recipeName);
+      if (!normalized) {
+        return null;
+      }
+
+      const document = await collection.findOne({
+        status: 'approved',
+        $or: [
+          { normalizedRecipeName: normalized },
+          { normalizedRecipeAliases: normalized },
+        ],
+      });
+
+      return document ? fromDocument(document) : null;
+    },
+  };
+}
+
+function getRecipeVideoStore() {
+  if (recipeVideoStoreForTest) {
+    return recipeVideoStoreForTest;
+  }
+
+  return createMongoRecipeVideoStore();
+}
+
+export function setRecipeVideoStoreForTest(store: RecipeVideoStore | null) {
+  recipeVideoStoreForTest = store;
+}
+
+export async function closeRecipeVideoMongoConnectionForTest() {
+  if (mongoClientPromise) {
+    const client = await mongoClientPromise;
+    await client.close();
+  }
+  mongoClientPromise = null;
+  mongoIndexesReadyPromise = null;
+}
+
+export function listRecipeVideos(options: RecipeVideoListOptions = {}) {
+  return getRecipeVideoStore().list(options);
 }
 
 export function createRecipeVideo(input: RecipeVideoInput) {
-  const items = readAllRecipeVideos();
-  const normalized = normalizeName(input.recipeName);
-  if (items.some((item) => normalizeName(item.recipeName) === normalized)) {
-    throw new Error('菜谱名称不能重复。');
-  }
-
-  const now = new Date().toISOString();
-  const item: RecipeVideoConfig = {
-    ...input,
-    id: `recipe_video_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    status: 'approved',
-    createdAt: now,
-    updatedAt: now,
-  };
-  writeAllRecipeVideos([item, ...items]);
-  return item;
+  return getRecipeVideoStore().create(input);
 }
 
 export function updateRecipeVideo(id: string, input: RecipeVideoInput) {
-  const items = readAllRecipeVideos();
-  const index = items.findIndex((item) => item.id === id);
-  if (index < 0) {
-    throw new Error('未找到对应的视频配置。');
-  }
-
-  const normalized = normalizeName(input.recipeName);
-  if (items.some((item) => item.id !== id && normalizeName(item.recipeName) === normalized)) {
-    throw new Error('菜谱名称不能重复。');
-  }
-
-  const updated: RecipeVideoConfig = {
-    ...items[index],
-    ...input,
-    status: 'approved',
-    updatedAt: new Date().toISOString(),
-  };
-  items[index] = updated;
-  writeAllRecipeVideos(items);
-  return updated;
+  return getRecipeVideoStore().update(id, input);
 }
 
 export function deleteRecipeVideo(id: string) {
-  const items = readAllRecipeVideos();
-  const nextItems = items.filter((item) => item.id !== id);
-  if (nextItems.length === items.length) {
-    throw new Error('未找到对应的视频配置。');
-  }
-  writeAllRecipeVideos(nextItems);
+  return getRecipeVideoStore().delete(id);
 }
 
 export function matchRecipeVideo(recipeName: string) {
-  const normalized = normalizeName(recipeName);
-  if (!normalized) {
-    return null;
-  }
-
-  return readAllRecipeVideos().find((item) => {
-    if (item.status !== 'approved') return false;
-    return [item.recipeName, ...item.recipeAliases].some((name) => normalizeName(name) === normalized);
-  }) ?? null;
+  return getRecipeVideoStore().match(recipeName);
 }
