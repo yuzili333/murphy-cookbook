@@ -3,9 +3,12 @@ import { motion, useReducedMotion, type PanInfo } from 'framer-motion';
 import { AppShell } from './components/AppShell';
 import { RecipeName } from './components/RecipeName';
 import { RecipeVideoPlayer } from './components/RecipeVideoPlayer';
+import { Dialog } from './components/ui/dialog';
 import audioPlayIcon from './assets/audio-play.svg';
+import closeIcon from './assets/close.svg';
 import loadingIcon from './assets/loading.svg';
 import newChatIcon from './assets/new-chat.svg';
+import playIcon from './assets/play.svg';
 import sendMessageIcon from './assets/send-message.svg';
 import { defaultIngredientVisual, getIngredientVisual } from './data/ingredientVisuals';
 import {
@@ -48,6 +51,7 @@ const pronunciationModeStorageKey = 'murphy-cookbook.pronunciation-mode.v1';
 const splashDismissedStorageKey = 'murphy-cookbook.splash-dismissed.v1';
 const webCacheTtlMs = 3 * 24 * 60 * 60 * 1000;
 const conversationProfileId = 'chat_context_profile';
+const cookbookCoverImage = '/cookbook-cover.png';
 const defaultChildContext =
   '默认服务对象为小学 1-6 年级学生。推荐原则：低油脂、轻口味、膳食均衡、维生素丰富、主食蛋白质蔬菜搭配均衡，避免高糖、高盐、油炸和过度辛辣。未明确提及重度急性过敏风险时，不主动要求补充儿童年龄、饮食偏好或过敏原。';
 type FavoriteRecipesByProfile = Record<string, RecipeRecommendation[]>;
@@ -1275,6 +1279,10 @@ export default function App() {
   const [recipeVideoLoadingById, setRecipeVideoLoadingById] = useState<Record<string, boolean>>({});
   const [recipeVideoByRecipeId, setRecipeVideoByRecipeId] = useState<Record<string, RecipeCookingVideo | null>>({});
   const [recipeVideoErrorsById, setRecipeVideoErrorsById] = useState<Record<string, string>>({});
+  const [activeRecipeVideoDialog, setActiveRecipeVideoDialog] = useState<{
+    video: RecipeCookingVideo;
+    title: string;
+  } | null>(null);
   const [ingredientKnowledgeByName, setIngredientKnowledgeByName] = useState<Record<string, IngredientKnowledge>>({});
   const [ingredientKnowledgeLoadingByName, setIngredientKnowledgeLoadingByName] = useState<Record<string, boolean>>({});
   const [ingredientKnowledgeErrorsByName, setIngredientKnowledgeErrorsByName] = useState<Record<string, string>>({});
@@ -3257,7 +3265,8 @@ export default function App() {
 	                      const isLoadingCookingVideo = Boolean(recipeVideoLoadingById[recipe.id]);
 	                      const cookingVideoError = recipeVideoErrorsById[recipe.id] ?? '';
 	                      const isRecipeDetailRequested = Boolean(recipeDetailRequestedById[recipe.id]);
-	                      const shouldShowRecipeMedia = Boolean(recipeDetail || (isRecipeDetailRequested && cookingVideo));
+	                      const hasQueriedCookingVideo = Object.prototype.hasOwnProperty.call(recipeVideoByRecipeId, recipe.id);
+	                      const shouldShowRecipeMedia = Boolean(recipeDetail || (isRecipeDetailRequested && (cookingVideo || hasQueriedCookingVideo)));
 	                      const mediaIngredients = recipeDetail?.ingredients ?? (
 	                        shouldShowRecipeMedia && cookingVideo
 	                          ? (cookingVideo.ingredients.length ? cookingVideo.ingredients : (message.ingredients ?? ingredients).map((ingredient) => ingredient.name))
@@ -3391,11 +3400,31 @@ export default function App() {
 	                                <section className={cookingVideo ? 'recipe-video-panel generated playable' : 'recipe-video-panel'} aria-label={t(locale, `${recipe.name} 烹饪视频`, `${recipe.name} cooking video`)}>
 	                                  {cookingVideo ? (
                                       <>
-                                        <RecipeVideoPlayer
-                                          video={cookingVideo}
-                                          title={t(locale, `${recipe.name} 烹饪视频播放器`, `${recipe.name} cooking video player`)}
-                                          locale={locale}
-                                        />
+                                        <button
+                                          type="button"
+                                          className="recipe-video-cover-button"
+                                          onClick={() =>
+                                            setActiveRecipeVideoDialog({
+                                              video: cookingVideo,
+                                              title: t(locale, `${recipe.name} 烹饪视频播放器`, `${recipe.name} cooking video player`),
+                                            })
+                                          }
+                                          aria-label={t(locale, `播放${recipe.name}烹饪视频`, `Play ${recipe.name} cooking video`)}
+                                        >
+                                          <img
+                                            className="recipe-video-cover-image"
+                                            src={cookingVideo.coverUrl || cookbookCoverImage}
+                                            alt={t(locale, `${recipe.name} 烹饪视频封面`, `${recipe.name} cooking video cover`)}
+                                            onError={(event) => {
+                                              if (!event.currentTarget.src.endsWith(cookbookCoverImage)) {
+                                                event.currentTarget.src = cookbookCoverImage;
+                                              }
+                                            }}
+                                          />
+                                          <span className="recipe-video-cover-play" aria-hidden="true">
+                                            <img src={playIcon} alt="" aria-hidden="true" />
+                                          </span>
+                                        </button>
                                         <div className="recipe-video-copy">
                                           <p>{t(locale, `已匹配 ${cookingVideo.recipeName} 烹饪视频，${cookingVideo.resolution}，${cookingVideo.durationSeconds} 秒。`, `Matched ${cookingVideo.recipeName} cooking video, ${cookingVideo.resolution}, ${cookingVideo.durationSeconds}s.`)}</p>
                                           <a className="secondary-button" href={cookingVideo.videoUrl} target="_blank" rel="noreferrer">
@@ -3405,21 +3434,16 @@ export default function App() {
                                       </>
                                     ) : (
                                       <>
-                                        <div className="recipe-video-placeholder" role="img" aria-label={t(locale, `${recipe.name} 默认菜谱封面图`, `${recipe.name} default recipe cover`)}>
-                                          <div className="video-sun" aria-hidden="true" />
-                                          <div className="video-family" aria-hidden="true">
-                                            <span>👩‍🍳</span>
-                                            <span>🧒</span>
-                                            <span>👨‍🍳</span>
+                                        <div className="recipe-video-placeholder image-placeholder" role="img" aria-label={t(locale, `${recipe.name} 默认菜谱封面图`, `${recipe.name} default recipe cover`)}>
+                                          <img
+                                            className="recipe-video-cover-image"
+                                            src={cookbookCoverImage}
+                                            alt={t(locale, `${recipe.name} 默认菜谱封面`, `${recipe.name} default recipe cover`)}
+                                          />
+                                          <div className="recipe-video-placeholder-copy">
+                                            <p>{isLoadingCookingVideo ? (isEnglish ? 'Matching cooking video...' : '正在匹配烹饪视频...') : (isEnglish ? 'No cooking video found' : '未查询到菜谱烹饪视频')}</p>
+                                            <strong>{recipe.name}</strong>
                                           </div>
-                                          <div className="video-ingredients" aria-hidden="true">
-                                            {mediaIngredients.slice(0, 4).map((ingredient) => {
-                                              const visual = getKnownIngredientVisual(ingredient.name);
-                                              return visual ? <span key={`${recipe.id}_video_${ingredient.name}`}>{visual.emoji}</span> : null;
-                                            })}
-                                          </div>
-                                          <p>{isLoadingCookingVideo ? (isEnglish ? 'Matching cooking video...' : '正在匹配烹饪视频...') : (isEnglish ? 'No cooking video found' : '未查询到菜谱烹饪视频')}</p>
-                                          <strong>{recipe.name}</strong>
                                         </div>
                                         <div className="recipe-video-copy">
                                           <p>{cookingVideoError || (isLoadingCookingVideo ? (isEnglish ? 'Checking the cooking video library.' : '正在查询菜谱烹饪视频库。') : (isEnglish ? 'No cooking video was found for this recipe.' : '未查询到菜谱烹饪视频'))}</p>
@@ -3663,6 +3687,30 @@ export default function App() {
             </button>
           </div>
       </section>
+
+      <Dialog
+        open={Boolean(activeRecipeVideoDialog)}
+        title={activeRecipeVideoDialog?.title ?? ''}
+        className="recipe-video-dialog"
+        hideHeader
+        closeIconSrc={closeIcon}
+        closeButtonAriaLabel={isEnglish ? 'Close video player' : '关闭视频播放器'}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActiveRecipeVideoDialog(null);
+          }
+        }}
+      >
+        {activeRecipeVideoDialog ? (
+          <div className="recipe-video-dialog-body">
+            <RecipeVideoPlayer
+              video={activeRecipeVideoDialog.video}
+              title={activeRecipeVideoDialog.title}
+              locale={locale}
+            />
+          </div>
+        ) : null}
+      </Dialog>
 
       {learningRecipe ? (
         <div className="drawer-layer" role="presentation">
