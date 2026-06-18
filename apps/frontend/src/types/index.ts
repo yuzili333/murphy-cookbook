@@ -7,14 +7,6 @@ export interface ChildProfile {
   dietaryHabits: string[];
 }
 
-export interface CreateChildProfileInput {
-  nickname: string;
-  age: number;
-  tastePreferences: string[];
-  allergens: string[];
-  dietaryHabits: string[];
-}
-
 export interface IngredientItem {
   id: string;
   name: string;
@@ -124,12 +116,6 @@ export interface SeasonalIngredientSuggestion {
   reason: string;
 }
 
-export interface FeedbackResponse {
-  praise: string;
-  improvement: string;
-  nextSuggestion: string;
-}
-
 export interface UploadResult {
   filename: string;
   mimetype: string;
@@ -139,38 +125,6 @@ export interface UploadResult {
 export interface ImageRecognitionResponse {
   ingredients: IngredientItem[];
   upload: UploadResult;
-}
-
-export interface VoiceParseResponse {
-  transcript: string;
-  ingredients: IngredientItem[];
-  upload: UploadResult;
-}
-
-export interface LlmLogEntry {
-  timestamp?: string;
-  type?: string;
-  operation?: string;
-  model?: string;
-  success?: boolean;
-  durationMs?: number;
-  status?: number;
-  error?: string;
-  responsePreview?: string;
-  requestSummary?: unknown;
-  metadata?: Record<string, unknown>;
-  usage?: Record<string, unknown> | null;
-}
-
-export interface LlmLogQueryResult {
-  items: LlmLogEntry[];
-  filters: {
-    start: string;
-    end: string;
-    keyword: string;
-    limit: number;
-  };
-  logFile: string;
 }
 
 export type MessageNode =

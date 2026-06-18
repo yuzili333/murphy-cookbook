@@ -3,13 +3,19 @@ import { motion, useReducedMotion, type PanInfo } from 'framer-motion';
 import { AppShell } from './components/AppShell';
 import { RecipeName } from './components/RecipeName';
 import { RecipeVideoPlayer } from './components/RecipeVideoPlayer';
+import { SvgIcon } from './components/SvgIcon';
 import { Dialog } from './components/ui/dialog';
-import audioPlayIcon from './assets/audio-play.svg';
-import closeIcon from './assets/close.svg';
-import loadingIcon from './assets/loading.svg';
-import newChatIcon from './assets/new-chat.svg';
-import playIcon from './assets/play.svg';
-import sendMessageIcon from './assets/send-message.svg';
+import { Switch } from './components/ui/switch';
+import audioPlaySvg from './assets/audio-play.svg?raw';
+import closeSvg from './assets/close.svg?raw';
+import loadingSvg from './assets/loading.svg?raw';
+import audioInputSvg from './assets/audio-input.svg?raw';
+import cameraSvg from './assets/camera.svg?raw';
+import deleteSvg from './assets/delete.svg?raw';
+import importPictureSvg from './assets/import-picture.svg?raw';
+import newChatSvg from './assets/new-chat.svg?raw';
+import playSvg from './assets/play.svg?raw';
+import sendMessageSvg from './assets/send-message.svg?raw';
 import { defaultIngredientVisual, getIngredientVisual } from './data/ingredientVisuals';
 import {
   fetchIngredientKnowledge,
@@ -698,15 +704,15 @@ function createWelcomeMessage(childContext = ''): ChatMessage {
     role: 'assistant',
     text: childContext
       ? t(
-          locale,
-          '我是智能儿童菜谱助手，已记录本次对话的特殊饮食信息，告诉我今天有什么食材，也可以拍照上传。',
-          'I am your AI cookbook buddy. I saved the special diet notes for this chat. Tell me today’s ingredients or upload a photo.',
-        )
+        locale,
+        '我是智能儿童菜谱助手，已记录本次对话的特殊饮食信息，告诉我今天有什么食材，也可以拍照上传。',
+        'I am your AI cookbook buddy. I saved the special diet notes for this chat. Tell me today’s ingredients or upload a photo.',
+      )
       : t(
-          locale,
-          '我是智能儿童菜谱助手，请通过文字、语音或拍照上传提供喜欢的食材',
-          'I am your AI cookbook buddy. Share ingredients by typing, speaking, taking a photo, or uploading an image.',
-        ),
+        locale,
+        '我是智能儿童菜谱助手，请通过文字、语音或拍照上传提供喜欢的食材',
+        'I am your AI cookbook buddy. Share ingredients by typing, speaking, taking a photo, or uploading an image.',
+      ),
     createdAt: new Date().toISOString(),
   };
 }
@@ -737,7 +743,7 @@ function hasMeaningfulChatMessages(messages: ChatMessage[]) {
 function isPersistableChatSession(session: ChatSession) {
   return Boolean(
     session.ingredients.length > 0 ||
-      hasMeaningfulChatMessages(session.messages),
+    hasMeaningfulChatMessages(session.messages),
   );
 }
 
@@ -1209,16 +1215,15 @@ function formatRecipeDifficulty(difficulty: RecipeRecommendation['difficulty'], 
 }
 
 function PlayInlineIcon() {
-  return <img className="inline-play-icon" src={audioPlayIcon} alt="" aria-hidden="true" />;
+  return <SvgIcon className="inline-play-icon" svg={audioPlaySvg} />;
 }
 
 function TrashInlineIcon() {
-  return (
-    <svg className="inline-trash-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9 3h6l1 2h4v2H4V5h4l1-2Z" />
-      <path d="M6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9Zm4 2v8h2v-8h-2Zm4 0v8h2v-8h-2Z" />
-    </svg>
-  );
+  return <SvgIcon className="inline-trash-icon" svg={deleteSvg} />;
+}
+
+function CloseInlineIcon() {
+  return <SvgIcon className="inline-close-icon" svg={closeSvg} />;
 }
 
 function getKnownIngredientVisual(name: string) {
@@ -1558,10 +1563,10 @@ export default function App() {
         const storedSessions = localChatSessions.filter(isPersistableChatSession);
         const legacySession = localChatMessages.length > 0
           ? createChatSession({
-              childContext: localChildContext,
-              messages: localChatMessages,
-              title: buildSessionTitle(localChatMessages, localChildContext),
-            })
+            childContext: localChildContext,
+            messages: localChatMessages,
+            title: buildSessionTitle(localChatMessages, localChildContext),
+          })
           : null;
         const initialSessions = storedSessions.length > 0
           ? storedSessions
@@ -2181,9 +2186,9 @@ export default function App() {
       const cachedRecommendation = forceRefresh
         ? null
         : readCachedValue<RecommendationResponse>(
-            recommendationCacheStorageKey,
-            recommendationCacheKey,
-          );
+          recommendationCacheStorageKey,
+          recommendationCacheKey,
+        );
       const obsoleteRecipeIds = chatMessages
         .filter((message) => {
           if (!message.recipes?.length) {
@@ -2280,15 +2285,15 @@ export default function App() {
         current.map((message) =>
           message.id === streamingRecipeMessageId
             ? {
-                ...message,
-                text: t(
-                  locale,
-                  `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
-                  `Based on ${nextIngredients.map((item) => getIngredientDisplayName(item.name, locale)).join(', ')}, I found ${recipes.length} kid-friendly recipe ${recipes.length === 1 ? 'idea' : 'ideas'}.`,
-                ),
-                recipes,
-                recipeDetails,
-              }
+              ...message,
+              text: t(
+                locale,
+                `根据${nextIngredients.map((item) => item.name).join('、')}，按小学阶段健康饮食原则推荐了 ${recipes.length} 道菜。`,
+                `Based on ${nextIngredients.map((item) => getIngredientDisplayName(item.name, locale)).join(', ')}, I found ${recipes.length} kid-friendly recipe ${recipes.length === 1 ? 'idea' : 'ideas'}.`,
+              ),
+              recipes,
+              recipeDetails,
+            }
             : message,
         ),
       );
@@ -2500,8 +2505,8 @@ export default function App() {
             maxAlternatives: number;
             onstart: (() => void) | null;
             onresult:
-              | ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void)
-              | null;
+            | ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void)
+            | null;
             onerror: ((event: { error?: string }) => void) | null;
             onend: (() => void) | null;
             start: () => void;
@@ -2513,8 +2518,8 @@ export default function App() {
             maxAlternatives: number;
             onstart: (() => void) | null;
             onresult:
-              | ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void)
-              | null;
+            | ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void)
+            | null;
             onerror: ((event: { error?: string }) => void) | null;
             onend: (() => void) | null;
             start: () => void;
@@ -2617,9 +2622,9 @@ export default function App() {
       current.map((message) =>
         message.ingredients
           ? {
-              ...message,
-              ingredients: message.ingredients.filter((item) => item.id !== id),
-            }
+            ...message,
+            ingredients: message.ingredients.filter((item) => item.id !== id),
+          }
           : message,
       ),
     );
@@ -2736,25 +2741,25 @@ export default function App() {
               <div>
                 <p className="eyebrow">{isEnglish ? 'Chat History' : '历史对话'}</p>
               </div>
-              <button type="button" className="ghost-button" onClick={() => setIsConversationDrawerOpen(false)}>
-                {isEnglish ? 'Close' : '关闭'}
+              <button type="button" className="ghost-button close-action-button" onClick={() => setIsConversationDrawerOpen(false)}>
+                <CloseInlineIcon />
               </button>
             </div>
             <button type="button" className="new-chat-button" onClick={handleNewConversation}>
-              <img src={newChatIcon} alt="" aria-hidden="true" />
+              <SvgIcon svg={newChatSvg} />
               {isEnglish ? 'New Chat' : '新建对话'}
             </button>
             <div className="conversation-drawer-tools">
-              <span>{isEnglish ? 'Pronunciation guide' : '开启拼音'}</span>
-              <button
-                type="button"
-                className={isPronunciationModeEnabled ? 'drawer-pronunciation-toggle active' : 'drawer-pronunciation-toggle'}
-                onClick={() => handlePronunciationModeChange(!isPronunciationModeEnabled)}
-                aria-pressed={isPronunciationModeEnabled}
+              <label className="pronunciation-switch-label" htmlFor="pronunciation-mode-switch">
+                <span>{isEnglish ? 'Pronunciation guide' : '开启拼音'}</span>
+                <small>{isPronunciationModeEnabled ? (isEnglish ? 'On' : '已开启') : (isEnglish ? 'Off' : '已关闭')}</small>
+              </label>
+              <Switch
+                id="pronunciation-mode-switch"
+                checked={isPronunciationModeEnabled}
+                onCheckedChange={handlePronunciationModeChange}
                 aria-label={isEnglish ? 'Toggle pronunciation guide' : '切换拼音模式'}
-              >
-                {isPronunciationModeEnabled ? (isEnglish ? 'On' : '开启') : (isEnglish ? 'Off' : '关闭')}
-              </button>
+              />
             </div>
             <div className="conversation-list">
               <p className="conversation-group-title">{isEnglish ? 'Recent' : '最近'}</p>
@@ -2804,8 +2809,8 @@ export default function App() {
                 <p className="eyebrow">{isEnglish ? 'Recipe Collection' : '菜谱收藏'}</p>
                 <h2>{isEnglish ? 'Saved Recipes' : '已收藏菜谱'}</h2>
               </div>
-              <button type="button" className="ghost-button" onClick={() => setIsFavoriteDrawerOpen(false)}>
-                {isEnglish ? 'Close' : '关闭'}
+              <button type="button" className="ghost-button close-action-button" onClick={() => setIsFavoriteDrawerOpen(false)}>
+                <CloseInlineIcon />
               </button>
             </div>
             <div className="settings-menu favorite-drawer-list">
@@ -2886,9 +2891,6 @@ export default function App() {
       <aside className="tablet-landscape-panel tablet-favorite-panel" aria-label={isEnglish ? 'Recipe Collection' : '菜谱收藏'}>
         <div className="tablet-panel-header">
           <strong>{isEnglish ? 'Recipe Collection' : '我的收藏'}</strong>
-          <button type="button" onClick={() => setIsFavoriteDrawerOpen(true)} aria-label={isEnglish ? 'Open collection' : '打开收藏'}>
-            ×
-          </button>
         </div>
         <div className="tablet-panel-list">
           {favoriteRecipes.length > 0 ? (
@@ -2928,43 +2930,43 @@ export default function App() {
         onTouchEnd={handleChatboxTouchEnd}
         onTouchCancel={handleChatboxTouchEnd}
       >
-          <div className="kids-chat-hero" aria-label={isEnglish ? 'Kids cooking assistant' : '儿童烹饪助手'}>
-            <div className="mascot-badge" aria-hidden="true">
-              <img src={murphyAvatarImage} alt="" aria-hidden="true" />
-            </div>
-            <div>
-              <h3>{isEnglish ? 'What ingredients should we turn into something delicious?' : '今天想把哪些食材变成好吃的？'}</h3>
-              <p>{isEnglish ? 'Speak, take a photo, upload a picture, or type your ingredients.' : '可以说出来、拍下来，或直接打字告诉我。'}</p>
-            </div>
+        <div className="kids-chat-hero" aria-label={isEnglish ? 'Kids cooking assistant' : '儿童烹饪助手'}>
+          <div className="mascot-badge" aria-hidden="true">
+            <img src={murphyAvatarImage} alt="" aria-hidden="true" />
           </div>
-          <div className="chat-thread" aria-live="polite">
-            {chatMessages.map((message) => {
-              const messageIngredientsKey = message.ingredients?.length ? buildIngredientsKey(message.ingredients) : '';
-              const hasRecommendedForMessageIngredients = Boolean(
-                messageIngredientsKey &&
-                  chatMessages.some((item) => item.recipes?.length && item.ingredientsKey === messageIngredientsKey),
-              );
-              const activeKnowledgeIngredient = message.ingredients?.find(
-                (ingredient) => buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale) === activeIngredientKnowledgeKey,
-              );
-              const activeIngredientKnowledge = activeKnowledgeIngredient
-                ? ingredientKnowledgeByName[activeIngredientKnowledgeKey]
-                : null;
-              const isActiveIngredientKnowledgeLoading = Boolean(
-                activeKnowledgeIngredient && ingredientKnowledgeLoadingByName[activeIngredientKnowledgeKey],
-              );
-              const activeIngredientKnowledgeError = activeKnowledgeIngredient
-                ? ingredientKnowledgeErrorsByName[activeIngredientKnowledgeKey]
-                : '';
-              const displayMessageText = localizeStaticText(message.text, locale);
-              const activeCarouselRecipeId = message.recipes?.length
-                ? activeCarouselRecipeByMessageId[message.id] || message.recipes[0].id
-                : '';
-              const activeCarouselRecipeIndex = message.recipes?.length
-                ? Math.max(0, message.recipes.findIndex((recipe) => recipe.id === activeCarouselRecipeId))
-                : 0;
+          <div>
+            <h3>{isEnglish ? 'What ingredients should we turn into something delicious?' : '今天想把哪些食材变成好吃的？'}</h3>
+            <p>{isEnglish ? 'Speak, take a photo, upload a picture, or type your ingredients.' : '可以说出来、拍下来，或直接打字告诉我。'}</p>
+          </div>
+        </div>
+        <div className="chat-thread" aria-live="polite">
+          {chatMessages.map((message) => {
+            const messageIngredientsKey = message.ingredients?.length ? buildIngredientsKey(message.ingredients) : '';
+            const hasRecommendedForMessageIngredients = Boolean(
+              messageIngredientsKey &&
+              chatMessages.some((item) => item.recipes?.length && item.ingredientsKey === messageIngredientsKey),
+            );
+            const activeKnowledgeIngredient = message.ingredients?.find(
+              (ingredient) => buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale) === activeIngredientKnowledgeKey,
+            );
+            const activeIngredientKnowledge = activeKnowledgeIngredient
+              ? ingredientKnowledgeByName[activeIngredientKnowledgeKey]
+              : null;
+            const isActiveIngredientKnowledgeLoading = Boolean(
+              activeKnowledgeIngredient && ingredientKnowledgeLoadingByName[activeIngredientKnowledgeKey],
+            );
+            const activeIngredientKnowledgeError = activeKnowledgeIngredient
+              ? ingredientKnowledgeErrorsByName[activeIngredientKnowledgeKey]
+              : '';
+            const displayMessageText = localizeStaticText(message.text, locale);
+            const activeCarouselRecipeId = message.recipes?.length
+              ? activeCarouselRecipeByMessageId[message.id] || message.recipes[0].id
+              : '';
+            const activeCarouselRecipeIndex = message.recipes?.length
+              ? Math.max(0, message.recipes.findIndex((recipe) => recipe.id === activeCarouselRecipeId))
+              : 0;
 
-              return (
+            return (
               <article
                 key={message.id}
                 className={message.role === 'user' ? 'chat-message user' : 'chat-message assistant'}
@@ -3009,81 +3011,81 @@ export default function App() {
                       onTouchEnd={handleIngredientTouchEnd}
                       onTouchCancel={handleIngredientTouchEnd}
                     >
-                    {message.ingredients.map((ingredient) => {
-                      const visual = getIngredientVisual(ingredient.name);
-                      const isFallback = visual.name === defaultIngredientVisual.name;
-                      const ingredientDisplayName = getIngredientDisplayName(ingredient.name, locale);
-                      const ingredientPronunciation = isEnglish ? ingredientDisplayName : visual.pinyin;
-                      const bounceKey = `${message.id}_${ingredient.id}`;
-                      const shouldBounceIngredientEmoji = bouncingIngredientKeys.includes(bounceKey);
+                      {message.ingredients.map((ingredient) => {
+                        const visual = getIngredientVisual(ingredient.name);
+                        const isFallback = visual.name === defaultIngredientVisual.name;
+                        const ingredientDisplayName = getIngredientDisplayName(ingredient.name, locale);
+                        const ingredientPronunciation = isEnglish ? ingredientDisplayName : visual.pinyin;
+                        const bounceKey = `${message.id}_${ingredient.id}`;
+                        const shouldBounceIngredientEmoji = bouncingIngredientKeys.includes(bounceKey);
 
-	                      return (
-	                        <article
-	                          key={`${message.id}_${ingredient.id}`}
-	                          className={
-	                            [
-	                              isFallback ? 'chat-ingredient-card fallback' : 'chat-ingredient-card',
-	                              buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale) === activeIngredientKnowledgeKey
-	                                ? 'active'
-	                                : '',
-	                            ].filter(Boolean).join(' ')
-	                          }
-	                          role="button"
-	                          tabIndex={0}
-	                          onClick={() => void handleIngredientKnowledgeClick(ingredient)}
-	                          onKeyDown={(event) => {
-	                            if (event.key === 'Enter' || event.key === ' ') {
-	                              event.preventDefault();
-	                              void handleIngredientKnowledgeClick(ingredient);
-	                            }
-	                          }}
-	                        >
-                          <span className="ingredient-pinyin">{ingredientPronunciation}</span>
-                          <strong>{ingredientDisplayName}</strong>
-                          <motion.div
-                            className={shouldBounceIngredientEmoji ? 'ingredient-emoji bouncing' : 'ingredient-emoji'}
-                            role="img"
-                            aria-label={isFallback ? t(locale, '默认食材占位', 'Default ingredient placeholder') : ingredientDisplayName}
-                            animate={
-                              shouldBounceIngredientEmoji
-                                ? { y: [0, -9, 0, -5, 0], scale: [1, 1.05, 1, 1.03, 1] }
-                                : { y: 0, scale: 1 }
+                        return (
+                          <article
+                            key={`${message.id}_${ingredient.id}`}
+                            className={
+                              [
+                                isFallback ? 'chat-ingredient-card fallback' : 'chat-ingredient-card',
+                                buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale) === activeIngredientKnowledgeKey
+                                  ? 'active'
+                                  : '',
+                              ].filter(Boolean).join(' ')
                             }
-                            transition={{
-                              duration: 0.8,
-                              repeat: shouldBounceIngredientEmoji ? 5 : 0,
-                              ease: 'easeInOut',
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => void handleIngredientKnowledgeClick(ingredient)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                void handleIngredientKnowledgeClick(ingredient);
+                              }
                             }}
                           >
-                            {visual.emoji}
-                          </motion.div>
-                          <div className="ingredient-card-toolbar">
-	                            <button
-	                              type="button"
-	                              className="ingredient-icon-button speech"
-	                              onClick={(event) => {
-	                                event.stopPropagation();
-	                                speak(`${ingredientDisplayName}，${ingredientPronunciation}`, isEnglish ? 'en-US' : 'zh-CN');
-	                              }}
-	                              aria-label={t(locale, `朗读食材：${ingredient.name}`, `Read ingredient: ${ingredientDisplayName}`)}
-	                            >
-                              <PlayInlineIcon />
-                            </button>
-	                            <button
-	                              type="button"
-	                              className="ingredient-icon-button delete"
-	                              onClick={(event) => {
-	                                event.stopPropagation();
-	                                removeChatIngredient(ingredient.id);
-	                              }}
-	                              aria-label={t(locale, `删除食材：${ingredient.name}`, `Remove ingredient: ${ingredientDisplayName}`)}
+                            <span className="ingredient-pinyin">{ingredientPronunciation}</span>
+                            <strong>{ingredientDisplayName}</strong>
+                            <motion.div
+                              className={shouldBounceIngredientEmoji ? 'ingredient-emoji bouncing' : 'ingredient-emoji'}
+                              role="img"
+                              aria-label={isFallback ? t(locale, '默认食材占位', 'Default ingredient placeholder') : ingredientDisplayName}
+                              animate={
+                                shouldBounceIngredientEmoji
+                                  ? { y: [0, -9, 0, -5, 0], scale: [1, 1.05, 1, 1.03, 1] }
+                                  : { y: 0, scale: 1 }
+                              }
+                              transition={{
+                                duration: 0.8,
+                                repeat: shouldBounceIngredientEmoji ? 5 : 0,
+                                ease: 'easeInOut',
+                              }}
                             >
-                              <TrashInlineIcon />
-                            </button>
-                          </div>
-                        </article>
-                      );
-                    })}
+                              {visual.emoji}
+                            </motion.div>
+                            <div className="ingredient-card-toolbar">
+                              <button
+                                type="button"
+                                className="ingredient-icon-button speech"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  speak(`${ingredientDisplayName}，${ingredientPronunciation}`, isEnglish ? 'en-US' : 'zh-CN');
+                                }}
+                                aria-label={t(locale, `朗读食材：${ingredient.name}`, `Read ingredient: ${ingredientDisplayName}`)}
+                              >
+                                <PlayInlineIcon />
+                              </button>
+                              <button
+                                type="button"
+                                className="ingredient-icon-button delete"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  removeChatIngredient(ingredient.id);
+                                }}
+                                aria-label={t(locale, `删除食材：${ingredient.name}`, `Remove ingredient: ${ingredientDisplayName}`)}
+                              >
+                                <TrashInlineIcon />
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
                       <button
                         type="button"
                         className="ingredient-add-card"
@@ -3092,92 +3094,92 @@ export default function App() {
                         aria-label={isEnglish ? 'Add more ingredients from a local photo' : '从本地照片继续新增食材'}
                       >
                         <span>+</span>
-	                        <strong>{isEnglish ? 'Add more' : '添加食材'}</strong>
-	                      </button>
-	                    </div>
-	                    {activeKnowledgeIngredient ? (
-	                      <section className="ingredient-knowledge-card" aria-label={t(locale, `${activeKnowledgeIngredient.name} 食材知识卡片`, `${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} ingredient notes`)}>
-	                        <div className="ingredient-knowledge-heading">
-	                          <div>
-	                            <p>{isEnglish ? 'Ingredient Notes' : '食材小百科'}</p>
-	                            <strong>
-	                              {getIngredientDisplayName(activeKnowledgeIngredient.name, locale)}
-	                              <span aria-hidden="true"> · {getIngredientVisual(activeKnowledgeIngredient.name).emoji}</span>
-	                            </strong>
-	                          </div>
-	                          <button
-	                            type="button"
-	                            className="mini-speech-button"
-	                            onClick={() => {
-	                              const knowledgeText = activeIngredientKnowledge
-	                                ? [
-	                                    isEnglish
-	                                      ? `${getIngredientDisplayName(activeIngredientKnowledge.name, locale)} nutrition: ${activeIngredientKnowledge.nutritionValues.join(', ')}`
-	                                      : `${activeIngredientKnowledge.name}的营养价值：${activeIngredientKnowledge.nutritionValues.join('，')}`,
-	                                    isEnglish ? `Origin: ${activeIngredientKnowledge.origin}` : `产地：${activeIngredientKnowledge.origin}`,
-	                                    isEnglish ? `Climate: ${activeIngredientKnowledge.growingClimate}` : `适宜气候：${activeIngredientKnowledge.growingClimate}`,
-	                                    isEnglish ? `Good pairings: ${activeIngredientKnowledge.bestPairings.join(', ')}` : `最佳搭配：${activeIngredientKnowledge.bestPairings.join('、')}`,
-	                                    activeIngredientKnowledge.kidFact,
-	                                  ].join(isEnglish ? '. ' : '。')
-	                                : t(locale, `${activeKnowledgeIngredient.name} 食材知识正在获取中`, `${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} notes are loading`);
-	                              speak(knowledgeText, isEnglish ? 'en-US' : 'zh-CN');
-	                            }}
-	                            aria-label={t(locale, `朗读${activeKnowledgeIngredient.name}食材知识`, `Read ${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} notes`)}
-	                          >
-	                            <PlayInlineIcon />
-	                          </button>
-	                        </div>
-	                        {isActiveIngredientKnowledgeLoading ? (
-	                          <p className="ingredient-knowledge-loading">
-	                            <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-	                            {isEnglish ? 'Learning about this ingredient...' : '正在查询食材知识...'}
-	                          </p>
-	                        ) : activeIngredientKnowledgeError ? (
-	                          <div className="ingredient-knowledge-error">
-	                            <p>{activeIngredientKnowledgeError}</p>
-	                            <button
-	                              type="button"
-	                              className="secondary-button"
-	                              onClick={() => void handleIngredientKnowledgeClick(activeKnowledgeIngredient)}
-	                            >
-	                              {isEnglish ? 'Try again' : '重新获取'}
-	                            </button>
-	                          </div>
-	                        ) : activeIngredientKnowledge ? (
-	                          <div className="ingredient-knowledge-grid">
-	                            <div>
-	                              <span>{isEnglish ? 'Nutrition' : '营养价值'}</span>
-	                              <ul>
-	                                {activeIngredientKnowledge.nutritionValues.map((item) => (
-	                                  <li key={`${activeIngredientKnowledge.name}_nutrition_${item}`}>{item}</li>
-	                                ))}
-	                              </ul>
-	                            </div>
-	                            <div>
-	                              <span>{isEnglish ? 'Origin' : '常见产地'}</span>
-	                              <p>{activeIngredientKnowledge.origin}</p>
-	                            </div>
-	                            <div>
-	                              <span>{isEnglish ? 'Climate' : '生长气候'}</span>
-	                              <p>{activeIngredientKnowledge.growingClimate}</p>
-	                            </div>
-	                            <div>
-	                              <span>{isEnglish ? 'Good Pairings' : '最佳搭配'}</span>
-	                              <p>{activeIngredientKnowledge.bestPairings.join('、')}</p>
-	                            </div>
-	                            <div className="ingredient-knowledge-wide">
-	                              <span>{isEnglish ? 'Fun Fact' : '小朋友知识点'}</span>
-	                              <p>{activeIngredientKnowledge.kidFact}</p>
-	                            </div>
-	                            <div className="ingredient-knowledge-wide safety">
-	                              <span>{isEnglish ? 'Safety' : '安全提醒'}</span>
-	                              <p>{activeIngredientKnowledge.safetyNote}</p>
-	                            </div>
-	                          </div>
-	                        ) : null}
-	                      </section>
-	                    ) : null}
-	                    <div className="ingredient-card-actions">
+                        <strong>{isEnglish ? 'Add more' : '添加食材'}</strong>
+                      </button>
+                    </div>
+                    {activeKnowledgeIngredient ? (
+                      <section className="ingredient-knowledge-card" aria-label={t(locale, `${activeKnowledgeIngredient.name} 食材知识卡片`, `${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} ingredient notes`)}>
+                        <div className="ingredient-knowledge-heading">
+                          <div>
+                            <p>{isEnglish ? 'Ingredient Notes' : '食材小百科'}</p>
+                            <strong>
+                              {getIngredientDisplayName(activeKnowledgeIngredient.name, locale)}
+                              <span aria-hidden="true"> · {getIngredientVisual(activeKnowledgeIngredient.name).emoji}</span>
+                            </strong>
+                          </div>
+                          <button
+                            type="button"
+                            className="mini-speech-button"
+                            onClick={() => {
+                              const knowledgeText = activeIngredientKnowledge
+                                ? [
+                                  isEnglish
+                                    ? `${getIngredientDisplayName(activeIngredientKnowledge.name, locale)} nutrition: ${activeIngredientKnowledge.nutritionValues.join(', ')}`
+                                    : `${activeIngredientKnowledge.name}的营养价值：${activeIngredientKnowledge.nutritionValues.join('，')}`,
+                                  isEnglish ? `Origin: ${activeIngredientKnowledge.origin}` : `产地：${activeIngredientKnowledge.origin}`,
+                                  isEnglish ? `Climate: ${activeIngredientKnowledge.growingClimate}` : `适宜气候：${activeIngredientKnowledge.growingClimate}`,
+                                  isEnglish ? `Good pairings: ${activeIngredientKnowledge.bestPairings.join(', ')}` : `最佳搭配：${activeIngredientKnowledge.bestPairings.join('、')}`,
+                                  activeIngredientKnowledge.kidFact,
+                                ].join(isEnglish ? '. ' : '。')
+                                : t(locale, `${activeKnowledgeIngredient.name} 食材知识正在获取中`, `${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} notes are loading`);
+                              speak(knowledgeText, isEnglish ? 'en-US' : 'zh-CN');
+                            }}
+                            aria-label={t(locale, `朗读${activeKnowledgeIngredient.name}食材知识`, `Read ${getIngredientDisplayName(activeKnowledgeIngredient.name, locale)} notes`)}
+                          >
+                            <PlayInlineIcon />
+                          </button>
+                        </div>
+                        {isActiveIngredientKnowledgeLoading ? (
+                          <p className="ingredient-knowledge-loading">
+                            <SvgIcon className="loading-icon" svg={loadingSvg} />
+                            {isEnglish ? 'Learning about this ingredient...' : '正在查询食材知识...'}
+                          </p>
+                        ) : activeIngredientKnowledgeError ? (
+                          <div className="ingredient-knowledge-error">
+                            <p>{activeIngredientKnowledgeError}</p>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void handleIngredientKnowledgeClick(activeKnowledgeIngredient)}
+                            >
+                              {isEnglish ? 'Try again' : '重新获取'}
+                            </button>
+                          </div>
+                        ) : activeIngredientKnowledge ? (
+                          <div className="ingredient-knowledge-grid">
+                            <div>
+                              <span>{isEnglish ? 'Nutrition' : '营养价值'}</span>
+                              <ul>
+                                {activeIngredientKnowledge.nutritionValues.map((item) => (
+                                  <li key={`${activeIngredientKnowledge.name}_nutrition_${item}`}>{item}</li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div>
+                              <span>{isEnglish ? 'Origin' : '常见产地'}</span>
+                              <p>{activeIngredientKnowledge.origin}</p>
+                            </div>
+                            <div>
+                              <span>{isEnglish ? 'Climate' : '生长气候'}</span>
+                              <p>{activeIngredientKnowledge.growingClimate}</p>
+                            </div>
+                            <div>
+                              <span>{isEnglish ? 'Good Pairings' : '最佳搭配'}</span>
+                              <p>{activeIngredientKnowledge.bestPairings.join('、')}</p>
+                            </div>
+                            <div className="ingredient-knowledge-wide">
+                              <span>{isEnglish ? 'Fun Fact' : '小朋友知识点'}</span>
+                              <p>{activeIngredientKnowledge.kidFact}</p>
+                            </div>
+                            <div className="ingredient-knowledge-wide safety">
+                              <span>{isEnglish ? 'Safety' : '安全提醒'}</span>
+                              <p>{activeIngredientKnowledge.safetyNote}</p>
+                            </div>
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+                    <div className="ingredient-card-actions">
                       <button
                         type="button"
                         className={
@@ -3207,7 +3209,7 @@ export default function App() {
                         ) : null}
                         {isFetchingRecommendations ? (
                           <span className="recommend-loading-inline">
-                            <img className="loading-icon recommend-loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
+                            <SvgIcon className="loading-icon recommend-loading-icon" svg={loadingSvg} />
                             <span>{isEnglish ? 'Thinking...' : '推荐中...'}</span>
                           </span>
                         ) : (
@@ -3240,7 +3242,7 @@ export default function App() {
                       ref={(node) => {
                         recipeCarouselViewportRefs.current[message.id] = node;
                       }}
-	                    >
+                    >
                       <motion.div
                         className="recipe-carousel-track"
                         drag={message.recipes.length > 1 ? 'x' : false}
@@ -3257,435 +3259,409 @@ export default function App() {
                           handleRecipeCarouselDragEnd(message.id, message.recipes ?? [], activeCarouselRecipeIndex, info)
                         }
                       >
-	                    {message.recipes.map((recipe, recipeIndex) => {
-	                      const recipeDetail = recipeDetailsById[recipe.id];
-	                      const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
-	                      const hasHighRiskAllergy = hasHighRiskAllergyAlert(riskAlertText, message.ingredients ?? ingredients);
-	                      const cookingVideo = recipeVideoByRecipeId[recipe.id] ?? null;
-	                      const isLoadingCookingVideo = Boolean(recipeVideoLoadingById[recipe.id]);
-	                      const cookingVideoError = recipeVideoErrorsById[recipe.id] ?? '';
-	                      const isRecipeDetailRequested = Boolean(recipeDetailRequestedById[recipe.id]);
-	                      const hasQueriedCookingVideo = Object.prototype.hasOwnProperty.call(recipeVideoByRecipeId, recipe.id);
-	                      const shouldShowRecipeMedia = Boolean(recipeDetail || (isRecipeDetailRequested && (cookingVideo || hasQueriedCookingVideo)));
-	                      const mediaIngredients = recipeDetail?.ingredients ?? (
-	                        shouldShowRecipeMedia && cookingVideo
-	                          ? (cookingVideo.ingredients.length ? cookingVideo.ingredients : (message.ingredients ?? ingredients).map((ingredient) => ingredient.name))
-	                              .map((name) => ({
-	                                name,
-	                                quantity: isEnglish ? 'Configured' : '视频配置',
-	                              }))
-	                          : []
-	                      );
-	                      const isActiveCarouselRecipe = recipe.id === activeCarouselRecipeId || (!activeCarouselRecipeId && recipeIndex === 0);
+                        {message.recipes.map((recipe, recipeIndex) => {
+                          const recipeDetail = recipeDetailsById[recipe.id];
+                          const riskAlertText = recipe.riskAlerts.slice(0, 2).join('；');
+                          const hasHighRiskAllergy = hasHighRiskAllergyAlert(riskAlertText, message.ingredients ?? ingredients);
+                          const cookingVideo = recipeVideoByRecipeId[recipe.id] ?? null;
+                          const isLoadingCookingVideo = Boolean(recipeVideoLoadingById[recipe.id]);
+                          const cookingVideoError = recipeVideoErrorsById[recipe.id] ?? '';
+                          const isRecipeDetailRequested = Boolean(recipeDetailRequestedById[recipe.id]);
+                          const hasQueriedCookingVideo = Object.prototype.hasOwnProperty.call(recipeVideoByRecipeId, recipe.id);
+                          const shouldShowRecipeMedia = Boolean(recipeDetail || (isRecipeDetailRequested && (cookingVideo || hasQueriedCookingVideo)));
+                          const mediaIngredients = recipeDetail?.ingredients ?? (
+                            shouldShowRecipeMedia && cookingVideo
+                              ? (cookingVideo.ingredients.length ? cookingVideo.ingredients : (message.ingredients ?? ingredients).map((ingredient) => ingredient.name))
+                                .map((name) => ({
+                                  name,
+                                  quantity: isEnglish ? 'Configured' : '视频配置',
+                                }))
+                              : []
+                          );
+                          const isActiveCarouselRecipe = recipe.id === activeCarouselRecipeId || (!activeCarouselRecipeId && recipeIndex === 0);
 
-	                      return (
-                        <motion.article
-                          key={`${message.id}_${recipe.id}`}
-                          className={isActiveCarouselRecipe ? 'carousel-recipe-card coverflow-card active' : 'carousel-recipe-card coverflow-card'}
-                          data-recipe-card-id={recipe.id}
-                          data-carousel-recipe-id={recipe.id}
-                          style={{ zIndex: getCarouselCardMotionState(recipeIndex, activeCarouselRecipeIndex).zIndex }}
-                          animate={shouldReduceMotion ? { x: 0, rotateY: 0, rotateZ: 0, scale: 1, opacity: 1 } : getCarouselCardMotionState(recipeIndex, activeCarouselRecipeIndex)}
-                          transition={{ type: 'spring', stiffness: 260, damping: 30, mass: 0.8 }}
-                        >
-                        <div className="recipe-card-kicker">
-                          <span>{isEnglish ? 'Kid-friendly' : '儿童友好食谱'}</span>
-                          {recipe.canCookWithCurrentIngredients ? <span className="fit-chip">{isEnglish ? 'Ready to cook' : '现有食材可做'}</span> : null}
-                        </div>
-                        <div className="recipe-card-name-stack">
-                          <button
-                            type="button"
-                            className="name-audio-button carousel-recipe-name"
-                            onClick={() => speak(recipe.name, isEnglish ? 'en-US' : 'zh-CN')}
-                            aria-label={t(locale, `朗读菜名：${recipe.name}`, `Read recipe name: ${recipe.name}`)}
-                          >
-                            <RecipeName as="span" name={recipe.name} pinyin={recipe.namePinyin} showPronunciation={isPronunciationModeEnabled} />
-                            <PlayInlineIcon />
-                          </button>
-                          <button
-                            type="button"
-                            className="name-audio-button carousel-english-name"
-                            onClick={() => speak(recipe.englishName, 'en-US')}
-                            aria-label={`Read recipe name: ${recipe.englishName}`}
-                          >
-                            <span>{recipe.englishName}</span>
-                            <PlayInlineIcon />
-                          </button>
-                        </div>
-                        <div className="recipe-summary-row">
-                          <p className="compact-copy recipe-summary">{recipe.nutritionSummary}</p>
-                          <button
-                            type="button"
-                            className="mini-speech-button"
-                            onClick={() => speak(recipe.nutritionSummary, isEnglish ? 'en-US' : 'zh-CN')}
-                            aria-label={isEnglish ? 'Read nutrition summary' : '朗读营养摘要'}
-                          >
-                            <PlayInlineIcon />
-                          </button>
-                        </div>
-                        <div className="recipe-card-meta-grid">
-                          <span>
-                            <b>{recipe.estimatedTimeMinutes}</b>
-                            <small>{isEnglish ? 'min' : '分钟'}</small>
-                          </span>
-                          <span>
-                            <b>{formatRecipeDifficulty(recipe.difficulty, locale)}</b>
-                            <small>{isEnglish ? 'Level' : '难度'}</small>
-                          </span>
-                          <span>
-                            <b>{recipe.ageRange}</b>
-                            <small>{isEnglish ? 'Age' : '适合年龄'}</small>
-                          </span>
-                        </div>
-                        <div className="recipe-note-grid">
-                          {recipe.riskAlerts.length > 0 ? (
-                            <section className={hasHighRiskAllergy ? 'recipe-note-panel warning allergy-warning' : 'recipe-note-panel warning'}>
-                              <div className="note-panel-heading">
-                                <strong>{isEnglish ? 'Safety Notes' : '烹饪注意'}</strong>
+                          return (
+                            <motion.article
+                              key={`${message.id}_${recipe.id}`}
+                              className={isActiveCarouselRecipe ? 'carousel-recipe-card coverflow-card active' : 'carousel-recipe-card coverflow-card'}
+                              data-recipe-card-id={recipe.id}
+                              data-carousel-recipe-id={recipe.id}
+                              style={{ zIndex: getCarouselCardMotionState(recipeIndex, activeCarouselRecipeIndex).zIndex }}
+                              animate={shouldReduceMotion ? { x: 0, rotateY: 0, rotateZ: 0, scale: 1, opacity: 1 } : getCarouselCardMotionState(recipeIndex, activeCarouselRecipeIndex)}
+                              transition={{ type: 'spring', stiffness: 260, damping: 30, mass: 0.8 }}
+                            >
+                              <div className="recipe-card-kicker">
+                                <span>{isEnglish ? 'Kid-friendly' : '儿童友好食谱'}</span>
+                                {recipe.canCookWithCurrentIngredients ? <span className="fit-chip">{isEnglish ? 'Ready to cook' : '现有食材可做'}</span> : null}
+                              </div>
+                              <div className="recipe-card-name-stack">
+                                <button
+                                  type="button"
+                                  className="name-audio-button carousel-recipe-name"
+                                  onClick={() => speak(recipe.name, isEnglish ? 'en-US' : 'zh-CN')}
+                                  aria-label={t(locale, `朗读菜名：${recipe.name}`, `Read recipe name: ${recipe.name}`)}
+                                >
+                                  <RecipeName as="span" name={recipe.name} pinyin={recipe.namePinyin} showPronunciation={isPronunciationModeEnabled} />
+                                  <PlayInlineIcon />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="name-audio-button carousel-english-name"
+                                  onClick={() => speak(recipe.englishName, 'en-US')}
+                                  aria-label={`Read recipe name: ${recipe.englishName}`}
+                                >
+                                  <span>{recipe.englishName}</span>
+                                  <PlayInlineIcon />
+                                </button>
+                              </div>
+                              <div className="recipe-summary-row">
+                                <p className="compact-copy recipe-summary">{recipe.nutritionSummary}</p>
                                 <button
                                   type="button"
                                   className="mini-speech-button"
-                                  onClick={() => speak(`${isEnglish ? 'Safety notes: ' : '烹饪注意：'}${riskAlertText}`, isEnglish ? 'en-US' : 'zh-CN')}
-                                  aria-label={isEnglish ? 'Read safety notes' : '朗读烹饪注意'}
+                                  onClick={() => speak(recipe.nutritionSummary, isEnglish ? 'en-US' : 'zh-CN')}
+                                  aria-label={isEnglish ? 'Read nutrition summary' : '朗读营养摘要'}
                                 >
                                   <PlayInlineIcon />
                                 </button>
                               </div>
-                              <p>{riskAlertText}</p>
-                            </section>
-                          ) : null}
-                        </div>
-                        <div className="inline-recipe-detail recipe-dossier">
-                          {shouldShowRecipeMedia ? (
-                            <>
-                              <div className="inline-detail-block">
-                                <div className="detail-block-heading">
-                                  <strong>{isEnglish ? 'Ingredients' : '食材配料清单'}</strong>
-                                  <span>{isEnglish ? 'Name / Amount' : '名称 / 用量'}</span>
-                                </div>
-                                <div className="ingredient-table" role="list">
-                                  {mediaIngredients.map((ingredient) => {
-                                    const ingredientDisplayName = getIngredientDisplayName(ingredient.name, locale);
-                                    const visual = getKnownIngredientVisual(ingredient.name);
+                              <div className="recipe-card-meta-grid">
+                                <span>
+                                  <b>{recipe.estimatedTimeMinutes}</b>
+                                  <small>{isEnglish ? 'min' : '分钟'}</small>
+                                </span>
+                                <span>
+                                  <b>{formatRecipeDifficulty(recipe.difficulty, locale)}</b>
+                                  <small>{isEnglish ? 'Level' : '难度'}</small>
+                                </span>
+                                <span>
+                                  <b>{recipe.ageRange}</b>
+                                  <small>{isEnglish ? 'Age' : '适合年龄'}</small>
+                                </span>
+                              </div>
+                              <div className="recipe-note-grid">
+                                {recipe.riskAlerts.length > 0 ? (
+                                  <section className={hasHighRiskAllergy ? 'recipe-note-panel warning allergy-warning' : 'recipe-note-panel warning'}>
+                                    <div className="note-panel-heading">
+                                      <strong>{isEnglish ? 'Safety Notes' : '烹饪注意'}</strong>
+                                    </div>
+                                    <p>{riskAlertText}</p>
+                                  </section>
+                                ) : null}
+                              </div>
+                              <div className="inline-recipe-detail recipe-dossier">
+                                {shouldShowRecipeMedia ? (
+                                  <>
+                                    <div className="inline-detail-block">
+                                      <div className="detail-block-heading">
+                                        <strong>{isEnglish ? 'Ingredients' : '食材配料清单'}</strong>
+                                        <span>{isEnglish ? 'Name / Amount' : '名称 / 用量'}</span>
+                                      </div>
+                                      <div className="ingredient-table" role="list">
+                                        {mediaIngredients.map((ingredient) => {
+                                          const ingredientDisplayName = getIngredientDisplayName(ingredient.name, locale);
+                                          const visual = getKnownIngredientVisual(ingredient.name);
 
-                                    return (
-                                      <div className="ingredient-row" key={`${recipe.id}_${ingredient.name}`} role="listitem">
-                                        <span className="ingredient-name">
-                                          {ingredientDisplayName}
-                                          {visual ? (
-                                            <span className="ingredient-inline-emoji" aria-hidden="true">
-                                              {visual.emoji}
-                                            </span>
-                                          ) : null}
-                                        </span>
-                                        <span className="ingredient-quantity">{ingredient.quantity}</span>
+                                          return (
+                                            <div className="ingredient-row" key={`${recipe.id}_${ingredient.name}`} role="listitem">
+                                              <span className="ingredient-name">
+                                                {ingredientDisplayName}
+                                                {visual ? (
+                                                  <span className="ingredient-inline-emoji" aria-hidden="true">
+                                                    {visual.emoji}
+                                                  </span>
+                                                ) : null}
+                                              </span>
+                                              <span className="ingredient-quantity">{ingredient.quantity}</span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                    <div className="inline-detail-block">
+                                      <div className="detail-block-heading">
+                                        <strong>{isEnglish ? 'Cartoon Cooking Video' : '卡通烹饪步骤视频'}</strong>
+                                        <span>{isEnglish ? 'Manual generation' : '手动生成'}</span>
+                                      </div>
+                                      <section className={cookingVideo ? 'recipe-video-panel generated playable' : 'recipe-video-panel'} aria-label={t(locale, `${recipe.name} 烹饪视频`, `${recipe.name} cooking video`)}>
+                                        {cookingVideo ? (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="recipe-video-cover-button"
+                                              onClick={() =>
+                                                setActiveRecipeVideoDialog({
+                                                  video: cookingVideo,
+                                                  title: t(locale, `${recipe.name} 烹饪视频播放器`, `${recipe.name} cooking video player`),
+                                                })
+                                              }
+                                              aria-label={t(locale, `播放${recipe.name}烹饪视频`, `Play ${recipe.name} cooking video`)}
+                                            >
+                                              <img
+                                                className="recipe-video-cover-image"
+                                                src={cookingVideo.coverUrl}
+                                                alt={t(locale, `${recipe.name} 烹饪视频封面`, `${recipe.name} cooking video cover`)}
+                                                onError={(event) => {
+                                                  event.currentTarget.hidden = true;
+                                                }}
+                                              />
+                                              <span className="recipe-video-cover-play" aria-hidden="true">
+                                                <SvgIcon svg={playSvg} />
+                                              </span>
+                                            </button>
+                                            <div className="recipe-video-copy">
+                                              <p>{t(locale, `已匹配 ${cookingVideo.recipeName} 烹饪视频，${cookingVideo.resolution}，${cookingVideo.durationSeconds} 秒。`, `Matched ${cookingVideo.recipeName} cooking video, ${cookingVideo.resolution}, ${cookingVideo.durationSeconds}s.`)}</p>
+                                              <a className="secondary-button" href={cookingVideo.videoUrl} target="_blank" rel="noreferrer">
+                                                {isEnglish ? 'Open video' : '打开视频'}
+                                              </a>
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="recipe-video-placeholder image-placeholder" role="img" aria-label={t(locale, `${recipe.name} 默认菜谱封面图`, `${recipe.name} default recipe cover`)}>
+                                              <img
+                                                className="recipe-video-cover-image"
+                                                src={cookbookCoverImage}
+                                                alt={t(locale, `${recipe.name} 默认菜谱封面`, `${recipe.name} default recipe cover`)}
+                                              />
+                                              <div className="recipe-video-placeholder-copy">
+                                                <p>{isLoadingCookingVideo ? (isEnglish ? 'Matching cooking video...' : '正在匹配烹饪视频...') : (isEnglish ? 'No cooking video found' : '未查询到菜谱烹饪视频')}</p>
+                                                <strong>{recipe.name}</strong>
+                                              </div>
+                                            </div>
+                                            <div className="recipe-video-copy">
+                                              <p>{cookingVideoError || (isLoadingCookingVideo ? (isEnglish ? 'Checking the cooking video library.' : '正在查询菜谱烹饪视频库。') : (isEnglish ? 'No cooking video was found for this recipe.' : '未查询到菜谱烹饪视频'))}</p>
+                                            </div>
+                                          </>
+                                        )}
+                                      </section>
+                                    </div>
+                                    {recipeDetail ? (
+                                      <div className="inline-detail-block">
+                                        <div className="detail-block-heading">
+                                          <strong>{isEnglish ? 'Cooking Steps' : '烹饪步骤'}</strong>
+                                          <span>{isEnglish ? 'Ordered details' : '按序号执行'}</span>
+                                        </div>
+                                        <ol className="recipe-step-timeline">
+                                          {recipeDetail.steps.map((step, stepIndex) => {
+                                            const speechKey = `step_${recipe.id}_${step.id}`;
+                                            const speechText = isEnglish
+                                              ? `Step ${stepIndex + 1}. ${step.title}. ${step.description}. Tip: ${step.tip}. ${step.childAction ? `Kids can: ${step.childAction}.` : ''}${step.requiresParentAssist ? `Parent help: ${step.parentAction}.` : ''}`
+                                              : `第${stepIndex + 1}步，${step.title}。${step.description}。${step.tip}。${step.childAction ? `小朋友可以：${step.childAction}。` : ''}${step.requiresParentAssist ? `这一步需要家长协助：${step.parentAction}。` : ''}`;
+                                            return (
+                                              <li key={step.id} className={step.requiresParentAssist ? 'recipe-step-item needs-assist' : 'recipe-step-item'}>
+                                                <span className="step-index">{stepIndex + 1}</span>
+                                                <div className="step-body">
+                                                  <div className="inline-step-heading">
+                                                    <strong>{step.title}</strong>
+                                                    <button
+                                                      type="button"
+                                                      className="step-speech-button"
+                                                      onClick={() => speakText(speechText, isEnglish ? 'en-US' : 'zh-CN', speechKey)}
+                                                      aria-label={
+                                                        isEnglish
+                                                          ? `${activeSpeechKey === speechKey ? 'Stop' : 'Read'} step ${stepIndex + 1}`
+                                                          : `${activeSpeechKey === speechKey ? '停止朗读' : '朗读'}第${stepIndex + 1}步`
+                                                      }
+                                                    >
+                                                      <PlayInlineIcon />
+                                                    </button>
+                                                  </div>
+                                                  <p>{step.description}</p>
+                                                  <p className="step-note"><b>{isEnglish ? 'Tip' : '要点'}</b>{step.tip}</p>
+                                                  {step.childAction ? <p className="step-result"><b>{isEnglish ? 'Kid' : '小朋友'}</b>{step.childAction}</p> : null}
+                                                  {step.requiresParentAssist ? <p className="step-safety"><b>{isEnglish ? 'Parent' : '家长协助'}</b>{step.parentAction}</p> : null}
+                                                </div>
+                                              </li>
+                                            );
+                                          })}
+                                        </ol>
+                                      </div>
+                                    ) : null}
+                                    {!recipeDetail && recipeDetailLoadingById[recipe.id] ? (
+                                      <div className="muted compact-copy inline-loading-copy recipe-step-loading-row">
+                                        <SvgIcon className="loading-icon" svg={loadingSvg} />
+                                        <StreamNodesRenderer nodes={recipeDetailStreamNodesById[recipe.id]} />
+                                        {recipeDetailStreamNodesById[recipe.id]?.length ? null : <span>{isEnglish ? 'Generating cooking steps...' : '正在生成烹饪步骤...'}</span>}
+                                      </div>
+                                    ) : null}
+                                    {!recipeDetail && !recipeDetailLoadingById[recipe.id] && recipeDetailErrorsById[recipe.id] ? (
+                                      <div className="detail-error-block">
+                                        <strong>{isEnglish ? 'Steps failed' : '步骤获取失败'}</strong>
+                                        <p>{recipeDetailErrorsById[recipe.id]}</p>
                                         <button
                                           type="button"
-                                          className="mini-speech-button ingredient-row-speech"
-                                          onClick={() => speak(`${ingredientDisplayName}，${isEnglish ? 'amount ' : '用量 '}${ingredient.quantity}`, isEnglish ? 'en-US' : 'zh-CN')}
-                                          aria-label={t(locale, `朗读食材用量：${ingredient.name}`, `Read ingredient amount: ${ingredientDisplayName}`)}
+                                          className="secondary-button"
+                                          onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
+                                          disabled={recipeDetailLoadingById[recipe.id]}
                                         >
-                                          <PlayInlineIcon />
+                                          {isEnglish ? 'Try again' : '再次获取'}
                                         </button>
                                       </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-	                              <div className="inline-detail-block">
-	                                <div className="detail-block-heading">
-	                                  <strong>{isEnglish ? 'Cartoon Cooking Video' : '卡通烹饪步骤视频'}</strong>
-	                                  <span>{isEnglish ? 'Manual generation' : '手动生成'}</span>
-	                                </div>
-	                                <section className={cookingVideo ? 'recipe-video-panel generated playable' : 'recipe-video-panel'} aria-label={t(locale, `${recipe.name} 烹饪视频`, `${recipe.name} cooking video`)}>
-	                                  {cookingVideo ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          className="recipe-video-cover-button"
-                                          onClick={() =>
-                                            setActiveRecipeVideoDialog({
-                                              video: cookingVideo,
-                                              title: t(locale, `${recipe.name} 烹饪视频播放器`, `${recipe.name} cooking video player`),
-                                            })
-                                          }
-                                          aria-label={t(locale, `播放${recipe.name}烹饪视频`, `Play ${recipe.name} cooking video`)}
-                                        >
-                                          <img
-                                            className="recipe-video-cover-image"
-                                            src={cookingVideo.coverUrl || cookbookCoverImage}
-                                            alt={t(locale, `${recipe.name} 烹饪视频封面`, `${recipe.name} cooking video cover`)}
-                                            onError={(event) => {
-                                              if (!event.currentTarget.src.endsWith(cookbookCoverImage)) {
-                                                event.currentTarget.src = cookbookCoverImage;
-                                              }
-                                            }}
-                                          />
-                                          <span className="recipe-video-cover-play" aria-hidden="true">
-                                            <img src={playIcon} alt="" aria-hidden="true" />
-                                          </span>
-                                        </button>
-                                        <div className="recipe-video-copy">
-                                          <p>{t(locale, `已匹配 ${cookingVideo.recipeName} 烹饪视频，${cookingVideo.resolution}，${cookingVideo.durationSeconds} 秒。`, `Matched ${cookingVideo.recipeName} cooking video, ${cookingVideo.resolution}, ${cookingVideo.durationSeconds}s.`)}</p>
-                                          <a className="secondary-button" href={cookingVideo.videoUrl} target="_blank" rel="noreferrer">
-                                            {isEnglish ? 'Open video' : '打开视频'}
-                                          </a>
-                                        </div>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <div className="recipe-video-placeholder image-placeholder" role="img" aria-label={t(locale, `${recipe.name} 默认菜谱封面图`, `${recipe.name} default recipe cover`)}>
-                                          <img
-                                            className="recipe-video-cover-image"
-                                            src={cookbookCoverImage}
-                                            alt={t(locale, `${recipe.name} 默认菜谱封面`, `${recipe.name} default recipe cover`)}
-                                          />
-                                          <div className="recipe-video-placeholder-copy">
-                                            <p>{isLoadingCookingVideo ? (isEnglish ? 'Matching cooking video...' : '正在匹配烹饪视频...') : (isEnglish ? 'No cooking video found' : '未查询到菜谱烹饪视频')}</p>
-                                            <strong>{recipe.name}</strong>
-                                          </div>
-                                        </div>
-                                        <div className="recipe-video-copy">
-                                          <p>{cookingVideoError || (isLoadingCookingVideo ? (isEnglish ? 'Checking the cooking video library.' : '正在查询菜谱烹饪视频库。') : (isEnglish ? 'No cooking video was found for this recipe.' : '未查询到菜谱烹饪视频'))}</p>
-                                        </div>
-                                      </>
-                                    )}
-	                                </section>
-	                              </div>
-	                              {recipeDetail ? (
-	                              <div className="inline-detail-block">
-	                                <div className="detail-block-heading">
-	                                  <strong>{isEnglish ? 'Cooking Steps' : '烹饪步骤'}</strong>
-	                                  <span>{isEnglish ? 'Ordered details' : '按序号执行'}</span>
-	                                </div>
-	                                <ol className="recipe-step-timeline">
-	                                  {recipeDetail.steps.map((step, stepIndex) => {
-	                                    const speechKey = `step_${recipe.id}_${step.id}`;
-	                                    const speechText = isEnglish
-	                                      ? `Step ${stepIndex + 1}. ${step.title}. ${step.description}. Tip: ${step.tip}. ${step.childAction ? `Kids can: ${step.childAction}.` : ''}${step.requiresParentAssist ? `Parent help: ${step.parentAction}.` : ''}`
-	                                      : `第${stepIndex + 1}步，${step.title}。${step.description}。${step.tip}。${step.childAction ? `小朋友可以：${step.childAction}。` : ''}${step.requiresParentAssist ? `这一步需要家长协助：${step.parentAction}。` : ''}`;
-	                                    return (
-	                                      <li key={step.id} className={step.requiresParentAssist ? 'recipe-step-item needs-assist' : 'recipe-step-item'}>
-	                                        <span className="step-index">{stepIndex + 1}</span>
-	                                        <div className="step-body">
-	                                          <div className="inline-step-heading">
-	                                            <strong>{step.title}</strong>
-	                                            <button
-	                                              type="button"
-	                                              className="step-speech-button"
-	                                              onClick={() => speakText(speechText, isEnglish ? 'en-US' : 'zh-CN', speechKey)}
-	                                              aria-label={
-	                                                isEnglish
-	                                                  ? `${activeSpeechKey === speechKey ? 'Stop' : 'Read'} step ${stepIndex + 1}`
-	                                                  : `${activeSpeechKey === speechKey ? '停止朗读' : '朗读'}第${stepIndex + 1}步`
-	                                              }
-	                                            >
-	                                              <PlayInlineIcon />
-	                                              {activeSpeechKey === speechKey ? (isEnglish ? 'Stop' : '停止') : (isEnglish ? 'Play' : '朗读')}
-	                                            </button>
-	                                          </div>
-	                                          <p>{step.description}</p>
-	                                          <p className="step-note"><b>{isEnglish ? 'Tip' : '要点'}</b>{step.tip}</p>
-	                                          {step.childAction ? <p className="step-result"><b>{isEnglish ? 'Kid' : '小朋友'}</b>{step.childAction}</p> : null}
-	                                          {step.requiresParentAssist ? <p className="step-safety"><b>{isEnglish ? 'Parent' : '家长协助'}</b>{step.parentAction}</p> : null}
-	                                        </div>
-	                                      </li>
-	                                    );
-	                                  })}
-	                                </ol>
-	                              </div>
-	                              ) : null}
-	                              {!recipeDetail && recipeDetailLoadingById[recipe.id] ? (
-	                                <div className="muted compact-copy inline-loading-copy">
-	                                  <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-	                                  <StreamNodesRenderer nodes={recipeDetailStreamNodesById[recipe.id]} />
-	                                  {recipeDetailStreamNodesById[recipe.id]?.length ? null : <span>{isEnglish ? 'Generating cooking steps...' : '正在生成烹饪步骤...'}</span>}
-	                                </div>
-	                              ) : null}
-	                              {!recipeDetail && !recipeDetailLoadingById[recipe.id] && recipeDetailErrorsById[recipe.id] ? (
-	                                <div className="detail-error-block">
-	                                  <strong>{isEnglish ? 'Steps failed' : '步骤获取失败'}</strong>
-	                                  <p>{recipeDetailErrorsById[recipe.id]}</p>
-	                                  <button
-	                                    type="button"
-	                                    className="secondary-button"
-	                                    onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
-	                                    disabled={recipeDetailLoadingById[recipe.id]}
-	                                  >
-	                                    {isEnglish ? 'Try again' : '再次获取'}
-	                                  </button>
-	                                </div>
-	                              ) : null}
-                            </>
-                          ) : recipeDetailLoadingById[recipe.id] ? (
-                            <div className="muted compact-copy inline-loading-copy">
-                              <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                              <StreamNodesRenderer nodes={recipeDetailStreamNodesById[recipe.id]} />
-                              {recipeDetailStreamNodesById[recipe.id]?.length ? null : <span>{isEnglish ? 'Generating cooking steps...' : '正在生成烹饪步骤...'}</span>}
-                            </div>
-                          ) : recipeDetailErrorsById[recipe.id] ? (
-                            <div className="detail-error-block">
-                              <strong>{isEnglish ? 'Steps failed' : '步骤获取失败'}</strong>
-                              <p>{recipeDetailErrorsById[recipe.id]}</p>
-                              <button
-                                type="button"
-                                className="secondary-button"
-                                onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
-                                disabled={recipeDetailLoadingById[recipe.id]}
-                              >
-                                {recipeDetailLoadingById[recipe.id] ? (
-                                  <>
-                                    <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-                                    {isEnglish ? 'Retrying...' : '正在重新获取...'}
+                                    ) : null}
                                   </>
+                                ) : recipeDetailLoadingById[recipe.id] ? (
+                                  <div className="muted compact-copy inline-loading-copy recipe-step-loading-row">
+                                    <SvgIcon className="loading-icon" svg={loadingSvg} />
+                                    <StreamNodesRenderer nodes={recipeDetailStreamNodesById[recipe.id]} />
+                                    {recipeDetailStreamNodesById[recipe.id]?.length ? null : <span>{isEnglish ? 'Generating cooking steps...' : '正在生成烹饪步骤...'}</span>}
+                                  </div>
+                                ) : recipeDetailErrorsById[recipe.id] ? (
+                                  <div className="detail-error-block">
+                                    <strong>{isEnglish ? 'Steps failed' : '步骤获取失败'}</strong>
+                                    <p>{recipeDetailErrorsById[recipe.id]}</p>
+                                    <button
+                                      type="button"
+                                      className="secondary-button"
+                                      onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
+                                      disabled={recipeDetailLoadingById[recipe.id]}
+                                    >
+                                      {recipeDetailLoadingById[recipe.id] ? (
+                                        <>
+                                          <SvgIcon className="loading-icon" svg={loadingSvg} />
+                                          {isEnglish ? 'Retrying...' : '正在重新获取...'}
+                                        </>
+                                      ) : (
+                                        (isEnglish ? 'Try again' : '再次获取')
+                                      )}
+                                    </button>
+                                  </div>
                                 ) : (
-                                  (isEnglish ? 'Try again' : '再次获取')
+                                  <div className="detail-error-block">
+                                    <strong>{isEnglish ? 'Cooking steps are ready to generate' : '烹饪步骤待获取'}</strong>
+                                    <p>{isEnglish ? 'Tap the button when you want the detailed comic-style cooking steps.' : '需要查看详细图解步骤时，请点击按钮手动获取。'}</p>
+                                    <button
+                                      type="button"
+                                      className="secondary-button"
+                                      onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
+                                      disabled={recipeDetailLoadingById[recipe.id]}
+                                    >
+                                      {isEnglish ? 'Get Cooking Steps' : '获取烹饪步骤'}
+                                    </button>
+                                  </div>
                                 )}
-                              </button>
-                            </div>
-	                          ) : (
-	                            <div className="detail-error-block">
-	                              <strong>{isEnglish ? 'Cooking steps are ready to generate' : '烹饪步骤待获取'}</strong>
-	                              <p>{isEnglish ? 'Tap the button when you want the detailed comic-style cooking steps.' : '需要查看详细图解步骤时，请点击按钮手动获取。'}</p>
-	                              <button
-	                                type="button"
-	                                className="secondary-button"
-	                                onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
-	                                disabled={recipeDetailLoadingById[recipe.id]}
-	                              >
-	                                {isEnglish ? 'Get Cooking Steps' : '获取烹饪步骤'}
-	                              </button>
-	                            </div>
-	                          )}
-                        </div>
-                        <div className="carousel-actions single-action">
-                          <button
-                            type="button"
-                            className="ghost-button favorite-card-button"
-                            onClick={() => toggleFavoriteRecipe(recipe)}
-                          >
-                            {favoriteConfettiRecipeId === recipe.id ? (
-                              <span className="button-confetti" aria-hidden="true">
-                                {Array.from({ length: 18 }).map((_, index) => (
-                                  <span
-                                    key={`${recipe.id}_confetti_${index}`}
-                                    className="button-confetti-piece"
-                                    style={{
-                                      '--x': `${((index % 6) - 2.5) * 13}px`,
-                                      '--y': `${-24 - (index % 4) * 8}px`,
-                                      '--r': `${index * 31}deg`,
-                                      '--delay': `${(index % 4) * 18}ms`,
-                                      '--color': ['#8cff00', '#ff7a1a', '#ffe066', '#4dd8ff', '#ff4fb8'][index % 5],
-                                    } as CSSProperties}
-                                  />
-                                ))}
-                              </span>
-                            ) : null}
-                            {favoriteRecipes.some((item) => item.id === recipe.id) ? (isEnglish ? 'Saved' : '已收藏') : (isEnglish ? 'Save' : '收藏')}
-                          </button>
-                        </div>
-                      </motion.article>
-                      );
-                    })}
+                              </div>
+                              <div className="carousel-actions single-action">
+                                <button
+                                  type="button"
+                                  className="ghost-button favorite-card-button"
+                                  onClick={() => toggleFavoriteRecipe(recipe)}
+                                >
+                                  {favoriteConfettiRecipeId === recipe.id ? (
+                                    <span className="button-confetti" aria-hidden="true">
+                                      {Array.from({ length: 18 }).map((_, index) => (
+                                        <span
+                                          key={`${recipe.id}_confetti_${index}`}
+                                          className="button-confetti-piece"
+                                          style={{
+                                            '--x': `${((index % 6) - 2.5) * 13}px`,
+                                            '--y': `${-24 - (index % 4) * 8}px`,
+                                            '--r': `${index * 31}deg`,
+                                            '--delay': `${(index % 4) * 18}ms`,
+                                            '--color': ['#8cff00', '#ff7a1a', '#ffe066', '#4dd8ff', '#ff4fb8'][index % 5],
+                                          } as CSSProperties}
+                                        />
+                                      ))}
+                                    </span>
+                                  ) : null}
+                                  {favoriteRecipes.some((item) => item.id === recipe.id) ? (isEnglish ? 'Saved' : '已收藏') : (isEnglish ? 'Save' : '收藏')}
+                                </button>
+                              </div>
+                            </motion.article>
+                          );
+                        })}
                       </motion.div>
                     </div>
                   </section>
                 ) : null}
               </article>
+            );
+          })}
+          <div ref={chatThreadEndRef} className="chat-thread-end" aria-hidden="true" />
+        </div>
+
+        {seasonalIngredientSuggestions.length > 0 ? (
+          <div className="chat-suggestions" aria-label={isEnglish ? 'Seasonal ingredient suggestions' : '季节食材推荐'}>
+            {seasonalIngredientSuggestions.map((item) => {
+              const visual = getIngredientVisual(item.name);
+              const shouldShowEmoji = visual.name !== defaultIngredientVisual.name;
+              const displayName = getIngredientDisplayName(item.name, locale);
+              const displayReason = getSeasonalReasonDisplay(item.reason, locale);
+
+              return (
+                <button
+                  key={`${item.name}_${item.reason}`}
+                  type="button"
+                  onClick={() => handleSeasonalIngredientClick(item)}
+                  disabled={isRecognizingIngredients}
+                  title={displayReason}
+                >
+                  {shouldShowEmoji ? (
+                    <span className="suggestion-emoji" role="img" aria-label={displayName}>
+                      {visual.emoji}
+                    </span>
+                  ) : null}
+                  <span>{displayName}</span>
+                </button>
               );
             })}
-            <div ref={chatThreadEndRef} className="chat-thread-end" aria-hidden="true" />
           </div>
+        ) : null}
 
-          {seasonalIngredientSuggestions.length > 0 ? (
-            <div className="chat-suggestions" aria-label={isEnglish ? 'Seasonal ingredient suggestions' : '季节食材推荐'}>
-              {seasonalIngredientSuggestions.map((item) => {
-                const visual = getIngredientVisual(item.name);
-                const shouldShowEmoji = visual.name !== defaultIngredientVisual.name;
-                const displayName = getIngredientDisplayName(item.name, locale);
-                const displayReason = getSeasonalReasonDisplay(item.reason, locale);
-
-                return (
-                  <button
-                    key={`${item.name}_${item.reason}`}
-                    type="button"
-                    onClick={() => handleSeasonalIngredientClick(item)}
-                    disabled={isRecognizingIngredients}
-                    title={displayReason}
-                  >
-                    {shouldShowEmoji ? (
-                      <span className="suggestion-emoji" role="img" aria-label={displayName}>
-                        {visual.emoji}
-                      </span>
-                    ) : null}
-                    <span>{displayName}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-
-          <div className="chat-composer">
-            <button
-              type="button"
-              className="composer-icon-button"
-              onClick={() => void handleStartVoiceInput()}
-              disabled={isListeningVoice || isRecognizingIngredients}
-              aria-label={isEnglish ? 'Voice input' : '语音输入'}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M12 14.5a3.5 3.5 0 0 0 3.5-3.5V6a3.5 3.5 0 0 0-7 0v5a3.5 3.5 0 0 0 3.5 3.5Zm-1.7-8.5a1.7 1.7 0 1 1 3.4 0v5a1.7 1.7 0 1 1-3.4 0V6Z" />
-                <path d="M18.4 10.7a.9.9 0 0 0-1.8 0 4.6 4.6 0 1 1-9.2 0 .9.9 0 0 0-1.8 0 6.4 6.4 0 0 0 5.5 6.33v2.17H8.8a.9.9 0 1 0 0 1.8h6.4a.9.9 0 1 0 0-1.8h-2.3v-2.17a6.4 6.4 0 0 0 5.5-6.33Z" />
-              </svg>
-            </button>
-            <input
-              ref={chatInputRef}
-              value={manualIngredient}
-              onChange={(event) => setManualIngredient(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                  void handleChatSubmit();
-                }
-              }}
-              placeholder={isEnglish ? 'Type ingredients or use voice/photo...' : '输入食材或用语音、拍照取材'}
-              disabled={isRecognizingIngredients}
-            />
-            <button
-              type="button"
-              className="composer-icon-button"
-              onClick={() => cameraImageInputRef.current?.click()}
-              disabled={isUploadingImage || isRecognizingIngredients}
-              aria-label={isEnglish ? 'Take ingredient photo' : '拍摄食材'}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M8.4 5.1 9.7 3.6c.24-.28.59-.44.96-.44h2.68c.37 0 .72.16.96.44l1.3 1.5h2.8A2.6 2.6 0 0 1 21 7.7v9.5a2.6 2.6 0 0 1-2.6 2.6H5.6A2.6 2.6 0 0 1 3 17.2V7.7a2.6 2.6 0 0 1 2.6-2.6h2.8Zm3.6 12a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6Zm0-1.8a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="composer-icon-button"
-              onClick={() => fileImageInputRef.current?.click()}
-              disabled={isUploadingImage || isRecognizingIngredients}
-              aria-label={isEnglish ? 'Upload image' : '上传图片'}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M11.1 12.9H6.9a.9.9 0 1 1 0-1.8h4.2V6.9a.9.9 0 1 1 1.8 0v4.2h4.2a.9.9 0 1 1 0 1.8h-4.2v4.2a.9.9 0 1 1-1.8 0v-4.2Z" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              className="primary-button composer-send-button"
-              onClick={() => void handleChatSubmit()}
-              disabled={!manualIngredient.trim() || isRecognizingIngredients}
-              aria-label={isEnglish ? 'Send message' : '发送信息'}
-            >
-              {isRecognizingIngredients ? (
-                <img className="loading-icon" src={loadingIcon} alt="" aria-hidden="true" />
-              ) : (
-                <img src={sendMessageIcon} alt="" aria-hidden="true" />
-              )}
-            </button>
-          </div>
+        <div className="chat-composer">
+          <button
+            type="button"
+            className="composer-icon-button"
+            onClick={() => void handleStartVoiceInput()}
+            disabled={isListeningVoice || isRecognizingIngredients}
+            aria-label={isEnglish ? 'Voice input' : '语音输入'}
+          >
+            <SvgIcon svg={audioInputSvg} />
+          </button>
+          <input
+            ref={chatInputRef}
+            value={manualIngredient}
+            onChange={(event) => setManualIngredient(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                void handleChatSubmit();
+              }
+            }}
+            placeholder={isEnglish ? 'Type ingredients or use voice/photo...' : '输入食材或用语音、拍照取材'}
+            disabled={isRecognizingIngredients}
+          />
+          <button
+            type="button"
+            className="composer-icon-button"
+            onClick={() => cameraImageInputRef.current?.click()}
+            disabled={isUploadingImage || isRecognizingIngredients}
+            aria-label={isEnglish ? 'Take ingredient photo' : '拍摄食材'}
+          >
+            <SvgIcon className="composer-media-icon" svg={cameraSvg} />
+          </button>
+          <button
+            type="button"
+            className="composer-icon-button"
+            onClick={() => fileImageInputRef.current?.click()}
+            disabled={isUploadingImage || isRecognizingIngredients}
+            aria-label={isEnglish ? 'Upload image' : '上传图片'}
+          >
+            <SvgIcon className="composer-media-icon" svg={importPictureSvg} />
+          </button>
+          <button
+            type="button"
+            className="primary-button composer-send-button"
+            onClick={() => void handleChatSubmit()}
+            disabled={!manualIngredient.trim() || isRecognizingIngredients}
+            aria-label={isEnglish ? 'Send message' : '发送信息'}
+          >
+            {isRecognizingIngredients ? (
+              <SvgIcon className="loading-icon" svg={loadingSvg} />
+            ) : (
+              <SvgIcon svg={sendMessageSvg} />
+            )}
+          </button>
+        </div>
       </section>
 
       <Dialog
@@ -3693,7 +3669,7 @@ export default function App() {
         title={activeRecipeVideoDialog?.title ?? ''}
         className="recipe-video-dialog"
         hideHeader
-        closeIconSrc={closeIcon}
+        closeIconSvg={closeSvg}
         closeButtonAriaLabel={isEnglish ? 'Close video player' : '关闭视频播放器'}
         onOpenChange={(open) => {
           if (!open) {
@@ -3727,8 +3703,8 @@ export default function App() {
                 <h2>{learningRecipe.name}</h2>
                 <p className="english-title">{learningRecipe.englishName}</p>
               </div>
-              <button type="button" className="ghost-button" onClick={closeLearningDrawer}>
-                {isEnglish ? 'Close' : '关闭'}
+              <button type="button" className="ghost-button close-action-button" onClick={closeLearningDrawer}>
+                <CloseInlineIcon />
               </button>
             </div>
             <div className="literacy-grid">

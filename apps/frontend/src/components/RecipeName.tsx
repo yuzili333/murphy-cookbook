@@ -18,7 +18,6 @@ export function RecipeName({ name, pinyin = '', as = 'span', className = '', sho
     <Tag className={`recipe-name ${className}`.trim()}>
       <ruby className="recipe-ruby recipe-ruby-whole">
         {name}
-        <rt>{normalizedPinyin}</rt>
       </ruby>
     </Tag>
   );

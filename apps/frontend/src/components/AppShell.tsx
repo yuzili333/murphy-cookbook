@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
-import favoriteIcon from '../assets/favorite.svg';
+import { SvgIcon } from './SvgIcon';
+import chatHistorySvg from '../assets/chat-history.svg?raw';
+import favoriteSvg from '../assets/favorite.svg?raw';
 
 const murphyAvatarImage = new URL('../../../../design-image/murphy-avatar.png', import.meta.url).href;
 
@@ -29,16 +31,14 @@ export function AppShell({
           onClick={onOpenConversations}
           aria-label={isChinese ? '打开历史对话' : 'Open chat history'}
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M4.8 6.8h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 0 0 0 1.8Zm0 6.1h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 1 0 0 1.8Zm0 6.1h14.4a.9.9 0 1 0 0-1.8H4.8a.9.9 0 1 0 0 1.8Z" />
-          </svg>
+          <SvgIcon svg={chatHistorySvg} />
         </button>
         <div className="brand-block">
           <span className="shell-mascot" aria-hidden="true">
             <img src={murphyAvatarImage} alt="" aria-hidden="true" />
           </span>
           <div>
-            <h1>{isChinese ? '食谱Agent' : "AI Cookbook"}</h1>
+            <h1>{isChinese ? '菜谱助手' : "AI Cookbook"}</h1>
           </div>
         </div>
         <div className="topbar-actions">
@@ -65,12 +65,7 @@ export function AppShell({
             onClick={onOpenFavorites}
             aria-label={isChinese ? '打开菜谱收藏' : 'Open recipe collection'}
           >
-            <img
-              className="favorite-entry-icon"
-              src={favoriteIcon}
-              alt=""
-              aria-hidden="true"
-            />
+            <SvgIcon className="favorite-entry-icon" svg={favoriteSvg} />
           </button>
         </div>
       </aside>

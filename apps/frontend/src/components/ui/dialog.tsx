@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
+import { SvgIcon } from '../SvgIcon';
 import { cn } from '../../lib/cn';
 import { Button } from './button';
+import defaultCloseSvg from '../../assets/close.svg?raw';
 
 interface DialogProps {
   open: boolean;
@@ -9,7 +11,7 @@ interface DialogProps {
   className?: string;
   hideHeader?: boolean;
   closeButtonAriaLabel?: string;
-  closeIconSrc?: string;
+  closeIconSvg?: string;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -20,10 +22,11 @@ export function Dialog({
   className,
   hideHeader = false,
   closeButtonAriaLabel,
-  closeIconSrc,
+  closeIconSvg,
   onOpenChange,
 }: DialogProps) {
   if (!open) return null;
+  const resolvedCloseIconSvg = closeIconSvg ?? defaultCloseSvg;
 
   return (
     <div className="ui-dialog-backdrop" role="presentation">
@@ -42,14 +45,15 @@ export function Dialog({
               onClick={() => onOpenChange(false)}
               aria-label={closeButtonAriaLabel ?? '关闭'}
             >
-              {closeIconSrc ? <img src={closeIconSrc} alt="" aria-hidden="true" /> : '关闭'}
+              <SvgIcon svg={resolvedCloseIconSvg} />
             </button>
           ) : null
         ) : (
           <div className="ui-dialog-header">
             <h2 id="ui-dialog-title">{title}</h2>
             {onOpenChange ? (
-              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="ghost" className="close-action-button" onClick={() => onOpenChange(false)}>
+                <SvgIcon className="inline-close-icon" svg={resolvedCloseIconSvg} />
                 关闭
               </Button>
             ) : null}

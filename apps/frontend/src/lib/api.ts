@@ -1,20 +1,15 @@
 import type {
   ChildProfile,
-  CreateChildProfileInput,
-  FeedbackResponse,
   IngredientKnowledge,
   IngredientItem,
   ImageRecognitionResponse,
-  LlmLogQueryResult,
   RecipeDetail,
   RecipeCookingVideo,
   RecipeVideoConfigInput,
   RecipeVideoConfigListResult,
   RecipeRecommendation,
-  RecommendationResponse,
   SeasonalIngredientSuggestion,
   StreamEvent,
-  VoiceParseResponse,
 } from '../types';
 import { parseSseChunk } from './streamAst';
 
@@ -189,17 +184,6 @@ async function streamRequest(path: string, init: RequestInit, onEvent: (event: S
   }
 }
 
-export function fetchChildProfiles() {
-  return request<ChildProfile[]>('/child-profiles');
-}
-
-export function createChildProfile(payload: CreateChildProfileInput) {
-  return request<ChildProfile>('/child-profiles', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
 export function parseIngredientText(text: string) {
   const normalizedText = text.trim();
 
@@ -214,16 +198,6 @@ export function uploadIngredientImage(file: File) {
   form.append('image', file);
 
   return request<ImageRecognitionResponse>('/ingredients/recognize-image', {
-    method: 'POST',
-    body: form,
-  });
-}
-
-export function uploadVoiceAudio(file: File) {
-  const form = new FormData();
-  form.append('audio', file);
-
-  return request<VoiceParseResponse>('/ingredients/parse-voice', {
     method: 'POST',
     body: form,
   });
@@ -247,36 +221,6 @@ export function fetchIngredientKnowledge(name: string, options: GenerationLocale
       locale: options.locale ?? 'zh',
       pinyinMode: options.pinyinMode ?? true,
     }),
-  });
-}
-
-export function fetchRecommendations(
-  profile: ChildProfile,
-  ingredients: IngredientItem[],
-  userPrompt = '',
-  options: GenerationLocaleOptions = {},
-) {
-  const normalizedIngredients = ingredients.map((ingredient) => ({
-    id: ingredient.id,
-    name: ingredient.name,
-    normalizedName: ingredient.normalizedName ?? ingredient.name,
-    quantity: ingredient.quantity,
-    source: ingredient.source,
-  }));
-  const payload = {
-    profileId: profile.id,
-    profile,
-    userPrompt,
-    locale: options.locale ?? 'zh',
-    pinyinMode: options.pinyinMode ?? true,
-    ingredients: normalizedIngredients,
-    sortBy: 'balanced',
-    allowExtraIngredients: true,
-  };
-
-  return request<RecommendationResponse>('/recommendations/recipes', {
-    method: 'POST',
-    body: JSON.stringify(payload),
   });
 }
 
@@ -308,51 +252,6 @@ export function streamRecommendations(
       allowExtraIngredients: true,
     }),
   }, onEvent);
-}
-
-export function fetchRecipeDetail(recipeId: string) {
-  return request<RecipeDetail>(`/recipes/${recipeId}`);
-}
-
-export function fetchGeneratedRecipeDetail(payload: {
-  profileId: string;
-  profile: ChildProfile;
-  ingredients: IngredientItem[];
-  recipe: RecipeDetail | RecipeRecommendation;
-  locale?: 'zh' | 'en';
-  pinyinMode?: boolean;
-}) {
-  const recipe = payload.recipe;
-  const requestPayload = {
-    profileId: payload.profileId,
-    locale: payload.locale ?? 'zh',
-    pinyinMode: payload.pinyinMode ?? true,
-    ingredients: payload.ingredients.map((ingredient) => ({
-      name: ingredient.name,
-      normalizedName: ingredient.normalizedName ?? ingredient.name,
-      quantity: ingredient.quantity,
-      source: ingredient.source,
-    })),
-    recipe: {
-      id: recipe.id,
-      name: recipe.name,
-      namePinyin: recipe.namePinyin,
-      englishName: recipe.englishName,
-      ageRange: recipe.ageRange,
-      difficulty: recipe.difficulty,
-      estimatedTimeMinutes: recipe.estimatedTimeMinutes,
-      fitReasons: recipe.fitReasons,
-      riskAlerts: recipe.riskAlerts,
-      nutritionSummary: recipe.nutritionSummary,
-      extraIngredients: recipe.extraIngredients,
-      canCookWithCurrentIngredients: recipe.canCookWithCurrentIngredients,
-    },
-  };
-
-  return request<RecipeDetail>('/recipes/detail', {
-    method: 'POST',
-    body: JSON.stringify(requestPayload),
-  });
 }
 
 export function streamGeneratedRecipeDetail(
@@ -395,38 +294,6 @@ export function streamGeneratedRecipeDetail(
       },
     }),
   }, onEvent);
-}
-
-export function submitCookingFeedback(payload: {
-  profileId: string;
-  profile: ChildProfile;
-  recipeId: string;
-  recipe: RecipeDetail;
-  tasteFeedback: string;
-  difficultyFeedback: string;
-  imageUrl?: string;
-}) {
-  return request<FeedbackResponse>('/cooking-feedback', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
-export function fetchLlmLogs(params: {
-  start?: string;
-  end?: string;
-  keyword?: string;
-  limit?: number;
-}) {
-  const search = new URLSearchParams();
-
-  if (params.start) search.set('start', params.start);
-  if (params.end) search.set('end', params.end);
-  if (params.keyword) search.set('keyword', params.keyword);
-  if (params.limit) search.set('limit', String(params.limit));
-
-  const query = search.toString();
-  return request<LlmLogQueryResult>(`/debug/llm-logs${query ? `?${query}` : ''}`);
 }
 
 export function loginVideoConfig(payload: { username: string; password: string }) {

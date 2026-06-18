@@ -8,6 +8,8 @@ import {
   updateRecipeVideoConfig,
 } from '../lib/api';
 import type { RecipeCookingVideo, RecipeVideoConfigInput, RecipeVideoResolution } from '../types';
+import deleteSvg from '../assets/delete.svg?raw';
+import { SvgIcon } from './SvgIcon';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { Field, FieldError, FieldGroup, FieldLabel, Form } from './ui/form';
@@ -507,7 +509,8 @@ export function VideoConfigPage() {
                       <Button type="button" variant="secondary" onClick={() => openEditDialog(item)}>
                         编辑
                       </Button>
-                      <Button type="button" variant="danger" onClick={() => void handleDelete(item)}>
+                      <Button type="button" variant="danger" className="video-config-delete-button" onClick={() => void handleDelete(item)}>
+                        <SvgIcon className="inline-trash-icon" svg={deleteSvg} />
                         删除
                       </Button>
                     </div>
