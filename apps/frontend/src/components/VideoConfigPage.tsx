@@ -114,7 +114,7 @@ export function VideoConfigPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState('');
-  const [error, setError] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authModalMessage, setAuthModalMessage] = useState('');
@@ -122,6 +122,10 @@ export function VideoConfigPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canManage = Boolean(token);
+
+  function showToast(message: string) {
+    setToastMessage(message);
+  }
 
   const payload = useMemo<RecipeVideoConfigInput>(() => ({
     recipeName: form.recipeName.trim(),
@@ -137,7 +141,7 @@ export function VideoConfigPage() {
     pendingAuthActionRef.current = retryAction ?? null;
     setAuthModalMessage(message);
     setIsAuthModalOpen(true);
-    setError('');
+    setToastMessage('');
     setNotice('');
     try {
       window.sessionStorage.removeItem(tokenStorageKey);
@@ -149,7 +153,7 @@ export function VideoConfigPage() {
   async function loadConfigs(nextPage = page, authToken = token) {
     if (!authToken) return;
     setIsLoading(true);
-    setError('');
+    setToastMessage('');
     try {
       const result = await fetchRecipeVideoConfigs({
         token: authToken,
@@ -168,7 +172,7 @@ export function VideoConfigPage() {
       if (isForbiddenError(loadError)) {
         requestReauth('管理员认证已失效，请重新登录后继续配置管理。');
       } else {
-        setError(message);
+        showToast(message);
       }
     } finally {
       setIsLoading(false);
@@ -180,21 +184,30 @@ export function VideoConfigPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, resolutionFilter]);
 
+  useEffect(() => {
+    if (!toastMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setToastMessage(''), 3600);
+    return () => window.clearTimeout(timeoutId);
+  }, [toastMessage]);
+
   async function handleLogin(event: FormEvent) {
     event.preventDefault();
     setIsSubmitting(true);
-    setError('');
+    setToastMessage('');
     setNotice('');
     try {
       const result = await loginVideoConfig(loginForm);
       if (!result.user.permissions.includes('video_config_manage')) {
-        setError('没有 video_config_manage 权限，无法访问菜谱视频配置。');
+        showToast('没有 video_config_manage 权限，无法访问菜谱视频配置。');
         return;
       }
       setToken(result.token);
       window.sessionStorage.setItem(tokenStorageKey, result.token);
       setNotice('身份验证成功。');
-      setError('');
+      setToastMessage('');
       setIsAuthModalOpen(false);
       setAuthModalMessage('');
       const pendingAction = pendingAuthActionRef.current;
@@ -205,7 +218,7 @@ export function VideoConfigPage() {
         void loadConfigs(1, result.token);
       }
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : '身份验证失败。');
+      showToast(loginError instanceof Error ? loginError.message : '身份验证失败。');
     } finally {
       setIsSubmitting(false);
     }
@@ -215,7 +228,7 @@ export function VideoConfigPage() {
     setEditingItem(null);
     setForm(emptyForm);
     setErrors({});
-    setError('');
+    setToastMessage('');
     setNotice('');
     setIsFormDialogOpen(true);
   }
@@ -224,7 +237,7 @@ export function VideoConfigPage() {
     setEditingItem(item);
     setForm(toFormState(item));
     setErrors({});
-    setError('');
+    setToastMessage('');
     setNotice('');
     setIsFormDialogOpen(true);
   }
@@ -251,7 +264,7 @@ export function VideoConfigPage() {
     setIsSubmitting(true);
     void submitConfig(nextToken)
       .catch((retryError) => {
-        setError(retryError instanceof Error ? retryError.message : '视频配置提交失败。');
+        showToast(retryError instanceof Error ? retryError.message : '视频配置提交失败。');
       })
       .finally(() => setIsSubmitting(false));
   }
@@ -261,7 +274,7 @@ export function VideoConfigPage() {
     const nextErrors = validateForm(form);
     setErrors(nextErrors);
     setNotice('');
-    setError('');
+    setToastMessage('');
     if (Object.keys(nextErrors).length) return;
 
     setIsSubmitting(true);
@@ -271,7 +284,7 @@ export function VideoConfigPage() {
       if (isForbiddenError(submitError)) {
         requestReauth('管理员认证已失效，请重新登录后继续提交当前视频配置。', retrySubmitAfterAuth);
       } else {
-        setError(submitError instanceof Error ? submitError.message : '视频配置提交失败。');
+        showToast(submitError instanceof Error ? submitError.message : '视频配置提交失败。');
       }
     } finally {
       setIsSubmitting(false);
@@ -279,7 +292,7 @@ export function VideoConfigPage() {
   }
 
   async function deleteConfig(item: RecipeCookingVideo, authToken: string) {
-    setError('');
+    setToastMessage('');
     setNotice('');
     await deleteRecipeVideoConfig(authToken, item.id);
     setNotice('视频配置已删除。');
@@ -289,7 +302,7 @@ export function VideoConfigPage() {
   function retryDeleteAfterAuth(item: RecipeCookingVideo) {
     return (nextToken: string) => {
       void deleteConfig(item, nextToken).catch((retryError) => {
-        setError(retryError instanceof Error ? retryError.message : '视频配置删除失败。');
+        showToast(retryError instanceof Error ? retryError.message : '视频配置删除失败。');
       });
     };
   }
@@ -302,7 +315,7 @@ export function VideoConfigPage() {
       if (isForbiddenError(deleteError)) {
         requestReauth('管理员认证已失效，请重新登录后继续删除当前视频配置。', retryDeleteAfterAuth(item));
       } else {
-        setError(deleteError instanceof Error ? deleteError.message : '视频配置删除失败。');
+        showToast(deleteError instanceof Error ? deleteError.message : '视频配置删除失败。');
       }
     }
   }
@@ -336,7 +349,6 @@ export function VideoConfigPage() {
             />
           </Field>
         </FieldGroup>
-        {error ? <p className="video-config-alert error">{error}</p> : null}
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting ? '验证中...' : submitText}
         </Button>
@@ -388,7 +400,6 @@ export function VideoConfigPage() {
             </Field>
           </div>
         </FieldGroup>
-        {error ? <p className="video-config-alert error">{error}</p> : null}
         <div className="video-config-dialog-actions">
           <Button type="button" variant="secondary" onClick={closeFormDialog}>
             取消
@@ -404,6 +415,11 @@ export function VideoConfigPage() {
   if (!canManage) {
     return (
       <main className="video-config-page">
+        {toastMessage ? (
+          <div className="toast-banner" role="status" aria-live="polite">
+            {toastMessage}
+          </div>
+        ) : null}
         <section className="video-config-login">
           <div>
             <p className="video-config-eyebrow">Murphy's Cookbook</p>
@@ -418,8 +434,12 @@ export function VideoConfigPage() {
 
   return (
     <main className="video-config-page">
+      {toastMessage ? (
+        <div className="toast-banner" role="status" aria-live="polite">
+          {toastMessage}
+        </div>
+      ) : null}
       {notice ? <p className="video-config-alert success">{notice}</p> : null}
-      {error && !isAuthModalOpen && !isFormDialogOpen ? <p className="video-config-alert error">{error}</p> : null}
 
       <section className="video-config-list">
         <div className="video-config-list-head">

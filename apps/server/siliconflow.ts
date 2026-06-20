@@ -176,6 +176,17 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
     const controller = options.timeoutMs ? new AbortController() : null;
     const timeoutId = controller ? setTimeout(() => controller.abort(), options.timeoutMs) : null;
     try {
+      const requestBody: Record<string, unknown> = {
+        model,
+        messages,
+        stream: route.stream,
+        temperature: route.temperature,
+        max_tokens: options.maxTokens ?? route.maxTokens,
+      };
+      if (route.supportsEnableThinkingParameter !== false) {
+        requestBody.enable_thinking = route.enableThinking;
+      }
+
       const response = await fetch(SILICONFLOW_API_URL, {
         method: 'POST',
         signal: controller?.signal,
@@ -183,14 +194,7 @@ async function callSiliconFlow(messages: SiliconFlowMessage[], options: SiliconF
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          stream: route.stream,
-          enable_thinking: route.enableThinking,
-          temperature: route.temperature,
-          max_tokens: options.maxTokens ?? route.maxTokens,
-        }),
+        body: JSON.stringify(requestBody),
       });
       if (timeoutId) {
         clearTimeout(timeoutId);

@@ -6,29 +6,19 @@
     <title>Murphy's Cookbook 产品演示报告</title>
     <style>
       :root {
-        --ink: #000000;
-        --canvas: #ffffff;
-        --inverse: #000000;
-        --inverse-ink: #ffffff;
-        --hairline: #e9e4e6;
-        --soft: #fff7fa;
-        --lime: #e4f8bf;
-        --lilac: #f1d8ff;
-        --cream: #fff2d2;
-        --pink: #ffdce9;
-        --mint: #edffd9;
-        --coral: #ffd8c4;
-        --navy: #191826;
-        --magenta: #f91b7c;
-        --magenta-soft: #ff6aa9;
-        --rose-line: #f7b6cd;
-        --app-shadow: #eaf8c9;
-        --success: #1ea64a;
-        --radius-sm: 6px;
-        --radius-md: 8px;
-        --radius-lg: 24px;
-        --radius-xl: 32px;
-        --shadow: 0 22px 70px rgba(0, 0, 0, 0.12);
+        --bg: #060222;
+        --bg-deep: #020114;
+        --white: #ffffff;
+        --muted: rgba(255, 255, 255, 0.78);
+        --soft: rgba(255, 255, 255, 0.12);
+        --line: rgba(180, 145, 255, 0.32);
+        --violet: #8a2dff;
+        --pink: #ff4dff;
+        --blue: #68a8ff;
+        --cyan: #27e7ff;
+        --orange: #ffb35b;
+        --green: #7cf477;
+        --shadow: 0 34px 90px rgba(0, 0, 0, 0.46);
       }
 
       * {
@@ -38,104 +28,136 @@
       html {
         font-size: 16px;
         scroll-behavior: smooth;
+        background: var(--bg-deep);
       }
 
       body {
         margin: 0;
+        color: var(--white);
         background:
-          radial-gradient(circle at 7% 0%, rgba(249, 27, 124, 0.08), transparent 28%),
-          radial-gradient(circle at 92% 10%, rgba(228, 248, 191, 0.9), transparent 26%),
-          var(--canvas);
-        color: var(--ink);
+          radial-gradient(circle at 48% 14%, rgba(107, 56, 255, 0.38), transparent 28%),
+          radial-gradient(circle at 87% 78%, rgba(255, 81, 161, 0.24), transparent 28%),
+          linear-gradient(135deg, #09002a 0%, #030014 52%, #09043a 100%);
         font-family:
           Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
-          sans-serif;
-        line-height: 1.45;
+          "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
       }
 
-      img,
-      svg {
-        max-width: 100%;
+      img {
         display: block;
+        max-width: 100%;
       }
 
-      a {
-        color: inherit;
+      figure {
+        margin: 0;
       }
 
-      .page {
-        width: min(1180px, calc(100% - 40px));
+      .deck {
+        display: grid;
+        gap: 28px;
+        width: min(1672px, 100%);
         margin: 0 auto;
+        padding: 28px;
       }
 
-      .topbar {
-        position: sticky;
-        top: 0;
-        z-index: 20;
+      .slide {
+        position: relative;
+        min-height: min(941px, calc(100vw * 0.563));
+        aspect-ratio: 1672 / 941;
+        overflow: hidden;
+        border-radius: 0;
+        background:
+          linear-gradient(90deg, rgba(7, 3, 42, 0.94), rgba(3, 2, 22, 0.76) 58%, rgba(18, 6, 70, 0.78)),
+          radial-gradient(circle at 74% 18%, rgba(112, 72, 255, 0.42), transparent 22%),
+          radial-gradient(circle at 34% 94%, rgba(255, 102, 46, 0.18), transparent 34%),
+          #05021d;
+        box-shadow: var(--shadow);
+      }
+
+      .slide::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.05) 0 1px, transparent 1.6px) 0 0 / 26px 26px,
+          linear-gradient(120deg, transparent 0 52%, rgba(86, 40, 255, 0.18) 52.2%, transparent 66%),
+          linear-gradient(100deg, transparent 0 58%, rgba(38, 183, 255, 0.11) 58.2%, transparent 78%);
+        opacity: 0.86;
+      }
+
+      .slide::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 150px;
+        background: linear-gradient(0deg, rgba(255, 122, 44, 0.18), transparent);
+        pointer-events: none;
+      }
+
+      .top-meta,
+      .bottom-meta,
+      .content,
+      .holo,
+      .sparkles {
+        position: absolute;
+        z-index: 2;
+      }
+
+      .top-meta {
+        left: 26px;
+        right: 44px;
+        top: 60px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        min-height: 64px;
-        padding: 12px 0;
-        background: rgba(255, 255, 255, 0.92);
-        border-bottom: 1px solid var(--hairline);
-        backdrop-filter: blur(14px);
       }
 
-      .brand {
+      .meta-left {
         display: flex;
         align-items: center;
-        gap: 10px;
-        font-size: 15px;
-        font-weight: 720;
+        gap: 26px;
       }
 
-      .brand-mark {
-        width: 34px;
-        height: 34px;
+      .section-badge {
+        min-width: 104px;
+        height: 70px;
         display: grid;
         place-items: center;
-        border-radius: 999px;
-        background: var(--magenta);
-        color: var(--inverse-ink);
-        border: 1px solid var(--ink);
+        border-radius: 22px;
+        background: linear-gradient(135deg, #6b18ff, #8d38ff);
+        box-shadow:
+          0 0 38px rgba(141, 56, 255, 0.62),
+          inset 0 1px 0 rgba(255, 255, 255, 0.22);
+        font-size: 30px;
+        font-weight: 900;
       }
 
-      .nav-links {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        justify-content: flex-end;
+      .meta-title,
+      .year {
+        font-size: 25px;
+        line-height: 1;
+        font-weight: 860;
+        letter-spacing: 0.01em;
       }
 
-      .nav-links a,
-      .pill {
-        border: 1px solid var(--ink);
-        border-radius: 999px;
-        padding: 8px 14px 9px;
-        font-size: 13px;
-        font-weight: 650;
-        text-decoration: none;
-        background: var(--canvas);
+      .content {
+        left: 84px;
+        top: 232px;
+        width: 704px;
       }
 
-      .hero {
-        min-height: 680px;
-        display: grid;
-        grid-template-columns: minmax(0, 1.06fr) minmax(320px, 0.94fr);
-        gap: 32px;
-        align-items: center;
-        padding: 74px 0 54px;
+      .slide:not(:first-child) .content {
+        top: 210px;
+        width: 560px;
       }
 
-      .eyebrow {
-        margin: 0 0 18px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", monospace;
-        font-size: 13px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+      .kicker {
+        margin: 0 0 16px;
+        color: var(--muted);
+        font-size: 24px;
+        font-weight: 760;
       }
 
       h1,
@@ -145,1239 +167,1104 @@
         margin-top: 0;
       }
 
-      h1 {
-        max-width: 820px;
-        margin-bottom: 22px;
-        font-size: clamp(56px, 8vw, 108px);
+      h1,
+      h2 {
+        margin-bottom: 24px;
+        font-size: 116px;
         line-height: 0.96;
-        letter-spacing: -0.035em;
-        font-weight: 360;
+        letter-spacing: -0.045em;
+        font-weight: 920;
+        text-shadow: 0 0 26px rgba(255, 255, 255, 0.14);
       }
 
-      .hero-copy {
-        max-width: 680px;
-        font-size: 21px;
-        line-height: 1.42;
+      .slide:not(:first-child) h2 {
+        font-size: 82px;
       }
 
-      .hero-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 28px;
+      .gradient-word {
+        display: block;
+        width: fit-content;
+        background: none;
+        color: #a879ff;
+        text-shadow: none;
       }
 
-      .button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 999px;
-        padding: 12px 20px 13px;
-        border: 1px solid var(--ink);
-        font-weight: 720;
-        text-decoration: none;
+      .subtitle {
+        margin-bottom: 16px;
+        font-size: 39px;
+        line-height: 1.22;
+        font-weight: 840;
       }
 
-      .button.primary {
-        background: var(--ink);
-        color: var(--inverse-ink);
+      .cn-subtitle {
+        margin-bottom: 0;
+        font-size: 34px;
+        line-height: 1.25;
+        font-weight: 840;
       }
 
-      .button.magenta {
-        background: var(--magenta);
-        color: var(--inverse-ink);
+      .body-copy {
+        max-width: 650px;
+        color: var(--muted);
+        font-size: 25px;
+        line-height: 1.48;
+        font-weight: 560;
       }
 
-      .hero-visual {
-        position: relative;
-        min-height: 560px;
+      .slide:not(:first-child) .body-copy,
+      .slide:not(:first-child) .bullets li {
+        font-size: 22px;
+      }
+
+      .bullets {
         display: grid;
-        place-items: center;
-        background: linear-gradient(180deg, var(--pink), var(--mint));
-        border-radius: var(--radius-xl);
-        overflow: hidden;
+        gap: 14px;
+        margin: 26px 0 0;
+        padding: 0;
+        list-style: none;
       }
 
-      .hero-visual::before {
+      .bullets li {
+        position: relative;
+        padding-left: 34px;
+        color: var(--muted);
+        font-size: 25px;
+        line-height: 1.35;
+        font-weight: 650;
+      }
+
+      .bullets li::before {
         content: "";
         position: absolute;
-        inset: 34px 34px auto auto;
-        width: 170px;
-        height: 170px;
+        left: 0;
+        top: 10px;
+        width: 14px;
+        height: 14px;
         border-radius: 50%;
-        background: var(--app-shadow);
-        border: 1px solid var(--ink);
-      }
-
-      .avatar {
-        position: absolute;
-        width: min(62%, 370px);
-        left: 7%;
-        bottom: 16px;
-        filter: drop-shadow(0 28px 32px rgba(0, 0, 0, 0.16));
-      }
-
-      .phone {
-        position: relative;
-        z-index: 2;
-        width: min(330px, 78%);
-        min-height: 540px;
-        padding: 14px;
-        border: 2px solid var(--ink);
-        border-radius: 34px;
-        background: var(--canvas);
-        box-shadow: var(--shadow);
-      }
-
-      .phone-screen {
-        min-height: 510px;
-        border-radius: 24px;
-        overflow: hidden;
-        background: linear-gradient(180deg, #fff 0%, #fff7fa 100%);
-        border: 1px solid var(--hairline);
-        display: flex;
-        flex-direction: column;
-      }
-
-      .app-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px;
-        border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-        background: rgba(255, 255, 255, 0.72);
-      }
-
-      .app-title {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .mini-avatar {
-        width: 28px;
-        height: 28px;
-        object-fit: cover;
-        border-radius: 999px;
-        background: var(--lime);
-      }
-
-      .app-toggle {
-        border: 1px solid var(--ink);
-        border-radius: 999px;
-        padding: 4px 8px;
-        font-size: 10px;
-        font-weight: 800;
-        background: var(--magenta);
-        color: var(--inverse-ink);
-      }
-
-      .chat {
-        flex: 1;
-        padding: 14px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-      }
-
-      .bubble {
-        width: fit-content;
-        max-width: 88%;
-        padding: 10px 12px;
-        border-radius: 17px;
-        border: 1px solid var(--ink);
-        background: var(--canvas);
-        font-size: 12px;
-      }
-
-      .bubble.user {
-        align-self: flex-end;
         background: var(--pink);
+        box-shadow: 0 0 18px var(--pink);
       }
 
-      .ingredient-strip {
+      .bottom-meta {
+        left: 85px;
+        right: 62px;
+        bottom: 60px;
         display: flex;
-        gap: 9px;
-        overflow: hidden;
+        align-items: end;
+        justify-content: flex-start;
       }
 
-      .ingredient-chip {
-        min-width: 84px;
-        padding: 9px;
-        border-radius: 18px;
-        border: 1px solid var(--ink);
-        background: var(--pink);
-        text-align: center;
-        font-size: 12px;
-        font-weight: 760;
+      .team {
+        font-size: 29px;
+        line-height: 1.45;
+        font-weight: 880;
       }
 
-      .ingredient-chip span {
+      .team small {
         display: block;
-        font-size: 28px;
-        line-height: 1.1;
+        font-size: 25px;
+        font-weight: 660;
       }
 
-      .input-bar {
+      .page-no {
+        display: none;
+        font-size: 68px;
+        line-height: 0.86;
+        font-weight: 940;
+      }
+
+      .murphy {
+        position: absolute;
+        z-index: 4;
+        right: 808px;
+        bottom: 34px;
+        width: 260px;
+        filter:
+          drop-shadow(0 24px 30px rgba(0, 0, 0, 0.46))
+          drop-shadow(0 0 34px rgba(154, 60, 255, 0.34));
+      }
+
+      .murphy.large {
+        right: 132px;
+        bottom: 0;
+        width: 606px;
+      }
+
+      .shot {
+        position: absolute;
+        z-index: 3;
+        right: 58px;
+        top: 205px;
+        width: 700px;
+        height: 425px;
+        padding: 16px;
+        border: 1px solid rgba(255, 77, 255, 0.78);
+        border-radius: 28px;
+        background: rgba(12, 2, 44, 0.54);
+        box-shadow:
+          0 0 34px rgba(255, 77, 255, 0.42),
+          inset 0 0 24px rgba(39, 231, 255, 0.1);
+        backdrop-filter: blur(8px);
+      }
+
+      .shot img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: top center;
+        border-radius: 18px;
+      }
+
+      .shot.phone {
+        right: 58px;
+        top: 205px;
+        width: 700px;
+        height: 425px;
+        border-radius: 28px;
+      }
+
+      .shot.phone img {
+        border-radius: 18px;
+      }
+
+      .shot.wide {
+        right: 58px;
+        top: 230px;
+        width: 720px;
+        height: 430px;
+      }
+
+      .shot.tall {
+        right: 58px;
+        top: 205px;
+        width: 700px;
+        height: 425px;
+      }
+
+      .shot-pair {
+        position: absolute;
+        z-index: 3;
+        right: 58px;
+        top: 184px;
         display: grid;
-        grid-template-columns: 30px 30px 1fr 34px;
-        gap: 8px;
-        padding: 12px;
-        border-top: 1px solid rgba(0, 0, 0, 0.08);
-        background: rgba(255, 255, 255, 0.86);
+        grid-template-columns: 1fr;
+        gap: 14px;
+        width: 700px;
       }
 
-      .icon-btn,
-      .send-btn {
+      .shot-pair .shot {
+        position: relative;
+        inset: auto;
+        width: 100%;
+        height: 285px;
+      }
+
+      .shot-pair.three {
+        top: 168px;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        width: 700px;
+      }
+
+      .shot-pair.three .shot {
+        height: 190px;
+      }
+
+      .shot.single {
+        right: 58px;
+        top: 178px;
+        width: 760px;
+        height: 560px;
+      }
+
+      .shot.single.compact {
+        top: 205px;
+        height: 500px;
+      }
+
+      .shot.single.tall-view {
+        top: 148px;
+        width: 650px;
+        height: 640px;
+      }
+
+      .shot.single.video-focus {
+        top: 150px;
+        right: 50px;
+        width: 820px;
+        height: 620px;
+        box-shadow:
+          0 0 52px rgba(255, 77, 255, 0.58),
+          0 0 80px rgba(39, 231, 255, 0.18),
+          inset 0 0 34px rgba(39, 231, 255, 0.12);
+      }
+
+      .shot.single img {
+        object-fit: contain;
+        background: #ffffff;
+      }
+
+      .caption {
+        position: absolute;
+        left: 18px;
+        bottom: 18px;
+        display: inline-flex;
+        gap: 10px;
+        align-items: center;
+        max-width: calc(100% - 36px);
+        padding: 9px 13px;
+        border: 1px solid rgba(255, 77, 255, 0.68);
+        border-radius: 999px;
+        background: rgba(12, 2, 44, 0.82);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 850;
+        box-shadow: 0 0 18px rgba(255, 77, 255, 0.32);
+      }
+
+      .holo {
+        right: 478px;
+        bottom: 86px;
+        width: 440px;
+        height: 150px;
+        border: 1px solid rgba(39, 231, 255, 0.42);
+        border-radius: 50%;
+        background:
+          radial-gradient(ellipse at center, rgba(39, 231, 255, 0.36), transparent 64%),
+          radial-gradient(ellipse at center, rgba(255, 77, 255, 0.22), transparent 72%);
+        transform: perspective(620px) rotateX(65deg);
+        box-shadow:
+          0 0 34px rgba(39, 231, 255, 0.42),
+          inset 0 0 32px rgba(255, 77, 255, 0.28);
+      }
+
+      .neon-card {
+        position: absolute;
+        z-index: 2;
+        width: 184px;
+        height: 154px;
+        border: 1px solid rgba(255, 77, 255, 0.72);
+        border-radius: 16px;
+        background: rgba(20, 4, 62, 0.58);
+        box-shadow: 0 0 24px rgba(255, 77, 255, 0.38);
+        backdrop-filter: blur(4px);
+      }
+
+      .neon-card::before,
+      .neon-card::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+      }
+
+      .neon-card::before {
+        left: 26px;
+        top: 24px;
+        width: 62px;
+        height: 62px;
+        border: 2px solid var(--pink);
+        box-shadow: 0 0 14px var(--pink);
+      }
+
+      .neon-card::after {
+        left: 24px;
+        right: 24px;
+        bottom: 28px;
+        height: 8px;
+        background: linear-gradient(90deg, var(--pink), var(--cyan), transparent);
+        box-shadow: 0 0 16px var(--cyan);
+      }
+
+      .card-a {
+        right: 790px;
+        top: 408px;
+        transform: rotate(2deg);
+      }
+
+      .card-b {
+        right: 118px;
+        top: 394px;
+        transform: rotate(8deg);
+      }
+
+      .icon-chip {
+        position: absolute;
+        z-index: 2;
+        left: 500px;
+        bottom: 190px;
+        width: 56px;
+        height: 56px;
+        border: 1px solid rgba(255, 77, 255, 0.7);
+        border-radius: 15px;
+        background: rgba(18, 4, 62, 0.66);
+        box-shadow: 0 0 22px rgba(255, 77, 255, 0.42);
+      }
+
+      .icon-chip::before {
+        content: "AI";
+        position: absolute;
+        inset: 0;
         display: grid;
         place-items: center;
-        border-radius: 999px;
-        border: 1px solid var(--ink);
-        background: var(--canvas);
-        font-size: 13px;
-        font-weight: 800;
+        color: #fff;
+        font-size: 15px;
+        font-weight: 950;
       }
 
-      .input-field {
-        border: 1px solid var(--hairline);
-        border-radius: 999px;
-        padding: 7px 10px;
-        background: var(--soft);
-        font-size: 11px;
+      .sparkles {
+        inset: 0;
+        pointer-events: none;
       }
 
-      .send-btn {
-        background: var(--magenta);
-        color: var(--inverse-ink);
-      }
-
-      .screenshot-frame {
-        position: relative;
-        border: 1px solid var(--rose-line);
-        border-radius: 30px;
-        overflow: hidden;
-        background: var(--canvas);
-        box-shadow: 0 22px 54px rgba(249, 27, 124, 0.12);
-      }
-
-      .screenshot-frame::after {
-        content: "本地运行应用截图";
+      .star {
         position: absolute;
-        left: 16px;
-        bottom: 16px;
-        padding: 7px 11px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.9);
-        border: 1px solid var(--rose-line);
-        color: var(--magenta);
-        font-size: 12px;
-        font-weight: 820;
+        width: 64px;
+        height: 64px;
+        filter: drop-shadow(0 0 18px var(--pink));
       }
 
-      .app-screenshot {
+      .star::before,
+      .star::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        background: linear-gradient(180deg, #fff, #ff6bff 58%, #7f45ff);
+      }
+
+      .star::before {
+        width: 12px;
+        height: 64px;
+        border-radius: 999px;
+      }
+
+      .star::after {
+        width: 64px;
+        height: 12px;
+        border-radius: 999px;
+      }
+
+      .s1 {
+        left: 808px;
+        top: 188px;
+      }
+
+      .s2 {
+        right: 124px;
+        top: 120px;
+        transform: scale(1.36);
+      }
+
+      .s3 {
+        left: 576px;
+        bottom: 244px;
+        transform: scale(0.78);
+      }
+
+      .s4 {
+        right: 612px;
+        top: 74px;
+        transform: scale(0.6);
+      }
+
+      .food-strip {
+        position: absolute;
+        z-index: 3;
+        left: 420px;
+        right: 72px;
+        bottom: 36px;
+        height: 116px;
+        border-radius: 40px 40px 0 0;
+        background: linear-gradient(180deg, rgba(151, 68, 255, 0.09), rgba(255, 125, 43, 0.22));
+      }
+
+      .table-glow {
+        position: absolute;
+        z-index: 1;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 210px;
+        background:
+          radial-gradient(ellipse at 56% 0%, rgba(31, 226, 255, 0.3), transparent 44%),
+          linear-gradient(180deg, rgba(21, 8, 52, 0), rgba(88, 42, 46, 0.76));
+      }
+
+      .small-labels {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 26px;
+      }
+
+      .small-labels span {
+        padding: 10px 16px;
+        border: 1px solid rgba(255, 77, 255, 0.48);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 780;
+        box-shadow: 0 0 18px rgba(255, 77, 255, 0.12);
+      }
+
+      .team-slide .team-intro {
+        position: absolute;
+        z-index: 3;
+        top: 154px;
+        left: 88px;
+        right: 88px;
+        text-align: center;
+      }
+
+      .team-slide .team-intro h2 {
+        margin-bottom: 16px;
+        font-size: 76px;
+        line-height: 1;
+        letter-spacing: -0.035em;
+      }
+
+      .team-slide .team-intro .gradient-word {
+        display: inline;
+      }
+
+      .team-slide .team-intro p {
+        max-width: 940px;
+        margin: 0 auto;
+        color: var(--muted);
+        font-size: 27px;
+        line-height: 1.38;
+        font-weight: 620;
+      }
+
+      .member-grid {
+        position: absolute;
+        z-index: 3;
+        left: 64px;
+        right: 64px;
+        bottom: 92px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 28px;
+      }
+
+      .member-card {
+        min-height: 448px;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        justify-items: center;
+        padding: 36px 30px 26px;
+        border: 1px solid rgba(255, 77, 255, 0.28);
+        border-radius: 28px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.045)),
+          rgba(11, 8, 30, 0.78);
+        box-shadow:
+          0 0 34px rgba(255, 77, 255, 0.16),
+          inset 0 1px 0 rgba(255, 255, 255, 0.12);
+        backdrop-filter: blur(10px);
+      }
+
+      .member-avatar {
+        width: 142px;
+        height: 142px;
+        margin-bottom: 24px;
+        overflow: hidden;
+        border-radius: 999px;
+        border: 2px solid rgba(255, 255, 255, 0.72);
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow:
+          0 0 28px rgba(39, 231, 255, 0.22),
+          0 0 42px rgba(255, 77, 255, 0.14);
+      }
+
+      .member-avatar img {
         width: 100%;
-        max-height: 640px;
+        height: 100%;
         object-fit: cover;
         object-position: top center;
       }
 
-      .screenshot-pair {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-      }
-
-      .screenshot-pair .app-screenshot {
-        max-height: 520px;
-      }
-
-      .section {
-        padding: 88px 0;
-        border-top: 1px solid var(--hairline);
-      }
-
-      .section-head {
-        display: grid;
-        grid-template-columns: 0.8fr 1.2fr;
-        gap: 42px;
-        margin-bottom: 34px;
-        align-items: end;
-      }
-
-      .section h2 {
-        margin-bottom: 0;
-        font-size: clamp(36px, 5.3vw, 72px);
-        line-height: 1.02;
-        letter-spacing: -0.035em;
-        font-weight: 380;
-      }
-
-      .section-lead {
-        margin-bottom: 0;
-        font-size: 20px;
-        line-height: 1.44;
-      }
-
-      .flow-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 14px;
-      }
-
-      .flow-card {
-        min-height: 260px;
-        border-radius: var(--radius-lg);
-        padding: 24px;
-        border: 1px solid var(--ink);
-        background: var(--soft);
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        overflow: hidden;
-      }
-
-      .flow-card:nth-child(1) {
-        background: var(--pink);
-      }
-
-      .flow-card:nth-child(2) {
-        background: var(--mint);
-      }
-
-      .flow-card:nth-child(3) {
-        background: var(--cream);
-      }
-
-      .flow-card:nth-child(4) {
-        background: var(--lime);
-      }
-
-      .flow-card:nth-child(5) {
-        background: var(--pink);
-      }
-
-      .flow-card:nth-child(6) {
-        background: var(--coral);
-      }
-
-      .flow-index {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          monospace;
-        font-size: 14px;
-        letter-spacing: 0.05em;
-      }
-
-      .flow-card h3 {
-        margin-bottom: 12px;
-        font-size: 26px;
-        line-height: 1.14;
-      }
-
-      .flow-card p {
-        margin: 0;
-        font-size: 16px;
-      }
-
-      .demo-step {
-        display: grid;
-        grid-template-columns: minmax(0, 0.95fr) minmax(340px, 1.05fr);
-        gap: 34px;
-        align-items: center;
-        padding: 48px;
-        border-radius: var(--radius-xl);
-        margin-top: 24px;
-        border: 1px solid var(--hairline);
-        background: var(--soft);
-      }
-
-      .demo-step.alt {
-        background: var(--navy);
-        color: var(--inverse-ink);
-      }
-
-      .demo-step.lime {
-        background: var(--lime);
-      }
-
-      .demo-step.lilac {
-        background: var(--lilac);
-      }
-
-      .demo-step.cream {
-        background: var(--cream);
-      }
-
-      .demo-step.mint {
-        background: var(--mint);
-      }
-
-      .demo-step.pink {
-        background: var(--pink);
-      }
-
-      .demo-copy h3 {
-        margin-bottom: 14px;
-        font-size: clamp(30px, 4vw, 52px);
-        line-height: 1.06;
-        letter-spacing: -0.03em;
-        font-weight: 420;
-      }
-
-      .demo-copy p,
-      .demo-copy li {
-        font-size: 18px;
-      }
-
-      .demo-copy ul {
-        padding-left: 20px;
-        margin: 16px 0 0;
-      }
-
-      .visual-panel {
-        min-height: 430px;
-        border-radius: var(--radius-lg);
-        border: 1px solid var(--rose-line);
-        background: var(--canvas);
-        padding: 18px;
-        overflow: hidden;
-        box-shadow: 0 18px 45px rgba(249, 27, 124, 0.1);
-      }
-
-      .visual-panel.dark {
-        background: #111111;
-        color: var(--inverse-ink);
-      }
-
-      .panel-title {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 14px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid var(--hairline);
-        font-size: 13px;
-        font-weight: 820;
-      }
-
-      .panel-title.dark-line {
-        border-color: rgba(255, 255, 255, 0.18);
-      }
-
-      .splash-stage {
-        min-height: 365px;
-        display: grid;
-        place-items: center;
-        position: relative;
-        border-radius: 18px;
-        background: var(--pink);
-        overflow: hidden;
-      }
-
-      .splash-stage::before,
-      .splash-stage::after {
-        content: "";
-        position: absolute;
-        border-radius: 40px;
-        border: 1px solid var(--ink);
-      }
-
-      .splash-stage::before {
-        width: 210px;
-        height: 120px;
-        left: -36px;
-        top: 38px;
-        background: var(--lilac);
-        transform: rotate(-13deg);
-      }
-
-      .splash-stage::after {
-        width: 230px;
-        height: 150px;
-        right: -58px;
-        bottom: 34px;
-        background: var(--coral);
-        transform: rotate(10deg);
-      }
-
-      .splash-card {
-        position: relative;
-        z-index: 2;
-        width: min(360px, 90%);
-        padding: 24px;
-        border-radius: 28px;
-        border: 1px solid var(--ink);
-        background: rgba(255, 255, 255, 0.9);
+      .member-card h3 {
+        margin: 0 0 9px;
+        font-size: 31px;
+        line-height: 1.1;
+        font-weight: 900;
         text-align: center;
       }
 
-      .splash-card img {
-        width: 148px;
-        height: 148px;
-        margin: 0 auto 12px;
-        object-fit: cover;
-      }
-
-      .splash-card strong {
-        display: block;
-        font-size: 28px;
-        line-height: 1.08;
-      }
-
-      .nutrition-card,
-      .recipe-card,
-      .step-card,
-      .favorite-card {
-        border: 1px solid var(--ink);
-        border-radius: 22px;
-        padding: 18px;
-        background: var(--canvas);
-      }
-
-      .ingredient-row {
-        display: flex;
-        gap: 10px;
-        overflow: hidden;
-        margin: 12px 0;
-      }
-
-      .food-tile {
-        min-width: 118px;
-        padding: 14px 12px;
-        border-radius: 20px;
-        border: 1px solid var(--ink);
-        background: var(--mint);
-        text-align: center;
-      }
-
-      .food-tile .emoji {
-        font-size: 42px;
-        line-height: 1;
-      }
-
-      .food-tile strong {
-        display: block;
-        margin-top: 8px;
-        font-size: 17px;
-      }
-
-      .food-tile small {
-        display: block;
-        font-size: 12px;
-      }
-
-      .nutrition-card {
-        margin-top: 14px;
-        background: var(--cream);
-      }
-
-      .recipe-carousel {
-        display: grid;
-        grid-template-columns: 0.2fr 1fr 0.2fr;
-        gap: 12px;
-        align-items: stretch;
-      }
-
-      .recipe-card {
-        background: var(--canvas);
-        transform: scale(1);
-      }
-
-      .recipe-card.side {
-        opacity: 0.54;
-        transform: scale(0.9);
-      }
-
-      .recipe-card h4 {
-        margin: 0 0 4px;
-        font-size: 28px;
-      }
-
-      .tag-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px;
-        margin: 14px 0;
-      }
-
-      .tag {
-        border: 1px solid var(--ink);
-        border-radius: 999px;
-        padding: 5px 9px;
-        font-size: 12px;
-        font-weight: 760;
-        background: var(--mint);
-      }
-
-      .danger {
-        background: var(--pink);
-      }
-
-      .step-list {
-        display: grid;
-        gap: 11px;
-      }
-
-      .step-item {
-        display: grid;
-        grid-template-columns: 36px 1fr;
-        gap: 12px;
-        align-items: start;
-        padding: 12px;
-        border-radius: 16px;
-        background: var(--soft);
-        border: 1px solid var(--hairline);
-      }
-
-      .step-number {
-        width: 36px;
-        height: 36px;
-        display: grid;
-        place-items: center;
-        border-radius: 999px;
-        border: 1px solid var(--ink);
-        background: var(--pink);
-        font-weight: 860;
-      }
-
-      .video-slot {
-        min-height: 150px;
-        margin-top: 14px;
-        border-radius: 18px;
-        background: linear-gradient(135deg, var(--pink), var(--mint));
-        border: 1px dashed var(--ink);
-        display: grid;
-        place-items: center;
-        text-align: center;
-        padding: 18px;
-      }
-
-      .favorite-grid {
-        display: grid;
-        grid-template-columns: 0.78fr 1.22fr;
-        gap: 16px;
-      }
-
-      .side-list {
-        display: grid;
-        gap: 10px;
-      }
-
-      .side-item {
-        padding: 12px;
-        border-radius: 16px;
-        border: 1px solid var(--ink);
-        background: var(--canvas);
-        font-weight: 760;
-      }
-
-      .confetti {
-        display: flex;
-        gap: 5px;
-        justify-content: flex-end;
-        margin-bottom: 8px;
-      }
-
-      .confetti span {
-        width: 9px;
-        height: 18px;
-        border-radius: 2px;
-        background: var(--magenta);
-        transform: rotate(16deg);
-      }
-
-      .confetti span:nth-child(2) {
-        background: var(--lime);
-        transform: rotate(-20deg);
-      }
-
-      .confetti span:nth-child(3) {
-        background: var(--lilac);
-        transform: rotate(35deg);
-      }
-
-      .confetti span:nth-child(4) {
-        background: var(--coral);
-        transform: rotate(-8deg);
-      }
-
-      .lang-split {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
-      }
-
-      .lang-card {
-        padding: 16px;
-        border-radius: 18px;
-        border: 1px solid var(--ink);
-        background: var(--canvas);
-      }
-
-      .lang-card.en {
-        background: var(--navy);
-        color: var(--inverse-ink);
-      }
-
-      .image-board {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-      }
-
-      .image-board img {
-        border-radius: 18px;
-        border: 1px solid var(--ink);
-        aspect-ratio: 4 / 3;
-        object-fit: cover;
-      }
-
-      .architecture {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(120px, 1fr));
-        gap: 12px;
-        align-items: stretch;
-      }
-
-      .node {
-        min-height: 130px;
-        display: grid;
-        place-items: center;
-        text-align: center;
-        padding: 18px;
-        border: 1px solid var(--ink);
-        border-radius: 22px;
-        background: var(--canvas);
-        font-weight: 800;
-      }
-
-      .node:nth-child(2) {
-        background: var(--lime);
-      }
-
-      .node:nth-child(3) {
-        background: var(--lilac);
-      }
-
-      .node:nth-child(4) {
-        background: var(--cream);
-      }
-
-      .node:nth-child(5) {
-        background: var(--mint);
-      }
-
-      .footer {
-        padding: 72px 0 92px;
-        background: var(--ink);
-        color: var(--inverse-ink);
-      }
-
-      .footer .page {
-        display: grid;
-        grid-template-columns: 1.2fr 0.8fr;
-        gap: 32px;
-        align-items: end;
-      }
-
-      .footer h2 {
-        margin: 0;
-        font-size: clamp(42px, 6vw, 84px);
-        line-height: 0.98;
-        font-weight: 360;
-        letter-spacing: -0.035em;
-      }
-
-      .footer p {
-        margin: 0;
+      .member-role {
+        margin: 0 0 18px;
+        color: #ff68c8;
         font-size: 19px;
+        font-weight: 820;
+        text-align: center;
+      }
+
+      .member-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 19px;
+        line-height: 1.42;
+        font-weight: 560;
+        text-align: center;
+      }
+
+      .member-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 9px;
+        margin-top: 24px;
+        padding: 10px 14px;
+        border: 1px solid rgba(255, 77, 255, 0.44);
+        border-radius: 999px;
+        color: rgba(255, 255, 255, 0.88);
+        background: rgba(255, 255, 255, 0.08);
+        font-size: 14px;
+        font-weight: 820;
+        text-decoration: none;
+      }
+
+      .github-mark {
+        width: 21px;
+        height: 21px;
+        display: inline-block;
+        border-radius: 50%;
+        background: currentColor;
+        -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 .5A11.5 11.5 0 0 0 8.36 22.9c.58.1.79-.25.79-.56v-2.02c-3.2.7-3.88-1.38-3.88-1.38-.53-1.33-1.29-1.69-1.29-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.04 1.76 2.72 1.25 3.38.96.1-.75.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .98-.31 3.18 1.18A11.1 11.1 0 0 1 12 6.1c.98 0 1.96.13 2.88.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.27 5.69.42.36.79 1.07.79 2.16v3.02c0 .31.2.67.8.56A11.5 11.5 0 0 0 12 .5Z'/%3E%3C/svg%3E") center / contain no-repeat;
+        mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 .5A11.5 11.5 0 0 0 8.36 22.9c.58.1.79-.25.79-.56v-2.02c-3.2.7-3.88-1.38-3.88-1.38-.53-1.33-1.29-1.69-1.29-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.2 1.77 1.2 1.04 1.76 2.72 1.25 3.38.96.1-.75.4-1.25.73-1.54-2.56-.29-5.25-1.28-5.25-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.06 0 0 .98-.31 3.18 1.18A11.1 11.1 0 0 1 12 6.1c.98 0 1.96.13 2.88.39 2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.77.11 3.06.74.81 1.19 1.84 1.19 3.1 0 4.43-2.7 5.4-5.27 5.69.42.36.79 1.07.79 2.16v3.02c0 .31.2.67.8.56A11.5 11.5 0 0 0 12 .5Z'/%3E%3C/svg%3E") center / contain no-repeat;
       }
 
       @media (max-width: 900px) {
-        .hero,
-        .section-head,
-        .demo-step,
-        .footer .page {
+        .deck {
+          padding: 12px;
+        }
+
+        .slide {
+          min-height: 720px;
+          aspect-ratio: auto;
+        }
+
+        .top-meta {
+          top: 28px;
+          left: 20px;
+          right: 20px;
+        }
+
+        .section-badge {
+          min-width: 72px;
+          height: 52px;
+          border-radius: 16px;
+          font-size: 22px;
+        }
+
+        .meta-title,
+        .year {
+          font-size: 16px;
+        }
+
+        .content {
+          left: 28px;
+          right: 28px;
+          top: 110px;
+          width: auto;
+        }
+
+        h1,
+        h2 {
+          font-size: 54px;
+        }
+
+        .subtitle,
+        .cn-subtitle {
+          font-size: 24px;
+        }
+
+        .body-copy,
+        .bullets li {
+          font-size: 18px;
+        }
+
+        .murphy,
+        .murphy.large {
+          right: 16px;
+          width: 260px;
+        }
+
+        .shot,
+        .shot.phone,
+        .shot.wide,
+        .shot.tall {
+          right: 20px;
+          left: 20px;
+          top: auto;
+          bottom: 96px;
+          width: auto;
+          height: 260px;
+        }
+
+        .shot-pair,
+        .shot-pair.three {
+          left: 20px;
+          right: 20px;
+          bottom: 98px;
+          top: auto;
+          width: auto;
           grid-template-columns: 1fr;
         }
 
-        .hero {
-          padding-top: 46px;
+        .shot-pair .shot,
+        .shot-pair.three .shot {
+          height: 190px;
         }
 
-        .flow-grid,
-        .architecture {
-          grid-template-columns: 1fr;
+        .bottom-meta {
+          left: 28px;
+          right: 28px;
+          bottom: 24px;
         }
 
-        .demo-step {
-          padding: 28px;
+        .team {
+          font-size: 18px;
         }
 
-        .favorite-grid,
-        .lang-split,
-        .image-board {
-          grid-template-columns: 1fr;
+        .team small {
+          font-size: 16px;
         }
 
-        .nav-links {
-          display: none;
-        }
-      }
-
-      @media print {
-        @page {
-          size: A4;
-          margin: 12mm;
-        }
-
-        html {
-          font-size: 13px;
-        }
-
-        body {
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-
-        .topbar {
-          position: static;
-        }
-
-        .section,
-        .hero,
-        .footer {
-          break-inside: avoid;
-          padding: 36px 0;
-        }
-
-        .demo-step,
-        .flow-card {
-          break-inside: avoid;
-        }
-
-        h1 {
-          font-size: 62px;
+        .page-no {
+          font-size: 44px;
         }
       }
     </style>
   </head>
   <body>
-    <header class="page topbar">
-      <div class="brand">
-        <span class="brand-mark">AI</span>
-        <span>Murphy's Cookbook 产品演示报告</span>
-      </div>
-      <nav class="nav-links" aria-label="报告目录">
-        <a href="#flow">演示流程</a>
-        <a href="#demo">功能演示</a>
-        <a href="#architecture">技术方案</a>
-        <a href="#value">项目价值</a>
-      </nav>
-    </header>
-
-    <main>
-      <section class="page hero">
-        <div>
-          <p class="eyebrow">AI Agent · Kids Cooking · Product Demo</p>
-          <h1>儿童菜谱智能体产品演示</h1>
-          <p class="hero-copy">
-            Murphy's Cookbook 面向小学 1-6 年级学生和家庭厨房场景，
-            通过多模态食材识别、AI 菜谱推荐、语音朗读、双语学习、
-            食材科普和 Seedance 2.0 烹饪视频卡槽，把“今天吃什么”
-            变成一次可操作、可学习、可亲子协作的生活智能体体验。
-          </p>
-          <div class="hero-actions">
-            <a class="button primary" href="#demo">查看演示路径</a>
-            <a class="button" href="../competition/嘉祥AI创意大赛参赛报名资料.md">申报材料来源</a>
-          </div>
+    <main class="deck">
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">01</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s2"></i><i class="star s3"></i><i class="star s4"></i></div>
+        <div class="content">
+          <h1>Murphy’s <span class="gradient-word">Cookbook</span></h1>
+          <p class="subtitle">AI Cooking Companion for Kids</p>
+          <p class="cn-subtitle">让孩子爱上烹饪的 AI 伙伴</p>
         </div>
-        <div class="hero-visual" aria-label="产品界面示意">
-          <img class="avatar" src="../design-image/murphy-avatar.png" alt="小墨菲卡通厨师形象" />
-          <div class="phone">
-            <div class="phone-screen">
-              <div class="app-head">
-                <div class="app-title">
-                  <img class="mini-avatar" src="../design-image/murphy-avatar.png" alt="" />
-                  <span>小墨菲的美食宝典</span>
-                </div>
-                <span class="app-toggle">中 / EN</span>
-              </div>
-              <div class="chat">
-                <div class="bubble">我是智能儿童菜谱助手，请告诉我今天有哪些食材。</div>
-                <div class="ingredient-strip">
-                  <div class="ingredient-chip"><span>🍅</span>番茄</div>
-                  <div class="ingredient-chip"><span>🥚</span>鸡蛋</div>
-                  <div class="ingredient-chip"><span>🥒</span>黄瓜</div>
-                </div>
-                <div class="bubble user">我有番茄和鸡蛋，推荐适合小朋友做的菜。</div>
-                <div class="recipe-card">
-                  <h4>番茄炒蛋</h4>
-                  <p>Tomato Scrambled Eggs · fān qié chǎo dàn</p>
-                  <div class="tag-row">
-                    <span class="tag">低油脂</span>
-                    <span class="tag">维生素丰富</span>
-                    <span class="tag danger">热锅需家长陪同</span>
-                  </div>
-                </div>
-              </div>
-              <div class="input-bar">
-                <button class="icon-btn" aria-label="语音">🎙</button>
-                <button class="icon-btn" aria-label="拍照">📷</button>
-                <div class="input-field">输入食材或上传图片</div>
-                <button class="send-btn" aria-label="发送">➜</button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div class="neon-card card-a"></div>
+        <div class="neon-card card-b"></div>
+        <div class="icon-chip"></div>
+        <div class="holo"></div>
+        <div class="table-glow"></div>
+        <div class="food-strip"></div>
+        <img class="murphy large" src="demo-assets/murphy-3d/murphy-3d-welcome.png" alt="小墨菲 3D 厨师形象" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>2026.06</small></div><div class="page-no">01</div></div>
       </section>
 
-      <section id="flow" class="page section">
-        <div class="section-head">
-          <h2>演示流程</h2>
-          <p class="section-lead">
-            报告按产品真实操作顺序组织，从开屏动画到中文流程，再到英文切换后的复演，
-            让评委可以连续理解智能体的输入、推理、生成、呈现和复访能力。
-          </p>
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">02</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">OPENING</p>
+          <h2>开屏展示<br /><span class="gradient-word">Opening</span></h2>
+          <p class="body-copy">从开屏进入产品，首先建立儿童友好的家庭厨房氛围，并展示 Murphy’s Cookbook 的产品定位。</p>
+          <div class="small-labels"><span>品牌入口</span><span>儿童友好</span><span>PAD 横屏</span></div>
         </div>
-        <div class="flow-grid">
-          <article class="flow-card">
-            <span class="flow-index">01 / OPENING</span>
-            <div>
-              <h3>开屏动画展示</h3>
-              <p>展示小墨菲厨师形象、儿童化视觉风格、双语入口和 chatbox 首屏。</p>
-            </div>
-          </article>
-          <article class="flow-card">
-            <span class="flow-index">02 / INGREDIENTS</span>
-            <div>
-              <h3>输入与识别食材</h3>
-              <p>支持文字、语音、拍照、上传图片。识别后生成横向食材卡，并可查看营养知识。</p>
-            </div>
-          </article>
-          <article class="flow-card">
-            <span class="flow-index">03 / RECIPE</span>
-            <div>
-              <h3>推荐菜谱</h3>
-              <p>用户确认食材后手动触发推荐，AI 返回儿童友好的菜谱卡片。</p>
-            </div>
-          </article>
-          <article class="flow-card">
-            <span class="flow-index">04 / STEPS</span>
-            <div>
-              <h3>生成烹饪步骤</h3>
-              <p>点击菜谱内按钮按需生成步骤，展示食材加入时机、儿童动作和家长陪同提醒。</p>
-            </div>
-          </article>
-          <article class="flow-card">
-            <span class="flow-index">05 / SAVE</span>
-            <div>
-              <h3>收藏菜谱</h3>
-              <p>收藏后支持从收藏列表定位回原对话卡片，便于家庭复做。</p>
-            </div>
-          </article>
-          <article class="flow-card">
-            <span class="flow-index">06 / ENGLISH</span>
-            <div>
-              <h3>英文模式复演</h3>
-              <p>切换英文后重复食材识别、菜谱推荐、步骤生成和收藏，展示双语学习能力。</p>
-            </div>
-          </article>
-        </div>
+        <figure class="shot single"><img src="demo-assets/manual/01-opening.png" alt="Opening" /><figcaption class="caption">02 Opening</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-welcome.png" alt="小墨菲Opening" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Opening</small></div><div class="page-no">02</div></div>
       </section>
 
-      <section id="demo" class="page section">
-        <div class="section-head">
-          <h2>功能操作演示</h2>
-          <p class="section-lead">
-            每个演示步骤都对应一个产品关键能力：儿童可理解、家长可判断、AI 可解释、结果可复访。
-          </p>
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">03</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">CHATBOX HOME</p>
+          <h2>进入对话<br /><span class="gradient-word">Chatbox Home</span></h2>
+          <p class="body-copy">首页直接展示欢迎语、时令食材建议、历史对话、收藏入口和底部输入栏，用户可以立即开始。</p>
+          <div class="small-labels"><span>欢迎语</span><span>时令建议</span><span>输入入口</span></div>
         </div>
-
-        <article class="demo-step lime">
-          <div class="demo-copy">
-            <p class="eyebrow">Step 01</p>
-            <h3>开屏动画展示</h3>
-            <p>
-              首屏使用卡通厨师“小墨菲”建立亲和感。顶部导航提供中英文切换、拼音模式、新对话、
-              历史对话和菜谱收藏入口；底部固定输入栏保证移动端随时可输入。
-            </p>
-            <ul>
-              <li>儿童友好视觉：黑白主框架 + 明亮色块。</li>
-              <li>首屏直接进入任务，不做复杂注册或儿童档案填写。</li>
-              <li>支持手机端和平板端展示，平板横屏可展示侧边列表。</li>
-            </ul>
-          </div>
-          <div class="visual-panel">
-            <div class="panel-title">
-              <span>Opening animation</span>
-              <span class="pill">中 / EN</span>
-            </div>
-            <div class="screenshot-frame">
-              <img
-                class="app-screenshot"
-                src="./demo-assets/01-opening.png"
-                alt="本地运行应用开屏动画截图"
-              />
-            </div>
-          </div>
-        </article>
-
-        <article id="ingredients" class="demo-step lilac">
-          <div class="demo-copy">
-            <p class="eyebrow">Step 02</p>
-            <h3>输入食材，识别食材，展示营养价值</h3>
-            <p>
-              用户可以通过文字、语音、拍照或上传图片提供食材。系统识别完成后不自动推荐菜谱，
-              而是先展示可确认的食材清单；点击食材卡可调用食材知识接口，生成儿童能看懂的科普卡片。
-            </p>
-            <ul>
-              <li>食材卡展示 emoji、名称、拼音、朗读和删除。</li>
-              <li>最多支持 10 个食材，避免推荐条件过重。</li>
-              <li>食材知识包括营养价值、产地、适宜气候和最佳搭配。</li>
-            </ul>
-          </div>
-          <div class="visual-panel">
-            <div class="panel-title">
-              <span>Ingredient recognition</span>
-              <span>🎙 📷 🖼 ✍️</span>
-            </div>
-            <div class="screenshot-pair">
-              <div class="screenshot-frame">
-                <img
-                  class="app-screenshot"
-                  src="./demo-assets/03-ingredients.png"
-                  alt="本地运行应用识别食材并展示食材清单截图"
-                />
-              </div>
-              <div class="screenshot-frame">
-                <img
-                  class="app-screenshot"
-                  src="./demo-assets/04-ingredient-knowledge.png"
-                  alt="本地运行应用食材营养知识卡截图"
-                />
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article class="demo-step cream">
-          <div class="demo-copy">
-            <p class="eyebrow">Step 03</p>
-            <h3>推荐菜谱</h3>
-            <p>
-              用户确认食材后点击“推荐菜谱”。AI 根据小学阶段儿童默认画像，推荐低油脂、轻口味、
-              膳食均衡的菜谱。菜谱以走马灯卡片展示，不跳转页面，适合手机端连续阅读。
-            </p>
-            <ul>
-              <li>菜名支持中文、英文、拼音或英文音节辅助。</li>
-              <li>卡片包含营养摘要、难度、预计时间和风险提醒。</li>
-              <li>明火、高温、热油、蒸煮等场景高亮提示家长陪同。</li>
-            </ul>
-          </div>
-          <div class="visual-panel">
-            <div class="panel-title">
-              <span>Recipe carousel</span>
-              <a class="button magenta" href="#steps">推荐菜谱</a>
-            </div>
-            <div class="recipe-carousel">
-              <div class="recipe-card side">
-                <h4>番茄蛋汤</h4>
-                <p>Tomato Egg Soup</p>
-              </div>
-              <div class="recipe-card">
-                <h4>番茄炒蛋</h4>
-                <p>Tomato Scrambled Eggs · fān qié chǎo dàn</p>
-                <p>酸甜开胃，蛋白质和维生素搭配均衡，适合亲子一起完成。</p>
-                <div class="tag-row">
-                  <span class="tag">8-12 岁</span>
-                  <span class="tag">15 分钟</span>
-                  <span class="tag">简单</span>
-                  <span class="tag danger">热锅需家长陪同</span>
-                </div>
-              </div>
-              <div class="recipe-card side">
-                <h4>鸡蛋拌饭</h4>
-                <p>Egg Rice Bowl</p>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article id="steps" class="demo-step mint">
-          <div class="demo-copy">
-            <p class="eyebrow">Step 04</p>
-            <h3>生成菜谱烹饪步骤</h3>
-            <p>
-              菜谱步骤按需生成，避免首屏等待过久。步骤内容说明食材处理、加入时机、
-              关键火候和预期状态，并区分儿童可参与动作与高风险家长协助动作。
-            </p>
-            <ul>
-              <li>每个步骤支持语音朗读，再次点击可停止。</li>
-              <li>步骤缓存 3 天，重复访问同名菜谱时优先本地读取。</li>
-              <li>菜谱卡内保留 Seedance 2.0 烹饪视频卡槽。</li>
-            </ul>
-          </div>
-          <div class="visual-panel">
-            <div class="panel-title">
-              <span>Cooking steps</span>
-              <span class="pill">获取烹饪步骤</span>
-            </div>
-            <div class="step-list">
-              <div class="step-item">
-                <span class="step-number">1</span>
-                <div>
-                  <strong>清洗和切配</strong>
-                  <p>小朋友可以清洗番茄，家长协助切成小块；鸡蛋打入碗中搅匀。</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <span class="step-number">2</span>
-                <div>
-                  <strong>热锅炒蛋</strong>
-                  <p>家长开火热锅倒油，蛋液入锅后轻轻推动，凝固后盛出。</p>
-                </div>
-              </div>
-              <div class="step-item">
-                <span class="step-number">3</span>
-                <div>
-                  <strong>番茄入锅</strong>
-                  <p>番茄块下锅炒出汁水，再倒回鸡蛋，加入少量盐调味。</p>
-                </div>
-              </div>
-            </div>
-            <div class="video-slot">
-              <div>
-                <strong>Seedance 2.0 烹饪视频卡槽</strong>
-                <p>审核通过后显示 12-15 秒动画短片；未命中时展示“烹饪视频制作中”。</p>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article class="demo-step pink">
-          <div class="demo-copy">
-            <p class="eyebrow">Step 05</p>
-            <h3>收藏菜谱</h3>
-            <p>
-              家长或儿童可收藏喜欢的菜谱。收藏成功时按钮附近出现短暂彩带屑动效，
-              收藏列表可定位回原始对话里的菜谱卡，方便复做和复习。
-            </p>
-            <ul>
-              <li>历史对话和收藏均保存在浏览器 localStorage。</li>
-              <li>新对话不会污染旧对话数据。</li>
-              <li>平板横屏默认展示历史和收藏列表，并支持删除。</li>
-            </ul>
-          </div>
-          <div class="visual-panel">
-            <div class="panel-title">
-              <span>Favorite recipes</span>
-              <span>♡ → ♥</span>
-            </div>
-            <div class="favorite-grid">
-              <div class="side-list">
-                <div class="side-item">今天的番茄鸡蛋</div>
-                <div class="side-item">早餐水果奶昔</div>
-                <div class="side-item">周末亲子晚餐</div>
-              </div>
-              <div class="favorite-card">
-                <div class="confetti" aria-hidden="true">
-                  <span></span><span></span><span></span><span></span>
-                </div>
-                <h4>已收藏：番茄炒蛋</h4>
-                <p>点击收藏项后关闭侧栏，并自动定位到原对话中的菜谱卡片。</p>
-                <div class="tag-row">
-                  <span class="tag">本地恢复</span>
-                  <span class="tag">快速定位</span>
-                  <span class="tag">可删除</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article class="demo-step alt">
-          <div class="demo-copy">
-            <p class="eyebrow">Step 06</p>
-            <h3>切换英文后再尝试步骤 2-5</h3>
-            <p>
-              点击顶部中英文按钮切换英文模式。系统会把语言状态带入食材知识、菜谱推荐和步骤生成提示词，
-              英文模式下把中文拼音替换为英文单词音节组合，帮助儿童练习英文读音。
-            </p>
-            <ul>
-              <li>默认提示语、按钮、时令食材、错误提示均切换为英文。</li>
-              <li>英文菜名、营养摘要、步骤说明和食材知识均可朗读。</li>
-              <li>收藏和历史对话仍可复用同一套数据结构。</li>
-            </ul>
-          </div>
-          <div class="visual-panel dark">
-            <div class="panel-title dark-line">
-              <span>English mode walkthrough</span>
-              <span class="pill">EN</span>
-            </div>
-            <div class="lang-split">
-              <div class="lang-card">
-                <h4>中文模式</h4>
-                <p>番茄炒蛋</p>
-                <p>fān qié chǎo dàn</p>
-                <p>清洗番茄，家长协助热锅。</p>
-              </div>
-              <div class="lang-card en">
-                <h4>English mode</h4>
-                <p>Tomato Scrambled Eggs</p>
-                <p>to-ma-to · scram-bled · eggs</p>
-                <p>Wash tomatoes. Ask a parent to help with the hot pan.</p>
-              </div>
-            </div>
-          </div>
-        </article>
+        <figure class="shot single"><img src="demo-assets/manual/02-chat-home.png" alt="Chatbox Home" /><figcaption class="caption">03 Chatbox Home</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-thinking.png" alt="小墨菲Chatbox Home" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Chatbox Home</small></div><div class="page-no">03</div></div>
       </section>
 
-      <section class="page section">
-        <div class="section-head">
-          <h2>图文素材与界面风格</h2>
-          <p class="section-lead">
-            报告视觉遵循设计规范：黑白编辑式框架承载严肃信息，使用 lime、lilac、cream、
-            mint、pink、coral 等高饱和色块承载儿童友好的故事段落。
-          </p>
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">04</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">TEXT INPUT</p>
+          <h2>文字输入<br /><span class="gradient-word">Text</span></h2>
+          <p class="body-copy">用户可以用自然语言描述已有食材，系统解析后进入食材确认流程，而不是立即生成菜谱。</p>
+          <div class="small-labels"><span>自然语言</span><span>食材解析</span><span>确认优先</span></div>
         </div>
-        <div class="image-board">
-          <img src="../design-image/cn.png" alt="中文版本设计稿" />
-          <img src="../design-image/en.png" alt="英文版本设计稿" />
-          <img src="../design-image/landing-page-mobile.png" alt="手机端设计稿" />
-          <img src="../apps/frontend/card/food-list-card.png" alt="食材卡片参考图" />
-        </div>
+        <figure class="shot single"><img src="demo-assets/manual/03-text-input.png" alt="Text Input" /><figcaption class="caption">04 Text Input</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-explaining.png" alt="小墨菲Text Input" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Text Input</small></div><div class="page-no">04</div></div>
       </section>
 
-      <section id="architecture" class="page section">
-        <div class="section-head">
-          <h2>智能体技术链路</h2>
-          <p class="section-lead">
-            产品不是一次性问答，而是由多个节点组成的工作流：多模态感知、食材确认、
-            模型路由、结构化生成、校验缓存和儿童化呈现。
-          </p>
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">05</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">VOICE INPUT</p>
+          <h2>语音输入<br /><span class="gradient-word">Voice</span></h2>
+          <p class="body-copy">移动端可通过语音输入食材描述，降低儿童打字门槛，让孩子能直接参与表达。</p>
+          <div class="small-labels"><span>语音表达</span><span>移动端友好</span><span>朗读闭环</span></div>
         </div>
-        <div class="architecture">
-          <div class="node">文字 / 语音 / 图片输入</div>
-          <div class="node">食材识别与知识科普</div>
-          <div class="node">ModelRouter 选择模型</div>
-          <div class="node">推荐菜谱与步骤生成</div>
-          <div class="node">朗读 / 收藏 / 视频播放</div>
+        <figure class="shot single"><img src="demo-assets/manual/04-voice-input.png" alt="Voice Input" /><figcaption class="caption">05 Voice Input</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-thinking.png" alt="小墨菲Voice Input" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Voice Input</small></div><div class="page-no">05</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">06</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">IMAGE RECOGNITION</p>
+          <h2>图片识别<br /><span class="gradient-word">Image</span></h2>
+          <p class="body-copy">拍摄或上传食材图片后，chatbox 直接展示图片预览，再调用多模态模型识别食材。</p>
+          <div class="small-labels"><span>拍照上传</span><span>图片预览</span><span>多模态识别</span></div>
         </div>
+        <figure class="shot single"><img src="demo-assets/manual/05-image-input.png" alt="Image Recognition" /><figcaption class="caption">06 Image Recognition</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-explaining.png" alt="小墨菲Image Recognition" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Image Recognition</small></div><div class="page-no">06</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">07</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">INGREDIENT LIST</p>
+          <h2>确认食材<br /><span class="gradient-word">Ingredient List</span></h2>
+          <p class="body-copy">识别结果以横向食材卡展示，每个食材包含 emoji、名称、拼音、朗读和删除按钮。</p>
+          <div class="small-labels"><span>横向卡片</span><span>语音播报</span><span>可删除修正</span></div>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/07-ingredient-list.png" alt="Ingredient List" /><figcaption class="caption">07 Ingredient List</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-star.png" alt="小墨菲Ingredient List" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Ingredient List</small></div><div class="page-no">07</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">08</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">INGREDIENT KNOWLEDGE</p>
+          <h2>点击食材<br /><span class="gradient-word">AI 科普</span></h2>
+          <p class="body-copy">点击食材卡后，大模型生成营养价值、产地、适宜气候和最佳搭配，拓展儿童对食材的认识。</p>
+          <div class="small-labels"><span>营养价值</span><span>产地气候</span><span>最佳搭配</span></div>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/08-ingredient-knowledge.png" alt="Ingredient Knowledge" /><figcaption class="caption">08 Ingredient Knowledge</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-explaining.png" alt="小墨菲Ingredient Knowledge" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Nutrition Knowledge</small></div><div class="page-no">08</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">09</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">RECIPE LOADING</p>
+          <h2>点击推荐<br /><span class="gradient-word">AI Thinking</span></h2>
+          <p class="body-copy">用户确认食材后手动点击推荐菜谱，按钮展示加载状态，避免自动请求造成误推荐。</p>
+          <div class="small-labels"><span>手动触发</span><span>加载反馈</span><span>避免误推荐</span></div>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/09-recommend-loading.png" alt="Recommend Loading" /><figcaption class="caption">09 Recommend Loading</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-thinking.png" alt="小墨菲Recommend Loading" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Recipe Loading</small></div><div class="page-no">09</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">10</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">RECIPE CAROUSEL</p>
+          <h2>菜谱推荐<br /><span class="gradient-word">Carousel</span></h2>
+          <p class="body-copy">推荐结果以横向走马灯展示，提供菜名、英文名、读音辅助、营养摘要与安全提醒。</p>
+          <ul class="bullets"><li>每轮推荐 3 道菜，提供选择感</li><li>卡片横向浏览，适合 PAD 演示</li><li>高风险操作提醒家长陪同</li></ul>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/10-recipe-carousel.png" alt="Recipe Carousel" /><figcaption class="caption">10 Recipe Carousel</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-cooking.png" alt="小墨菲Recipe Carousel" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Recipe Agent</small></div><div class="page-no">10</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">11</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">RECIPE DETAIL</p>
+          <h2>菜谱详情<br /><span class="gradient-word">Ingredients</span></h2>
+          <p class="body-copy">菜谱卡内直接展示配料清单、用量、风险提醒、收藏按钮和获取步骤按钮，不跳转页面路由。</p>
+          <div class="small-labels"><span>配料用量</span><span>风险提醒</span><span>获取步骤</span></div>
+        </div>
+        <figure class="shot single compact"><img src="demo-assets/manual/11-recipe-card-detail.png" alt="Recipe Detail" /><figcaption class="caption">11 Recipe Detail</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-cooking.png" alt="小墨菲Recipe Detail" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Recipe Detail</small></div><div class="page-no">11</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">12</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">STEP LOADING</p>
+          <h2>获取步骤<br /><span class="gradient-word">On Demand</span></h2>
+          <p class="body-copy">烹饪步骤不自动生成，用户点击按钮后按需请求，降低首屏等待并保留失败重试能力。</p>
+          <div class="small-labels"><span>按需生成</span><span>失败重试</span><span>缓存复访</span></div>
+        </div>
+        <figure class="shot single tall-view"><img src="demo-assets/manual/12-cooking-step-loading.png" alt="Step Loading" /><figcaption class="caption">12 Step Loading</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-safety.png" alt="小墨菲Step Loading" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Step Loading</small></div><div class="page-no">12</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">13</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">COOKING STEPS</p>
+          <h2>详细步骤<br /><span class="gradient-word">Cooking Steps</span></h2>
+          <p class="body-copy">步骤说明食材何时加入、如何处理；仅在明火、高温、热油、蒸煮等高风险环节提示家长陪同。</p>
+          <ul class="bullets"><li>孩子可参与清洗、搅拌、观察和摆盘</li><li>每一步支持语音朗读和中途打断</li><li>步骤与菜名、食材清单保持一致</li></ul>
+        </div>
+        <figure class="shot single tall-view"><img src="demo-assets/manual/13-cooking-steps.png" alt="Cooking Steps" /><figcaption class="caption">13 Cooking Steps</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-safety.png" alt="小墨菲Cooking Steps" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Safe Cooking</small></div><div class="page-no">13</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">14</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">VOICE READING</p>
+          <h2>语音朗读<br /><span class="gradient-word">Audio</span></h2>
+          <p class="body-copy">智能体返回的文本、菜名、配料、营养摘要和烹饪步骤均可点击播放朗读。</p>
+          <div class="small-labels"><span>中文朗读</span><span>英文朗读</span><span>再次点击停止</span></div>
+        </div>
+        <figure class="shot single tall-view"><img src="demo-assets/manual/14-audio-reading.png" alt="Voice Reading" /><figcaption class="caption">14 Voice Reading</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-explaining.png" alt="小墨菲Voice Reading" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Voice Reading</small></div><div class="page-no">14</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">15</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">LITERACY DRAWER</p>
+          <h2>菜名识字<br /><span class="gradient-word">Literacy</span></h2>
+          <p class="body-copy">点击中文菜名后打开识字抽屉，展示单字、拼音、笔画数、文字结构和儿童化说明。</p>
+          <div class="small-labels"><span>拼音带调号</span><span>笔画结构</span><span>关闭即停止朗读</span></div>
+        </div>
+        <figure class="shot single tall-view"><img src="demo-assets/manual/15-literacy-drawer.png" alt="Literacy Drawer" /><figcaption class="caption">15 Literacy Drawer</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-explaining.png" alt="小墨菲Literacy Drawer" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Literacy Drawer</small></div><div class="page-no">15</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">16</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">VIDEO SLOT</p>
+          <h2>视频卡槽<br /><span class="gradient-word">Placeholder</span></h2>
+          <p class="body-copy">菜谱卡保留 Seedance 2.0 烹饪视频卡槽。未命中视频资源时展示制作中或占位状态。</p>
+          <div class="small-labels"><span>固定卡槽</span><span>资源匹配</span><span>审核后展示</span></div>
+        </div>
+        <figure class="shot single tall-view"><img src="demo-assets/manual/16-video-slot-empty.png" alt="Video Slot Empty" /><figcaption class="caption">16 Video Slot Empty</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-video.png" alt="小墨菲Video Slot Empty" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Video Slot</small></div><div class="page-no">16</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">17</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">COOKING VIDEO</p>
+          <h2>烹饪步骤<br /><span class="gradient-word">Video Effect</span></h2>
+          <p class="body-copy">命中已审核视频资源后，菜谱卡展示封面、播放按钮和时长，重点呈现儿童友好的卡通烹饪步骤视频效果。</p>
+          <ul class="bullets"><li>Seedance 2.0 离线生成</li><li>画面与步骤字幕对应</li><li>温暖、阳光、健康的儿童观看风格</li></ul>
+        </div>
+        <figure class="shot single video-focus"><img src="demo-assets/manual/17-video-slot-playable.png" alt="Cooking Step Video" /><figcaption class="caption">17 Cooking Step Video</figcaption></figure>
+        <div class="holo"></div>
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-video.png" alt="小墨菲Cooking Step Video" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Seedance Video</small></div><div class="page-no">17</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">18</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">FAVORITE FEEDBACK</p>
+          <h2>收藏成功<br /><span class="gradient-word">Confetti</span></h2>
+          <p class="body-copy">点击收藏后展示彩带屑反馈，强化孩子完成任务后的成就感。</p>
+          <div class="small-labels"><span>彩带屑动效</span><span>收藏状态</span><span>正反馈</span></div>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/18-favorite-success.png" alt="Favorite Success" /><figcaption class="caption">18 Favorite Success</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-star.png" alt="小墨菲Favorite Success" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Favorite Feedback</small></div><div class="page-no">18</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">19</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">FAVORITES</p>
+          <h2>收藏列表<br /><span class="gradient-word">Revisit</span></h2>
+          <p class="body-copy">收藏侧栏集中展示已收藏菜谱，点击后可定位回原对话中的菜谱卡片。</p>
+          <div class="small-labels"><span>收藏复访</span><span>定位原卡片</span><span>本地保存</span></div>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/19-favorite-sidebar.png" alt="Favorite Sidebar" /><figcaption class="caption">19 Favorite Sidebar</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-star.png" alt="小墨菲Favorite Sidebar" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>Favorites</small></div><div class="page-no">19</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">20</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">HISTORY</p>
+          <h2>历史对话<br /><span class="gradient-word">Memory</span></h2>
+          <p class="body-copy">历史对话保存在浏览器本地，支持切换、恢复和删除，适合多轮家庭烹饪讨论。</p>
+          <div class="small-labels"><span>多轮对话</span><span>历史恢复</span><span>支持删除</span></div>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/20-history-sidebar.png" alt="History Sidebar" /><figcaption class="caption">20 History Sidebar</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-thinking.png" alt="小墨菲History Sidebar" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>History</small></div><div class="page-no">20</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">21</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">ENGLISH HOME</p>
+          <h2>英文模式<br /><span class="gradient-word">Home</span></h2>
+          <p class="body-copy">切换英文后，首页静态文本、按钮和提示语同步切换，保持同一套交互能力。</p>
+          <div class="small-labels"><span>English UI</span><span>Bilingual Switch</span><span>Learning Mode</span></div>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/en-01-chat-home..png" alt="English Home" /><figcaption class="caption">21 English Home</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-english.png" alt="小墨菲English Home" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>English Home</small></div><div class="page-no">21</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">22</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">ENGLISH RECIPE</p>
+          <h2>英文菜谱<br /><span class="gradient-word">Recipe Card</span></h2>
+          <p class="body-copy">英文模式下菜谱名称、营养说明、安全提醒和读音辅助均跟随语言状态输出。</p>
+          <div class="small-labels"><span>English Recipe</span><span>Syllable Help</span><span>Voice Reading</span></div>
+        </div>
+        <figure class="shot single"><img src="demo-assets/manual/en-04-recipe-card.png" alt="English Recipe" /><figcaption class="caption">22 English Recipe</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-english.png" alt="小墨菲English Recipe" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>English Recipe</small></div><div class="page-no">22</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">23</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s2"></i><i class="star s4"></i></div>
+        <div class="content">
+          <p class="kicker">ENGLISH STEPS</p>
+          <h2>英文步骤<br /><span class="gradient-word">Cooking Steps</span></h2>
+          <p class="body-copy">烹饪步骤同样输出英文内容，方便孩子在厨房任务中学习英语表达。</p>
+          <div class="small-labels"><span>English Steps</span><span>Task Learning</span><span>Audio Ready</span></div>
+        </div>
+        <figure class="shot single tall-view"><img src="demo-assets/manual/en-05-cooking-steps.png" alt="English Steps" /><figcaption class="caption">23 English Steps</figcaption></figure>
+        
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-english.png" alt="小墨菲English Steps" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>English Steps</small></div><div class="page-no">23</div></div>
+      </section>
+
+      <section class="slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">24</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s3"></i></div>
+        <div class="content">
+          <p class="kicker">AI CREATIVE PRACTICE</p>
+          <h2>不是问答，<br /><span class="gradient-word">是智能体</span></h2>
+          <p class="body-copy">Murphy’s Cookbook 将大模型从“回答问题”扩展为能感知输入、理解约束、生成方案、校验一致性、辅助执行和生成多媒体学习素材的生活智能体。</p>
+          <ul class="bullets"><li>ModelRouter 按任务选择模型，降低等待</li><li>提示词收敛，控制无效字段和推理成本</li><li>本地缓存与失败重试保证演示可恢复</li></ul>
+        </div>
+        <figure class="shot single tall-view"><img src="demo-assets/manual/21-error-retry.png" alt="Reliable AI Workflow" /><figcaption class="caption">24 Reliable AI Workflow</figcaption></figure>
+        <div class="neon-card card-a"></div><div class="holo"></div>
+        <div class="table-glow"></div>
+        <img class="murphy" src="demo-assets/murphy-3d/murphy-3d-welcome.png" alt="小墨菲Reliable AI Workflow" />
+        <div class="bottom-meta"><div class="team">Team Murphy<small>AI Creative Practice</small></div><div class="page-no">24</div></div>
+      </section>
+
+      <section class="slide team-slide">
+        <div class="top-meta"><div class="meta-left"><div class="section-badge">25</div><div class="meta-title">PRODUCT PRESENTATION</div></div><div class="year">2026</div></div>
+        <div class="sparkles"><i class="star s1"></i><i class="star s2"></i><i class="star s3"></i><i class="star s4"></i></div>
+        <div class="team-intro">
+          <h2>Murphy <span class="gradient-word">Cookbook</span></h2>
+          <p>An AI cooking companion for child-friendly recipes, nutrition learning, bilingual reading, and safe family cooking.</p>
+        </div>
+        <div class="member-grid">
+          <article class="member-card">
+            <div class="member-avatar"><img src="../design-image/murphy-avatar.png" alt="Murphy" /></div>
+            <div>
+              <h3>Murphy</h3>
+              <p class="member-role">Creative Designer</p>
+              <p>Shapes the product idea from a kid's point of view.</p>
+            </div>
+            <a class="member-link" href="https://github.com/yuzili333/murphy-cookbook" target="_blank" rel="noreferrer"><span class="github-mark"></span><span>yuzili333/murphy-cookbook</span></a>
+          </article>
+          <article class="member-card">
+            <div class="member-avatar"><img src="../video-design/roles/dad-avatar.png" alt="yuzili333" /></div>
+            <div>
+              <h3>yuzili333</h3>
+              <p class="member-role">Creative Developer</p>
+              <p>Builds the AI workflow, frontend, prompts, and demo.</p>
+            </div>
+            <a class="member-link" href="https://github.com/yuzili333/murphy-cookbook" target="_blank" rel="noreferrer"><span class="github-mark"></span><span>yuzili333/murphy-cookbook</span></a>
+          </article>
+          <article class="member-card">
+            <div class="member-avatar"><img src="../video-design/roles/mom-avatar.png" alt="Cissy" /></div>
+            <div>
+              <h3>Cissy</h3>
+              <p class="member-role">Product Experience Officer</p>
+              <p>Reviews family experience, safety, wording, and flow.</p>
+            </div>
+            <a class="member-link" href="https://github.com/yuzili333/murphy-cookbook" target="_blank" rel="noreferrer"><span class="github-mark"></span><span>yuzili333/murphy-cookbook</span></a>
+          </article>
+        </div>
+        <div class="table-glow"></div>
       </section>
     </main>
-
-    <footer id="value" class="footer">
-      <div class="page">
-        <h2>让 AI 成为亲子厨房里的学习伙伴</h2>
-        <p>
-          Murphy's Cookbook 把大模型能力落到真实生活任务中：让孩子学会识别食材、理解营养、
-          练习双语读音、观察烹饪过程，并在家长陪同下参与劳动实践。
-          这是一套可演示、可扩展、可审核的儿童菜谱智能体方案。
-        </p>
-      </div>
-    </footer>
   </body>
 </html>

@@ -540,7 +540,7 @@ test('understandIngredientsFromImage posts image message and returns model conte
 
   assert.equal(content, '{"ingredients":[{"name":"番茄","quantity":"1份"}]}');
   assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3-VL-8B-Instruct');
-  assert.equal(requestBodies[0]?.enable_thinking, false);
+  assert.equal(Object.prototype.hasOwnProperty.call(requestBodies[0] ?? {}, 'enable_thinking'), false);
   assert.equal(requestBodies[0]?.max_tokens, 360);
 
   global.fetch = originalFetch;

@@ -3,7 +3,7 @@ import { SvgIcon } from './SvgIcon';
 import chatHistorySvg from '../assets/chat-history.svg?raw';
 import favoriteSvg from '../assets/favorite.svg?raw';
 
-const murphyAvatarImage = new URL('../../../../design-image/murphy-avatar.png', import.meta.url).href;
+const murphyAvatarImage = '/murphy-avatar.png';
 
 interface AppShellProps {
   onOpenConversations?: () => void;

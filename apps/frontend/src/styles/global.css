@@ -5389,6 +5389,12 @@ button {
   align-items: center;
 }
 
+.chat-loading-message {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .loading-icon {
   width: 20px;
   height: 20px;
@@ -5845,6 +5851,9 @@ button {
 .name-audio-button:hover {
   color: var(--accent);
 }
+.name-audio-button:focus-visible {
+  appearance:unset;
+}
 
 .detail-chinese-name {
   font-size: clamp(1.55rem, 5vw, 2.8rem);
@@ -6040,16 +6049,6 @@ button {
   border: 1px dashed rgba(22, 49, 58, 0.2);
 }
 
-.error-banner {
-  background: var(--error);
-  border-color: rgba(214, 99, 57, 0.25);
-}
-
-.error-banner p {
-  margin: 0;
-}
-
-
 .toast-banner {
   position: fixed;
   top: 82px;
@@ -6185,10 +6184,6 @@ button {
 
 .video-config-alert.success {
   background: #dceeb1;
-}
-
-.video-config-alert.error {
-  background: #efd4d4;
 }
 
 .video-config-toolbar {
@@ -7126,6 +7121,10 @@ button {
   border: 1px solid #e6e6e6;
   background: #ffffff;
   color: #000000;
+}
+
+.secondary-button {
+  border-radius: 8px;
 }
 
 .toast-banner {

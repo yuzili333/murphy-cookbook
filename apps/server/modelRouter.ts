@@ -25,6 +25,7 @@ export interface ModelRoute {
   maxTokens: number;
   temperature: number;
   enableThinking: boolean;
+  supportsEnableThinkingParameter?: boolean;
   stream: boolean;
 }
 
@@ -147,6 +148,7 @@ export class ModelRouter {
         maxTokens: 360,
         temperature: 0,
         enableThinking: false,
+        supportsEnableThinkingParameter: false,
         stream: false,
       };
     }

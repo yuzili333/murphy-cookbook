@@ -60,10 +60,7 @@ export function applyStreamEvent(nodes: MessageNode[], event: StreamEvent): Mess
   }
 
   if (event.type === 'error') {
-    return [
-      ...nodes,
-      { id: event.id ?? `error_${crypto.randomUUID()}`, type: 'text' as const, content: event.message },
-    ];
+    return nodes;
   }
 
   return nodes;

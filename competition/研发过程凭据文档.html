@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Murphy's Cookbook 研发过程凭据文档</title>
+  <style>
+    :root {
+      --ink: #17222a;
+      --muted: #5d6b73;
+      --line: #d8e0df;
+      --paper: #fffdf7;
+      --soft: #f4f8ef;
+      --accent: #ff7a1a;
+      --green: #7bc043;
+      --blue: #2b7a78;
+      --danger: #b84a3a;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #eef3ee;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.62;
+    }
+
+    .page {
+      width: min(1120px, calc(100% - 32px));
+      margin: 24px auto;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      box-shadow: 0 18px 50px rgba(23, 34, 42, 0.12);
+    }
+
+    header.cover {
+      min-height: 760px;
+      padding: 72px 72px 48px;
+      display: grid;
+      align-content: space-between;
+      background:
+        linear-gradient(135deg, rgba(255,122,26,0.14), rgba(123,192,67,0.16)),
+        var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 820px;
+      font-size: 52px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0 0 18px;
+      padding-top: 10px;
+      font-size: 28px;
+      line-height: 1.2;
+      border-top: 3px solid var(--green);
+    }
+
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 19px;
+    }
+
+    p { margin: 8px 0; }
+    a { color: var(--blue); }
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: rgba(43, 122, 120, 0.09);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .cover-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      max-width: 780px;
+      margin-top: 36px;
+    }
+
+    .meta-card,
+    .callout,
+    .evidence-card,
+    .placeholder {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.72);
+    }
+
+    .meta-card { padding: 14px 16px; }
+    .meta-card strong {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    main { padding: 46px 72px 72px; }
+    section { margin: 0 0 46px; break-inside: avoid; }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .toc li {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      font-weight: 700;
+    }
+
+    .callout {
+      padding: 16px 18px;
+      background: #fff7ec;
+      border-color: rgba(255, 122, 26, 0.32);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 20px;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    th, td {
+      padding: 10px 11px;
+      vertical-align: top;
+      border: 1px solid var(--line);
+      text-align: left;
+    }
+
+    th {
+      background: #e9f4e4;
+      color: #1f4b31;
+      font-weight: 800;
+    }
+
+    .timeline td:first-child,
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+    }
+
+    .badge {
+      display: inline-block;
+      margin: 0 6px 6px 0;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #e9f4e4;
+      color: #255832;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    figure {
+      margin: 0;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: hidden;
+      background: #fff;
+      break-inside: avoid;
+    }
+
+    figure img {
+      display: block;
+      width: 100%;
+      height: 260px;
+      object-fit: contain;
+      background: #f7faf7;
+      border-bottom: 1px solid var(--line);
+    }
+
+    figcaption {
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    figcaption strong {
+      display: block;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .placeholder {
+      padding: 14px 16px;
+      background: repeating-linear-gradient(135deg, #fff, #fff 12px, #f6f1e9 12px, #f6f1e9 24px);
+      color: var(--muted);
+    }
+
+    .quote {
+      margin: 10px 0;
+      padding: 12px 14px;
+      border-left: 4px solid var(--accent);
+      background: #fffaf2;
+    }
+
+    .source-list li { margin: 8px 0; }
+    .redact { color: var(--danger); font-weight: 800; }
+    .small { color: var(--muted); font-size: 13px; }
+
+    @page {
+      size: A4;
+      margin: 14mm 12mm 16mm;
+    }
+
+    @media print {
+      body { background: #fff; }
+      .page {
+        width: 100%;
+        margin: 0;
+        border: 0;
+        box-shadow: none;
+      }
+      header.cover {
+        min-height: 250mm;
+        padding: 28mm 18mm 18mm;
+      }
+      main { padding: 16mm 18mm 20mm; }
+      section { break-inside: avoid; }
+      a { color: inherit; text-decoration: none; }
+      figure img { height: 78mm; }
+    }
+  </style>
+</head>
+<body>
+  <article class="page">
+    <header class="cover">
+      <div>
+        <p class="eyebrow">Process Evidence Report</p>
+        <h1>Murphy's Cookbook<br />研发过程凭据文档</h1>
+        <p style="max-width: 760px; font-size: 18px; color: var(--muted); margin-top: 22px;">
+          面向赛事组委会提交的过程性证明材料。本文档以 Codex Vibe Coding 记录、Git 秒级提交历史、项目文档、测试验证记录和产品截图为证据链，用于证明参赛产品 Murphy's Cookbook 的独立研发过程与原创功能演进。
+        </p>
+      </div>
+      <div class="cover-meta">
+        <div class="meta-card"><strong>项目名称</strong>Murphy's Cookbook 儿童菜谱智能体</div>
+        <div class="meta-card"><strong>文档类型</strong>HTML 审核稿，可由同一文件导出 PDF</div>
+        <div class="meta-card"><strong>生成时间</strong>2026-06-20 16:55:00 +08:00</div>
+        <div class="meta-card"><strong>时间标准</strong>北京时间，精确到秒</div>
+        <div class="meta-card"><strong>证据粒度</strong>关键摘录 + 原始日志路径 + SHA-256</div>
+        <div class="meta-card"><strong>脱敏规则</strong>隐藏密钥、认证值、账号隐私和无关系统提示</div>
+      </div>
+    </header>
+
+    <main>
+      <section id="toc">
+        <h2>目录</h2>
+        <ol class="toc">
+          <li>1. 证据来源</li>
+          <li>2. 研发过程秒级时间线</li>
+          <li>3. Codex Vibe Coding 关键摘录</li>
+          <li>4. 产品独立性与原创性事实证据</li>
+          <li>5. 过程图片辅证清单</li>
+          <li>6. 附录：原始记录与提交清单</li>
+        </ol>
+      </section>
+
+      <section id="sources">
+        <h2>1. 证据来源</h2>
+        <div class="callout">
+          <strong>文档定位：</strong>本文件为参赛产品独立性与原创性过程凭据。证据由“Codex 对话日志 + Git 提交历史 + 测试/构建记录 + 产品运行截图 + 参赛文档”组成，分别对应需求提出、研发实现、验证测试和成果展示。
+        </div>
+        <table>
+          <thead>
+            <tr><th>证据类型</th><th>来源</th><th>证明点</th><th>处理方式</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Codex Vibe Coding 记录</td>
+              <td class="mono">~/.codex/sessions/2026/**/*.jsonl</td>
+              <td>用户任务、Codex 分析、工具调用、补丁结果、测试命令与输出时间</td>
+              <td>仅摘录关键消息；长系统提示和隐私信息不进入正文</td>
+            </tr>
+            <tr>
+              <td>Git 提交记录</td>
+              <td class="mono">git log --date=iso-strict</td>
+              <td>研发持续性、功能演进、修复与测试节点</td>
+              <td>保留提交哈希、秒级时间、提交说明</td>
+            </tr>
+            <tr>
+              <td>项目文档</td>
+              <td class="mono">frontend-prd.md、brd.md、backend-api-list.md、competition/*.md</td>
+              <td>需求分析、功能范围、接口设计、参赛材料和人机分工</td>
+              <td>引用文档名与关键结论，不重复全文</td>
+            </tr>
+            <tr>
+              <td>测试和构建记录</td>
+              <td>Codex 工具调用输出、终端截图</td>
+              <td>服务端 API 测试、前端构建、类型检查通过</td>
+              <td>正文列测试命令与结论；建议补终端截图</td>
+            </tr>
+            <tr>
+              <td>产品截图</td>
+              <td class="mono">competition/demo-assets/manual/</td>
+              <td>功能完成度、交互闭环、移动端演示效果</td>
+              <td>正文直接插入可用截图并编号</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="timeline">
+        <h2>2. 研发过程秒级时间线</h2>
+        <table class="timeline">
+          <thead>
+            <tr><th>时间（北京时间）</th><th>阶段</th><th>任务与证据</th><th>产出/验证</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>2026-04-23 09:55:16 +08:00</td>
+              <td>项目初始化</td>
+              <td>Git 提交 <code>b5dc747</code>：first commit。</td>
+              <td>建立项目版本链起点。</td>
+            </tr>
+            <tr>
+              <td>2026-04-23 17:36:45 +08:00</td>
+              <td>部署流程</td>
+              <td>Git 提交 <code>ae6ffb4</code>：新增 GitHub CI/CD 与 Netlify 部署。</td>
+              <td>形成自动化部署与工程化基础。</td>
+            </tr>
+            <tr>
+              <td>2026-04-24 19:28:50 +08:00</td>
+              <td>缓存与图片预览</td>
+              <td>Git 提交 <code>aac2bbc</code>：本地食谱缓存与图片预览优化。</td>
+              <td>完成食谱复访和上传图片展示基础。</td>
+            </tr>
+            <tr>
+              <td>2026-04-27 23:01:05 +08:00</td>
+              <td>菜名识字</td>
+              <td>Git 提交 <code>c165eb6</code>：新增菜谱识字功能。</td>
+              <td>中文菜名、拼音、笔画和结构说明进入产品功能链。</td>
+            </tr>
+            <tr>
+              <td>2026-05-03 09:10:28 +08:00</td>
+              <td>缓存与食材卡</td>
+              <td>Git 提交 <code>723a397</code>：食谱详情缓存与识别食材卡片。</td>
+              <td>支持刷新后复访和食材确认。</td>
+            </tr>
+            <tr>
+              <td>2026-05-03 20:50:24 +08:00</td>
+              <td>移动端输入修复</td>
+              <td>Git 提交 <code>88263d2</code>：修复移动端获取用户语音输入和文字输入失败。</td>
+              <td>验证移动端核心输入通道可用。</td>
+            </tr>
+            <tr>
+              <td>2026-05-14 21:56:47 +08:00</td>
+              <td>识别模型优化</td>
+              <td>Git 提交 <code>aa74373</code>：优化图片识别与文本识别区分模型及滚动容器。</td>
+              <td>区分多模态识别和文本推荐调用路径。</td>
+            </tr>
+            <tr>
+              <td>2026-05-25 16:51:41 +08:00</td>
+              <td>菜谱库扩展</td>
+              <td>Git 提交 <code>b79bfe3</code>：推荐菜谱大模型接口优化，本地新增家常 500 道菜谱。</td>
+              <td>扩展推荐候选集和离线兜底能力。</td>
+            </tr>
+            <tr>
+              <td>2026-05-25 23:40:47 +08:00</td>
+              <td>流式输出</td>
+              <td>Git 提交 <code>c17f3b4</code>：更新流式输出与提示词优化。</td>
+              <td>提升等待过程可见性和模型输出稳定性。</td>
+            </tr>
+            <tr>
+              <td>2026-05-27 22:56:42 +08:00</td>
+              <td>双语与拼音</td>
+              <td>Git 提交 <code>fae389e</code>：新增中/英双语切换模型与拼音切换模式。</td>
+              <td>满足儿童识字与英语读音学习场景。</td>
+            </tr>
+            <tr>
+              <td>2026-05-29 21:48:11 +08:00</td>
+              <td>食材小百科</td>
+              <td>Git 提交 <code>40f7518</code>：新增食材加入列表时的跳动引导并修复食材营养接口。</td>
+              <td>强化食材科普入口。</td>
+            </tr>
+            <tr>
+              <td>2026-05-29 21:54:05 +08:00</td>
+              <td>开屏动画设计</td>
+              <td>Codex 会话要求基于设计稿图片和视觉规范设计手机端/PAD 端开屏动画页。</td>
+              <td>形成市场、蔬果、亲子、学校劳动课等原创视觉方向。</td>
+            </tr>
+            <tr>
+              <td>2026-05-30 21:48:15 +08:00</td>
+              <td>开屏功能落地</td>
+              <td>Git 提交 <code>860b83e</code>：新增开屏页功能。</td>
+              <td>完成产品第一屏、语言切换联动和移动端适配。</td>
+            </tr>
+            <tr>
+              <td>2026-06-03 23:50:24 +08:00</td>
+              <td>AI 视频素材</td>
+              <td>Git 提交 <code>0bb7f32</code>：新增 AI 视频素材与分镜脚本。</td>
+              <td>沉淀视频生成素材和分镜文案。</td>
+            </tr>
+            <tr>
+              <td>2026-06-06 16:00:38 +08:00</td>
+              <td>视频配置</td>
+              <td>Git 提交 <code>8d013c8</code>：新增菜谱视频配置查询、新增、编辑、删除。</td>
+              <td>支持 Seedance 2.0 审核视频登记和前端匹配。</td>
+            </tr>
+            <tr>
+              <td>2026-06-15 22:44:11 +08:00</td>
+              <td>参赛材料补充</td>
+              <td>Codex 会话要求补充人机协同分工和 3 个技术难点。</td>
+              <td>补充到报名资料，明确人工审核与 Codex 辅助边界。</td>
+            </tr>
+            <tr>
+              <td>2026-06-16 20:10:10 +08:00</td>
+              <td>视频功能优化</td>
+              <td>Git 提交 <code>f577048</code>：优化菜谱视频功能。</td>
+              <td>完善菜谱详情内视频播放和素材匹配体验。</td>
+            </tr>
+            <tr>
+              <td>2026-06-18 17:31:16 +08:00</td>
+              <td>前端布局整理</td>
+              <td>Git 提交 <code>09367c6</code>：优化前端布局与 svg 资源，清理无效代码。</td>
+              <td>完成提交前的界面和资源清理。</td>
+            </tr>
+            <tr>
+              <td>2026-06-19 16:36:36 +08:00</td>
+              <td>缺陷修复</td>
+              <td>Codex 会话定位多模态模型不支持额外推理参数，并要求错误统一 Toast。</td>
+              <td>服务端请求体、前端错误流、测试断言同步调整；构建和 API 测试通过。</td>
+            </tr>
+            <tr>
+              <td>2026-06-20 08:26:50 +08:00</td>
+              <td>PRD/BRD 同步</td>
+              <td>Codex 会话审核 PRD 与当前版本功能，生成 BRD。</td>
+              <td>形成产品需求、业务目标和验收依据。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="codex">
+        <h2>3. Codex Vibe Coding 关键摘录</h2>
+        <p>以下为脱敏摘录，保留秒级时间、任务意图、Codex 动作和结果。摘录覆盖功能需求、编码实现、视觉调试、构建测试、缺陷修复和参赛文档整理。原始 JSONL 记录路径及 SHA-256 见附录。</p>
+        <table>
+          <thead><tr><th>序号</th><th>时间</th><th>角色</th><th>对话/动作摘录</th><th>对应事实</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td class="mono">2026-04-27 22:18:24 +08:00</td>
+              <td>用户</td>
+              <td>提出菜谱中文名、英文名均需可点击朗读，并要求中文名补充笔画和结构说明。</td>
+              <td>儿童识字与双语学习需求由人工提出。</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td class="mono">2026-04-27 22:18:32 +08:00</td>
+              <td>Codex 工具</td>
+              <td>读取 <code>frontend-prd.md</code>，确认需求文档中的菜谱卡片和学习字段位置。</td>
+              <td>实现前审阅既有产品需求。</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td class="mono">2026-04-27 22:19:41 +08:00</td>
+              <td>Codex</td>
+              <td>确定字段方案：保留 <code>name</code>，新增 <code>englishName</code> 和 <code>nameLearning.characters</code>，朗读使用 Web Speech API。</td>
+              <td>形成数据结构和前端朗读方案。</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td class="mono">2026-04-27 22:21:54 +08:00</td>
+              <td>Codex 工具</td>
+              <td>运行 <code>pnpm --filter @murphy-cookbook/frontend build</code>。</td>
+              <td>识字功能相关前端变更通过构建。</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td class="mono">2026-04-27 22:21:55 +08:00</td>
+              <td>Codex 工具</td>
+              <td>运行 <code>pnpm --filter @murphy-cookbook/server test:api</code>。</td>
+              <td>服务端 API 回归测试参与验证。</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td class="mono">2026-04-27 22:31:58 +08:00</td>
+              <td>用户</td>
+              <td>要求识字学习不默认展开，改为点击菜名后展示侧边抽屉，关闭抽屉时停止朗读，拼音使用带声调格式。</td>
+              <td>人工继续细化交互与儿童阅读体验。</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td class="mono">2026-05-29 21:54:05 +08:00</td>
+              <td>用户</td>
+              <td>要求参考 <code>en.png</code>、<code>cn.png</code> 和视觉规范生成开屏动画页，适配手机和 PAD。</td>
+              <td>开屏视觉需求由人工提出。</td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td class="mono">2026-05-29 21:54:19 +08:00</td>
+              <td>Codex</td>
+              <td>识别设计规范为黑白编辑风、手作彩色纸块和市场食材场景，准备使用贴纸与背板层次。</td>
+              <td>将视觉参考转译为前端实现策略。</td>
+            </tr>
+            <tr>
+              <td>9</td>
+              <td class="mono">2026-05-29 21:57:56 +08:00</td>
+              <td>Codex 工具</td>
+              <td>运行 <code>pnpm --filter @murphy-cookbook/frontend build</code>。</td>
+              <td>开屏页首轮实现通过构建。</td>
+            </tr>
+            <tr>
+              <td>10</td>
+              <td class="mono">2026-05-29 22:11:17 +08:00</td>
+              <td>Codex</td>
+              <td>根据截图发现透明度问题，移除整页淡入导致的内容不可见风险。</td>
+              <td>使用截图反馈修正视觉缺陷。</td>
+            </tr>
+            <tr>
+              <td>11</td>
+              <td class="mono">2026-05-29 23:07:14 +08:00</td>
+              <td>用户</td>
+              <td>要求进一步加入亲子市场、学校烹饪劳动课等场景元素，并与中英文切换同步。</td>
+              <td>原创场景叙事和双语联动由人工确认。</td>
+            </tr>
+            <tr>
+              <td>12</td>
+              <td class="mono">2026-05-29 23:09:24 +08:00</td>
+              <td>Codex 工具</td>
+              <td>运行前端构建验证开屏场景调整。</td>
+              <td>开屏场景优化完成构建验证。</td>
+            </tr>
+            <tr>
+              <td>13</td>
+              <td class="mono">2026-06-15 22:44:11 +08:00</td>
+              <td>用户</td>
+              <td>要求在报名资料中补充“人机协同分工说明”和“3 个研发技术难点与解决思路”。</td>
+              <td>参赛材料补充需求由人工提出。</td>
+            </tr>
+            <tr>
+              <td>14</td>
+              <td class="mono">2026-06-15 22:44:26 +08:00</td>
+              <td>Codex</td>
+              <td>先读取既有报名资料结构，并搜索“人机、协同、技术难点、研发”等关键词。</td>
+              <td>文档修改前进行上下文审阅。</td>
+            </tr>
+            <tr>
+              <td>15</td>
+              <td class="mono">2026-06-15 22:44:50 +08:00</td>
+              <td>Codex 工具</td>
+              <td>补丁写入 <code>competition/嘉祥AI创意大赛参赛报名资料.md</code>。</td>
+              <td>参赛报名资料形成可追溯修改。</td>
+            </tr>
+            <tr>
+              <td>16</td>
+              <td class="mono">2026-06-19 16:36:36 +08:00</td>
+              <td>用户</td>
+              <td>反馈图片识别调用大模型时报错，并要求应用类错误统一 Toast 展示，不进入 chatbox。</td>
+              <td>测试阶段发现多模态请求和错误展示问题。</td>
+            </tr>
+            <tr>
+              <td>17</td>
+              <td class="mono">2026-06-19 16:36:43 +08:00</td>
+              <td>Codex</td>
+              <td>搜索模型请求、Toast、chatbox 和 error 路径。</td>
+              <td>定位服务端请求体和前端错误分支。</td>
+            </tr>
+            <tr>
+              <td>18</td>
+              <td class="mono">2026-06-19 16:37:34 +08:00</td>
+              <td>Codex</td>
+              <td>确认开始改文件：服务端局限于模型路由和请求组装，前端迁移到统一 Toast。</td>
+              <td>修复范围覆盖服务端和前端。</td>
+            </tr>
+            <tr>
+              <td>19</td>
+              <td class="mono">2026-06-19 16:39:54 +08:00</td>
+              <td>Codex 工具</td>
+              <td>运行 <code>pnpm --filter @murphy-cookbook/server test:api</code> 和 <code>pnpm --filter @murphy-cookbook/frontend build</code>。</td>
+              <td>修复后通过 API 测试和前端构建。</td>
+            </tr>
+            <tr>
+              <td>20</td>
+              <td class="mono">2026-06-20 08:26:50 +08:00</td>
+              <td>用户</td>
+              <td>要求审核 <code>frontend-prd.md</code> 与当前版本功能是否一致，并生成 BRD。</td>
+              <td>PRD/BRD 与当前产品版本进行一致性整理。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="independence">
+        <h2>4. 产品独立性与原创性事实证据</h2>
+        <table>
+          <thead><tr><th>事实项</th><th>证据材料</th><th>对应结论</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>产品主题与场景持续一致</td>
+              <td>PRD、BRD、报名资料、产品截图</td>
+              <td>项目围绕“儿童菜谱智能体”持续迭代，核心场景为儿童识食材、学菜名、看步骤、亲子烹饪。</td>
+            </tr>
+            <tr>
+              <td>研发过程有连续版本记录</td>
+              <td>Git commit 哈希、秒级提交时间、提交说明</td>
+              <td>从 2026-04-23 到 2026-06-18 连续提交，覆盖基础工程、功能开发、修复、视觉优化和材料整理。</td>
+            </tr>
+            <tr>
+              <td>原创功能围绕儿童学习展开</td>
+              <td>菜名识字抽屉、拼音/英文朗读、食材小百科、视频卡槽截图</td>
+              <td>产品不是通用菜谱列表，而是将食材识别、儿童识字、双语朗读和安全提示组合成专属体验。</td>
+            </tr>
+            <tr>
+              <td>关键缺陷经过定位和回归</td>
+              <td>2026-06-19 Codex 对话、服务端 API 测试、前端构建记录</td>
+              <td>多模态图片识别请求参数问题和错误 Toast 展示问题均有定位、修改和验证记录。</td>
+            </tr>
+            <tr>
+              <td>成果有可视化闭环</td>
+              <td>EV-01 至 EV-11 产品和报告截图</td>
+              <td>从首页输入、图片识别、食材确认、菜谱推荐、烹饪步骤、识字抽屉、视频播放到收藏/历史记录形成完整产品链路。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="images">
+        <h2>5. 过程图片辅证清单</h2>
+        <p>以下图片已在仓库中存在，可直接随 HTML/PDF 展示。</p>
+
+        <div class="grid">
+          <figure>
+            <img src="demo-assets/manual/02-chat-home.png" alt="Chatbox 首页截图" />
+            <figcaption><strong>EV-01 产品首页</strong>证明移动端 chatbox 主流程入口、吉祥物和输入栏已实现。来源：<code>competition/demo-assets/manual/02-chat-home.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/05-image-input.png" alt="图片输入截图" />
+            <figcaption><strong>EV-02 图片输入</strong>证明支持上传食材图片，并在 chatbox 中显示图片预览。来源：<code>competition/demo-assets/manual/05-image-input.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/07-ingredient-list.png" alt="食材清单截图" />
+            <figcaption><strong>EV-03 食材确认</strong>证明识别后先展示横向食材清单，不自动推荐。来源：<code>competition/demo-assets/manual/07-ingredient-list.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/08-ingredient-knowledge.png" alt="食材知识截图" />
+            <figcaption><strong>EV-04 食材小百科</strong>证明食材科普、营养价值和儿童趣味说明已实现。来源：<code>competition/demo-assets/manual/08-ingredient-knowledge.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/10-recipe-carousel.png" alt="菜谱走马灯截图" />
+            <figcaption><strong>EV-05 菜谱推荐</strong>证明菜谱卡横向走马灯、菜名、拼音、英文名和摘要展示。来源：<code>competition/demo-assets/manual/10-recipe-carousel.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/13-cooking-steps.png" alt="烹饪步骤截图" />
+            <figcaption><strong>EV-06 烹饪步骤</strong>证明卡片内步骤、提示和家长协助提醒。来源：<code>competition/demo-assets/manual/13-cooking-steps.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/15-literacy-drawer.png" alt="菜名识字截图" />
+            <figcaption><strong>EV-07 菜名识字</strong>证明中文菜名识字、拼音、笔画和结构说明。来源：<code>competition/demo-assets/manual/15-literacy-drawer.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/17-video-slot-playable.png" alt="烹饪视频截图" />
+            <figcaption><strong>EV-08 视频卡槽</strong>证明已审核视频资源可被菜谱卡片匹配播放。来源：<code>competition/demo-assets/manual/17-video-slot-playable.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/19-favorite-sidebar.png" alt="收藏侧栏截图" />
+            <figcaption><strong>EV-09 收藏记录</strong>证明收藏菜谱与侧栏复访能力。来源：<code>competition/demo-assets/manual/19-favorite-sidebar.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/manual/20-history-sidebar.png" alt="历史对话截图" />
+            <figcaption><strong>EV-10 历史记录</strong>证明历史对话本地保留和恢复能力。来源：<code>competition/demo-assets/manual/20-history-sidebar.png</code></figcaption>
+          </figure>
+          <figure>
+            <img src="demo-assets/report-preview.png" alt="报告预览截图" />
+            <figcaption><strong>EV-11 报告产物</strong>证明项目已有报告型交付物。来源：<code>competition/demo-assets/report-preview.png</code></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section id="appendix">
+        <h2>6. 附录：原始记录与提交清单</h2>
+        <h3>6.1 Codex 原始日志路径与 SHA-256</h3>
+        <ul class="source-list">
+          <li><code>~/.codex/sessions/2026/04/27/rollout-2026-04-27T22-14-16-019dcf4a-7394-7bf2-8cb5-ba3a1f9692e3.jsonl</code><br /><span class="mono">460869ef1eb2b6e758c891f3029b71cadd1a06277d4037242ee94e332e6a42eb</span></li>
+          <li><code>~/.codex/sessions/2026/05/29/rollout-2026-05-29T21-49-56-019e73ff-aebf-7cf1-87c8-1fd7e62ee0ec.jsonl</code><br /><span class="mono">453ea1038260877352ac5e93f9050ce82b09c82d86e1bdb53ab20606b2884b2a</span></li>
+          <li><code>~/.codex/sessions/2026/06/15/rollout-2026-06-15T22-42-22-019ecbbb-c9ad-7543-a415-60a247ae4b9f.jsonl</code><br /><span class="mono">78726278f558215160b3fb5d0cf984ad69af93a138498c116663ec321fd9cbb3</span></li>
+          <li><code>~/.codex/sessions/2026/06/19/rollout-2026-06-19T16-33-54-019edf03-e4f7-7412-8130-bf0097c6a908.jsonl</code><br /><span class="mono">6ce6dd394735829574b7896354636b44d3eeb0cc77716db03e28d9cdf89cfd0e</span></li>
+        </ul>
+
+        <h3>6.2 Git 提交摘录</h3>
+        <table>
+          <thead><tr><th>提交</th><th>时间</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">b5dc747</td><td class="mono">2026-04-23 09:55:16 +08:00</td><td>first commit</td></tr>
+            <tr><td class="mono">ae6ffb4</td><td class="mono">2026-04-23 17:36:45 +08:00</td><td>add github ci & cd, deploy by netlify</td></tr>
+            <tr><td class="mono">c165eb6</td><td class="mono">2026-04-27 23:01:05 +08:00</td><td>新增菜谱识字功能</td></tr>
+            <tr><td class="mono">723a397</td><td class="mono">2026-05-03 09:10:28 +08:00</td><td>食谱详情缓存 & 识别食材卡片</td></tr>
+            <tr><td class="mono">c17f3b4</td><td class="mono">2026-05-25 23:40:47 +08:00</td><td>更新流式输出 & 提示词优化</td></tr>
+            <tr><td class="mono">fae389e</td><td class="mono">2026-05-27 22:56:42 +08:00</td><td>新增中/英双语切换模型 & 拼音切换模式</td></tr>
+            <tr><td class="mono">860b83e</td><td class="mono">2026-05-30 21:48:15 +08:00</td><td>新增开屏页功能</td></tr>
+            <tr><td class="mono">8d013c8</td><td class="mono">2026-06-06 16:00:38 +08:00</td><td>新增菜谱视频配置查询、新增、编辑、删除的功能</td></tr>
+            <tr><td class="mono">7184077</td><td class="mono">2026-06-15 22:45:53 +08:00</td><td>更新参赛报名文档</td></tr>
+            <tr><td class="mono">09367c6</td><td class="mono">2026-06-18 17:31:16 +08:00</td><td>优化前端布局与 svg 资源，清理无效代码</td></tr>
+          </tbody>
+        </table>
+
+      </section>
+    </main>
+  </article>
+</body>
+</html>
