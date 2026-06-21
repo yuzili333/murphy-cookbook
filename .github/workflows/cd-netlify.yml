@@ -33,6 +33,7 @@ jobs:
       MONGODB_URI: ${{ secrets.MONGODB_URI }}
       MONGODB_DB_NAME: ${{ vars.MONGODB_DB_NAME || 'murphy_cookbook' }}
       RECIPE_VIDEO_MONGODB_COLLECTION: ${{ vars.RECIPE_VIDEO_MONGODB_COLLECTION || 'recipe_videos' }}
+      RECIPE_VIDEO_MONGODB_TLS: ${{ vars.RECIPE_VIDEO_MONGODB_TLS }}
 
     steps:
       - name: Checkout
@@ -81,6 +82,9 @@ jobs:
           pnpm --package netlify-cli dlx netlify env:set MONGODB_URI "$MONGODB_URI" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --secret --force --auth "$NETLIFY_AUTH_TOKEN"
           pnpm --package netlify-cli dlx netlify env:set MONGODB_DB_NAME "$MONGODB_DB_NAME" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --force --auth "$NETLIFY_AUTH_TOKEN"
           pnpm --package netlify-cli dlx netlify env:set RECIPE_VIDEO_MONGODB_COLLECTION "$RECIPE_VIDEO_MONGODB_COLLECTION" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --force --auth "$NETLIFY_AUTH_TOKEN"
+          if [ -n "$RECIPE_VIDEO_MONGODB_TLS" ]; then
+            pnpm --package netlify-cli dlx netlify env:set RECIPE_VIDEO_MONGODB_TLS "$RECIPE_VIDEO_MONGODB_TLS" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --force --auth "$NETLIFY_AUTH_TOKEN"
+          fi
 
       - name: Verify Netlify runtime env metadata
         run: |

@@ -5,6 +5,8 @@ import {
   deleteRecipeVideo,
   listRecipeVideos,
   matchRecipeVideo,
+  parseRecipeVideoInput,
+  resolveRecipeVideoMongoRuntimeConfig,
   setRecipeVideoStoreForTest,
   updateRecipeVideo,
   type RecipeVideoConfig,
@@ -156,4 +158,45 @@ test('recipe video store supports create, shared lookup, update, and delete', as
   } finally {
     setRecipeVideoStoreForTest(null);
   }
+});
+
+test('parseRecipeVideoInput accepts deployed nested payload and splits chinese ingredient separators', () => {
+  const input = parseRecipeVideoInput({
+    body: JSON.stringify({
+      recipeName: '凉拌手撕鸡',
+      recipeAliases: ['凉拌手撕鸡', '凉拌鸡', '凉拌鸡肉'],
+      ingredients: ['鸡肉、黄瓜、胡萝卜、香菜、白糖、盐'],
+      videoUrl: 'https://lilicoconut.me/videos/murphy_cookbook_hand_shredded_chicken.mp4',
+      coverUrl: 'https://lilicoconut.me/images/murphy_cookbook_hand_shredded_chicken_cover.jpg',
+      durationSeconds: 15,
+      resolution: '1080p',
+    }),
+  });
+
+  assert.equal(input.recipeName, '凉拌手撕鸡');
+  assert.deepEqual(input.recipeAliases, ['凉拌手撕鸡', '凉拌鸡', '凉拌鸡肉']);
+  assert.deepEqual(input.ingredients, ['鸡肉', '黄瓜', '胡萝卜', '香菜', '白糖', '盐']);
+  assert.equal(input.durationSeconds, 15);
+  assert.equal(input.resolution, '1080p');
+});
+
+test('resolveRecipeVideoMongoRuntimeConfig enables TLS for MongoDB Atlas by default', () => {
+  assert.deepEqual(resolveRecipeVideoMongoRuntimeConfig({
+    MONGODB_URI: 'mongodb+srv://user:password@example.mongodb.net/?retryWrites=true&w=majority',
+    MONGODB_DB_NAME: 'murphy_cookbook',
+    RECIPE_VIDEO_MONGODB_COLLECTION: 'recipe_videos',
+  }), {
+    configured: true,
+    scheme: 'mongodb+srv',
+    atlasHost: true,
+    database: 'murphy_cookbook',
+    collection: 'recipe_videos',
+    serverSelectionTimeoutMs: 5000,
+    tls: true,
+  });
+
+  assert.equal(resolveRecipeVideoMongoRuntimeConfig({
+    MONGODB_URI: 'mongodb://localhost:27017',
+    RECIPE_VIDEO_MONGODB_TLS: 'true',
+  }).tls, true);
 });

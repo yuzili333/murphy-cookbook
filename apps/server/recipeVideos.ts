@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { MongoClient, type Collection, type ObjectId } from 'mongodb';
+import { MongoClient, ServerApiVersion, type Collection, type MongoClientOptions, type ObjectId } from 'mongodb';
 
 export type RecipeVideoResolution = '720p' | '1080p';
 export type RecipeVideoStatus = 'approved';
@@ -97,6 +97,59 @@ function getMongoServerSelectionTimeoutMs() {
   return Number.isFinite(value) && value > 0 ? value : 5000;
 }
 
+function parseOptionalBoolean(value: string | undefined) {
+  const normalized = value?.trim().toLocaleLowerCase();
+  if (!normalized) return null;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return null;
+}
+
+function shouldUseMongoTls(uri: string) {
+  const explicit = parseOptionalBoolean(process.env.RECIPE_VIDEO_MONGODB_TLS ?? process.env.MONGODB_TLS);
+  if (explicit !== null) {
+    return explicit;
+  }
+
+  return uri.startsWith('mongodb+srv://') || uri.includes('.mongodb.net');
+}
+
+export function resolveRecipeVideoMongoRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
+  const uri = (env.RECIPE_VIDEO_MONGODB_URI || env.MONGODB_URI || '').trim();
+  const explicitTls = parseOptionalBoolean(env.RECIPE_VIDEO_MONGODB_TLS ?? env.MONGODB_TLS);
+  const tls = explicitTls ?? (uri ? uri.startsWith('mongodb+srv://') || uri.includes('.mongodb.net') : false);
+
+  return {
+    configured: Boolean(uri),
+    scheme: uri.startsWith('mongodb+srv://') ? 'mongodb+srv' : uri.startsWith('mongodb://') ? 'mongodb' : '',
+    atlasHost: uri.includes('.mongodb.net'),
+    database: (env.RECIPE_VIDEO_MONGODB_DB || env.MONGODB_DB_NAME || 'murphy_cookbook').trim(),
+    collection: (env.RECIPE_VIDEO_MONGODB_COLLECTION || 'recipe_videos').trim(),
+    serverSelectionTimeoutMs: Number(env.RECIPE_VIDEO_MONGODB_SERVER_SELECTION_TIMEOUT_MS ?? 5000) || 5000,
+    tls,
+  };
+}
+
+function createMongoClientOptions(uri: string): MongoClientOptions {
+  const options: MongoClientOptions = {
+    serverSelectionTimeoutMS: getMongoServerSelectionTimeoutMs(),
+    maxPoolSize: 3,
+    retryReads: true,
+    retryWrites: true,
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: false,
+      deprecationErrors: false,
+    },
+  };
+
+  if (shouldUseMongoTls(uri)) {
+    options.tls = true;
+  }
+
+  return options;
+}
+
 function ensureDataFile() {
   const dataFilePath = getLocalDataFilePath();
   if (existsSync(dataFilePath)) {
@@ -129,6 +182,68 @@ function toPositiveInteger(value: unknown) {
 
 function validateUrl(value: string) {
   return /^https?:\/\//i.test(value);
+}
+
+function parseJsonInput<T>(value: unknown, fallback: T): T {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value !== 'string') {
+    return value as T;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeRequestRecord(value: unknown) {
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) {
+    return parseJsonInput<Record<string, unknown>>(value.toString('utf8'), {});
+  }
+
+  if (value instanceof Uint8Array) {
+    return parseJsonInput<Record<string, unknown>>(Buffer.from(value).toString('utf8'), {});
+  }
+
+  if (typeof value === 'string') {
+    return parseJsonInput<Record<string, unknown>>(value, {});
+  }
+
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function resolveNestedRecipeVideoInput(value: unknown) {
+  const expectedKeys = ['recipeName', 'recipeAliases', 'ingredients', 'videoUrl', 'coverUrl', 'durationSeconds', 'resolution'];
+  const record = normalizeRequestRecord(value);
+  if (expectedKeys.some((key) => record[key] !== undefined)) {
+    return record;
+  }
+
+  for (const key of ['data', 'payload', 'body']) {
+    const nested = record[key];
+    if (nested === undefined || nested === null) {
+      continue;
+    }
+
+    const nestedRecord = normalizeRequestRecord(nested);
+    if (expectedKeys.some((expectedKey) => nestedRecord[expectedKey] !== undefined)) {
+      return nestedRecord;
+    }
+  }
+
+  return record;
+}
+
+function splitConfigListValue(value: unknown) {
+  const values = Array.isArray(value) ? value : String(value ?? '').split(',');
+  return values
+    .flatMap((item) => String(item).split(/[,\uFF0C\u3001]/))
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function escapeRegExp(value: string) {
@@ -173,9 +288,11 @@ async function getMongoClient() {
   }
 
   if (!mongoClientPromise) {
-    mongoClientPromise = new MongoClient(uri, {
-      serverSelectionTimeoutMS: getMongoServerSelectionTimeoutMs(),
-    }).connect();
+    mongoClientPromise = new MongoClient(uri, createMongoClientOptions(uri)).connect().catch((error) => {
+      mongoClientPromise = null;
+      mongoIndexesReadyPromise = null;
+      throw error;
+    });
   }
 
   return mongoClientPromise;
@@ -213,20 +330,10 @@ function sortRecipeVideos(items: RecipeVideoConfig[], sortBy: NonNullable<Recipe
 }
 
 export function parseRecipeVideoInput(value: unknown): RecipeVideoInput {
-  const payload = (value ?? {}) as Record<string, unknown>;
+  const payload = resolveNestedRecipeVideoInput(value);
   const recipeName = String(payload.recipeName ?? '').trim();
-  const recipeAliases = Array.isArray(payload.recipeAliases)
-    ? payload.recipeAliases.map((item) => String(item).trim()).filter(Boolean)
-    : String(payload.recipeAliases ?? '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
-  const ingredients = Array.isArray(payload.ingredients)
-    ? payload.ingredients.map((item) => String(item).trim()).filter(Boolean)
-    : String(payload.ingredients ?? '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean);
+  const recipeAliases = splitConfigListValue(payload.recipeAliases);
+  const ingredients = splitConfigListValue(payload.ingredients);
   const videoUrl = String(payload.videoUrl ?? '').trim();
   const coverUrl = String(payload.coverUrl ?? '').trim();
   const durationSeconds = toPositiveInteger(payload.durationSeconds);
@@ -237,10 +344,10 @@ export function parseRecipeVideoInput(value: unknown): RecipeVideoInput {
   if (!recipeAliases.length) throw new Error('菜谱昵称不能为空。');
   if (recipeAliases.some((alias) => Array.from(alias).length > 200)) throw new Error('菜谱昵称每个昵称不能超过200字。');
   if (!videoUrl) throw new Error('视频地址不能为空。');
-  if (Array.from(videoUrl).length > 200) throw new Error('视频地址不能超过200字。');
+  if (Array.from(videoUrl).length > 1000) throw new Error('视频地址不能超过1000字。');
   if (!validateUrl(videoUrl)) throw new Error('视频地址必须以 http:// 或 https:// 开头。');
   if (!coverUrl) throw new Error('视频封面地址不能为空。');
-  if (Array.from(coverUrl).length > 200) throw new Error('视频封面地址不能超过200字。');
+  if (Array.from(coverUrl).length > 1000) throw new Error('视频封面地址不能超过1000字。');
   if (!validateUrl(coverUrl)) throw new Error('视频封面地址必须以 http:// 或 https:// 开头。');
   if (!durationSeconds) throw new Error('视频时长必须为正整数。');
   if (!resolution) throw new Error('视频分辨率必须选择 720p 或 1080p。');

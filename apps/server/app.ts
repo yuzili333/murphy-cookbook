@@ -34,6 +34,7 @@ import {
   listRecipeVideos,
   matchRecipeVideo,
   parseRecipeVideoInput,
+  resolveRecipeVideoMongoRuntimeConfig,
   updateRecipeVideo,
   type RecipeVideoListOptions,
 } from './recipeVideos.js';
@@ -1198,6 +1199,7 @@ export function createApp(): Express {
           adminUsernameLength: videoConfigAdminUser.length,
           adminPasswordLength: videoConfigAdminPassword.length,
         },
+        recipeVideoMongo: resolveRecipeVideoMongoRuntimeConfig(),
       },
     });
   });

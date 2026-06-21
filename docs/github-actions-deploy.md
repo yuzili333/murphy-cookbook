@@ -11,6 +11,7 @@ Configure these secrets in GitHub repository settings:
 - Optional `VIDEO_CONFIG_ADMIN_USER`: recipe video admin username. Defaults to `yuzili`.
 - Optional `VIDEO_CONFIG_ADMIN_PASSWORD`: recipe video admin password. Defaults to `yuzili333`.
 - Optional `VIDEO_CONFIG_TOKEN_SECRET`: signing secret for recipe video admin sessions. Defaults to `NETLIFY_AUTH_TOKEN` in the deployment workflow.
+- Optional `RECIPE_VIDEO_MONGODB_TLS`: explicit MongoDB TLS switch. Leave empty for automatic Atlas/SRV detection.
 
 ## Netlify Runtime Environment
 
@@ -20,6 +21,7 @@ Do not manually configure API runtime variables in Netlify. The `CD Netlify` Git
 - `SILICONFLOW_QWEN_MODEL=Qwen/Qwen3.5-35B-A3B` is written as a non-secret production runtime variable.
 - `VIDEO_CONFIG_ADMIN_USER`, `VIDEO_CONFIG_ADMIN_PASSWORD`, and `VIDEO_CONFIG_TOKEN_SECRET` are synced for `/cookbook-video-config` authentication.
 - `MONGODB_URI`, `MONGODB_DB_NAME`, and `RECIPE_VIDEO_MONGODB_COLLECTION` are synced for shared recipe video configuration persistence.
+- `RECIPE_VIDEO_MONGODB_TLS` is optional. If unset, `mongodb+srv://` and `.mongodb.net` addresses use TLS automatically.
 
 Do not commit real API keys to `.env`, workflow files, or documentation.
 
