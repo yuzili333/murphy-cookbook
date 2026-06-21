@@ -114,6 +114,11 @@ function shouldUseMongoTls(uri: string) {
   return uri.startsWith('mongodb+srv://') || uri.includes('.mongodb.net');
 }
 
+function resolveMongoFamily(env: NodeJS.ProcessEnv = process.env) {
+  const value = Number(env.RECIPE_VIDEO_MONGODB_FAMILY ?? env.MONGODB_FAMILY ?? 4);
+  return value === 6 ? 6 : 4;
+}
+
 export function resolveRecipeVideoMongoRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
   const uri = (env.RECIPE_VIDEO_MONGODB_URI || env.MONGODB_URI || '').trim();
   const explicitTls = parseOptionalBoolean(env.RECIPE_VIDEO_MONGODB_TLS ?? env.MONGODB_TLS);
@@ -127,6 +132,7 @@ export function resolveRecipeVideoMongoRuntimeConfig(env: NodeJS.ProcessEnv = pr
     collection: (env.RECIPE_VIDEO_MONGODB_COLLECTION || 'recipe_videos').trim(),
     serverSelectionTimeoutMs: Number(env.RECIPE_VIDEO_MONGODB_SERVER_SELECTION_TIMEOUT_MS ?? 5000) || 5000,
     tls,
+    family: resolveMongoFamily(env),
   };
 }
 
@@ -134,6 +140,7 @@ function createMongoClientOptions(uri: string): MongoClientOptions {
   const options: MongoClientOptions = {
     serverSelectionTimeoutMS: getMongoServerSelectionTimeoutMs(),
     maxPoolSize: 3,
+    family: resolveMongoFamily(),
     retryReads: true,
     retryWrites: true,
     serverApi: {
@@ -148,6 +155,19 @@ function createMongoClientOptions(uri: string): MongoClientOptions {
   }
 
   return options;
+}
+
+export function formatRecipeVideoStorageError(error: unknown) {
+  const message = error instanceof Error ? error.message : '视频配置存储访问失败。';
+  if (/tlsv1 alert internal error|ssl3_read_bytes|SSL alert number 80/i.test(message)) {
+    return [
+      'MongoDB Atlas TLS 握手失败。',
+      '请检查 Atlas Network Access 是否允许 Netlify Functions 出站 IP 访问，',
+      '并确认 MONGODB_URI 使用 mongodb+srv:// 连接串且密码中的特殊字符已 URL encode。',
+    ].join('');
+  }
+
+  return message;
 }
 
 function ensureDataFile() {
@@ -216,8 +236,7 @@ function normalizeRequestRecord(value: unknown) {
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
 }
 
-function resolveNestedRecipeVideoInput(value: unknown) {
-  const expectedKeys = ['recipeName', 'recipeAliases', 'ingredients', 'videoUrl', 'coverUrl', 'durationSeconds', 'resolution'];
+function resolveNestedRecipeVideoRecord(value: unknown, expectedKeys: string[]) {
   const record = normalizeRequestRecord(value);
   if (expectedKeys.some((key) => record[key] !== undefined)) {
     return record;
@@ -236,6 +255,16 @@ function resolveNestedRecipeVideoInput(value: unknown) {
   }
 
   return record;
+}
+
+function resolveNestedRecipeVideoInput(value: unknown) {
+  return resolveNestedRecipeVideoRecord(value, ['recipeName', 'recipeAliases', 'ingredients', 'videoUrl', 'coverUrl', 'durationSeconds', 'resolution']);
+}
+
+export function resolveRecipeVideoMatchName(body: unknown, query: unknown = {}) {
+  const payload = resolveNestedRecipeVideoRecord(body, ['recipeName', 'name']);
+  const queryPayload = resolveNestedRecipeVideoRecord(query, ['recipeName', 'name']);
+  return String(payload.recipeName ?? payload.name ?? queryPayload.recipeName ?? queryPayload.name ?? '').trim();
 }
 
 function splitConfigListValue(value: unknown) {
@@ -444,7 +473,8 @@ export function createLocalRecipeVideoStore(): RecipeVideoStore {
 
       return readAllRecipeVideos().find((item) => {
         if (item.status !== 'approved') return false;
-        return [item.recipeName, ...item.recipeAliases].some((name) => normalizeRecipeVideoName(name) === normalized);
+        return [item.recipeName, ...item.recipeAliases].some((name) => normalizeRecipeVideoName(name) === normalized)
+          || toSearchableText(item).includes(normalized);
       }) ?? null;
     },
   };
@@ -579,6 +609,7 @@ export function createMongoRecipeVideoStore(): RecipeVideoStore {
         $or: [
           { normalizedRecipeName: normalized },
           { normalizedRecipeAliases: normalized },
+          { searchableText: { $regex: escapeRegExp(normalized) } },
         ],
       });
 

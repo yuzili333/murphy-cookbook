@@ -6,6 +6,7 @@ import {
   listRecipeVideos,
   matchRecipeVideo,
   parseRecipeVideoInput,
+  resolveRecipeVideoMatchName,
   resolveRecipeVideoMongoRuntimeConfig,
   setRecipeVideoStoreForTest,
   updateRecipeVideo,
@@ -114,7 +115,10 @@ function createMemoryRecipeVideoStore(): RecipeVideoStore {
 
       return items.find((item) =>
         item.status === 'approved' &&
-        [item.recipeName, ...item.recipeAliases].some((name) => normalizeName(name) === normalized),
+        (
+          [item.recipeName, ...item.recipeAliases].some((name) => normalizeName(name) === normalized) ||
+          normalizeName([item.recipeName, ...item.recipeAliases, ...item.ingredients].join(',')).includes(normalized)
+        ),
       ) ?? null;
     },
   };
@@ -144,6 +148,9 @@ test('recipe video store supports create, shared lookup, update, and delete', as
     const matchedByAlias = await matchRecipeVideo('番茄蛋面');
     assert.equal(matchedByAlias?.id, created.id);
 
+    const matchedByIngredientText = await matchRecipeVideo('鸡蛋');
+    assert.equal(matchedByIngredientText?.id, created.id);
+
     const updated = await updateRecipeVideo(created.id, {
       ...payload,
       recipeName: '番茄鸡蛋汤面',
@@ -158,6 +165,14 @@ test('recipe video store supports create, shared lookup, update, and delete', as
   } finally {
     setRecipeVideoStoreForTest(null);
   }
+});
+
+test('resolveRecipeVideoMatchName accepts direct, query, and nested deployed body shapes', () => {
+  assert.equal(resolveRecipeVideoMatchName({ recipeName: ' 凉拌手撕鸡 ' }), '凉拌手撕鸡');
+  assert.equal(resolveRecipeVideoMatchName('{"recipeName":"凉拌手撕鸡"}'), '凉拌手撕鸡');
+  assert.equal(resolveRecipeVideoMatchName({ body: '{"recipeName":"凉拌手撕鸡"}' }), '凉拌手撕鸡');
+  assert.equal(resolveRecipeVideoMatchName({ payload: { name: '凉拌手撕鸡' } }), '凉拌手撕鸡');
+  assert.equal(resolveRecipeVideoMatchName({}, { recipeName: '凉拌手撕鸡' }), '凉拌手撕鸡');
 });
 
 test('parseRecipeVideoInput accepts deployed nested payload and splits chinese ingredient separators', () => {
@@ -193,10 +208,15 @@ test('resolveRecipeVideoMongoRuntimeConfig enables TLS for MongoDB Atlas by defa
     collection: 'recipe_videos',
     serverSelectionTimeoutMs: 5000,
     tls: true,
+    family: 4,
   });
 
   assert.equal(resolveRecipeVideoMongoRuntimeConfig({
     MONGODB_URI: 'mongodb://localhost:27017',
     RECIPE_VIDEO_MONGODB_TLS: 'true',
   }).tls, true);
+  assert.equal(resolveRecipeVideoMongoRuntimeConfig({
+    MONGODB_URI: 'mongodb://localhost:27017',
+    RECIPE_VIDEO_MONGODB_FAMILY: '6',
+  }).family, 6);
 });

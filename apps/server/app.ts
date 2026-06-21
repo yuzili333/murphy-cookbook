@@ -31,9 +31,11 @@ import { getLocalSeasonalIngredientSuggestions } from './seasonalIngredients.js'
 import {
   createRecipeVideo,
   deleteRecipeVideo,
+  formatRecipeVideoStorageError,
   listRecipeVideos,
   matchRecipeVideo,
   parseRecipeVideoInput,
+  resolveRecipeVideoMatchName,
   resolveRecipeVideoMongoRuntimeConfig,
   updateRecipeVideo,
   type RecipeVideoListOptions,
@@ -1250,7 +1252,7 @@ export function createApp(): Express {
       res.json({ data: await listRecipeVideos(options) });
     } catch (error) {
       res.status(500).json({
-        error: { code: 'VIDEO_CONFIG_STORAGE_FAILED', message: error instanceof Error ? error.message : '视频配置读取失败。' },
+        error: { code: 'VIDEO_CONFIG_STORAGE_FAILED', message: formatRecipeVideoStorageError(error) },
       });
     }
   });
@@ -1258,11 +1260,26 @@ export function createApp(): Express {
   app.post('/api/v1/video-config/recipes', async (req, res) => {
     if (!requireVideoConfigPermission(req, res)) return;
 
+    let input;
     try {
-      res.status(201).json({ data: await createRecipeVideo(parseRecipeVideoInput(req.body)) });
+      input = parseRecipeVideoInput(req.body);
     } catch (error) {
       res.status(400).json({
         error: { code: 'VIDEO_CONFIG_INVALID', message: error instanceof Error ? error.message : '视频配置提交失败。' },
+      });
+      return;
+    }
+
+    try {
+      res.status(201).json({ data: await createRecipeVideo(input) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const isBusinessError = message === '菜谱名称不能重复。';
+      res.status(isBusinessError ? 400 : 500).json({
+        error: {
+          code: isBusinessError ? 'VIDEO_CONFIG_INVALID' : 'VIDEO_CONFIG_STORAGE_FAILED',
+          message: isBusinessError ? message : formatRecipeVideoStorageError(error),
+        },
       });
     }
   });
@@ -1270,11 +1287,26 @@ export function createApp(): Express {
   app.put('/api/v1/video-config/recipes/:id', async (req, res) => {
     if (!requireVideoConfigPermission(req, res)) return;
 
+    let input;
     try {
-      res.json({ data: await updateRecipeVideo(req.params.id, parseRecipeVideoInput(req.body)) });
+      input = parseRecipeVideoInput(req.body);
     } catch (error) {
       res.status(400).json({
         error: { code: 'VIDEO_CONFIG_INVALID', message: error instanceof Error ? error.message : '视频配置更新失败。' },
+      });
+      return;
+    }
+
+    try {
+      res.json({ data: await updateRecipeVideo(req.params.id, input) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      const isBusinessError = message === '菜谱名称不能重复。' || message === '未找到对应的视频配置。';
+      res.status(isBusinessError ? 400 : 500).json({
+        error: {
+          code: isBusinessError ? 'VIDEO_CONFIG_INVALID' : 'VIDEO_CONFIG_STORAGE_FAILED',
+          message: isBusinessError ? message : formatRecipeVideoStorageError(error),
+        },
       });
     }
   });
@@ -1293,7 +1325,7 @@ export function createApp(): Express {
   });
 
   app.post('/api/v1/recipe-videos/match', async (req, res) => {
-    const recipeName = String(req.body?.recipeName ?? '').trim();
+    const recipeName = resolveRecipeVideoMatchName(req.body, req.query);
     try {
       res.json({ data: { video: await matchRecipeVideo(recipeName) } });
     } catch (error) {
