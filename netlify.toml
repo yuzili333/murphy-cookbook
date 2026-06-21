@@ -4,10 +4,10 @@ publish = "apps/frontend/dist"
 
 [build.environment]
 NODE_VERSION = "20.19.0"
-VITE_API_BASE_URL = "/.netlify/functions/api/v1"
+VITE_API_BASE_URL = "/api/v1"
 
 [functions]
-directory = "apps/server/netlify/functions"
+directory = "apps/server/dist/netlify/functions"
 node_bundler = "esbuild"
 
 [[redirects]]

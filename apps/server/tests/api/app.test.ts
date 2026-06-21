@@ -1,12 +1,49 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  normalizeApiRequestUrl,
   resolveIngredientKnowledgeRequestPayload,
   resolveIngredientTextInput,
   resolveRecommendationRequestPayload,
   resolveRecipeDetailRequestPayload,
+  resolveVideoConfigAdminCredentials,
   stripRecipeDetailImageFields,
 } from '../../app.js';
+
+test('normalizeApiRequestUrl maps Netlify function and bare v1 paths to api routes', () => {
+  assert.equal(
+    normalizeApiRequestUrl('/.netlify/functions/api/v1/video-config/auth'),
+    '/api/v1/video-config/auth',
+  );
+  assert.equal(normalizeApiRequestUrl('/v1/video-config/auth'), '/api/v1/video-config/auth');
+  assert.equal(normalizeApiRequestUrl('/api/v1/video-config/auth'), '/api/v1/video-config/auth');
+});
+
+test('resolveVideoConfigAdminCredentials falls back to default admin credentials for missing or blank env', () => {
+  assert.deepEqual(resolveVideoConfigAdminCredentials({}), {
+    username: 'yuzili',
+    password: 'yuzili333',
+    tokenSecret: 'murphy-cookbook-video-config-local-secret',
+  });
+  assert.deepEqual(resolveVideoConfigAdminCredentials({
+    VIDEO_CONFIG_ADMIN_USER: ' ',
+    VIDEO_CONFIG_ADMIN_PASSWORD: '',
+    VIDEO_CONFIG_TOKEN_SECRET: '   ',
+  }), {
+    username: 'yuzili',
+    password: 'yuzili333',
+    tokenSecret: 'murphy-cookbook-video-config-local-secret',
+  });
+  assert.deepEqual(resolveVideoConfigAdminCredentials({
+    VIDEO_CONFIG_ADMIN_USER: ' admin ',
+    VIDEO_CONFIG_ADMIN_PASSWORD: ' password ',
+    VIDEO_CONFIG_TOKEN_SECRET: ' secret ',
+  }), {
+    username: 'admin',
+    password: 'password',
+    tokenSecret: 'secret',
+  });
+});
 
 test('resolveIngredientTextInput accepts mobile fallback fields', () => {
   assert.equal(resolveIngredientTextInput({ message: '鸡蛋 番茄' }), '鸡蛋 番茄');

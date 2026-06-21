@@ -60,9 +60,24 @@ interface IngredientKnowledgeRequestPayload {
   generationOptions: GenerationLocaleOptions;
 }
 
-const videoConfigAdminUser = process.env.VIDEO_CONFIG_ADMIN_USER ?? 'yuzili';
-const videoConfigAdminPassword = process.env.VIDEO_CONFIG_ADMIN_PASSWORD ?? 'yuzili333';
-const videoConfigTokenSecret = process.env.VIDEO_CONFIG_TOKEN_SECRET ?? 'murphy-cookbook-video-config-local-secret';
+function resolveEnvValue(value: string | undefined, fallback: string) {
+  const normalized = value?.trim();
+  return normalized ? normalized : fallback;
+}
+
+export function resolveVideoConfigAdminCredentials(env: NodeJS.ProcessEnv = process.env) {
+  return {
+    username: resolveEnvValue(env.VIDEO_CONFIG_ADMIN_USER, 'yuzili'),
+    password: resolveEnvValue(env.VIDEO_CONFIG_ADMIN_PASSWORD, 'yuzili333'),
+    tokenSecret: resolveEnvValue(env.VIDEO_CONFIG_TOKEN_SECRET, 'murphy-cookbook-video-config-local-secret'),
+  };
+}
+
+const {
+  username: videoConfigAdminUser,
+  password: videoConfigAdminPassword,
+  tokenSecret: videoConfigTokenSecret,
+} = resolveVideoConfigAdminCredentials();
 
 function signVideoConfigToken(username: string, expiresAt: number) {
   return createHmac('sha256', videoConfigTokenSecret).update(`${username}.${expiresAt}`).digest('hex');
@@ -137,6 +152,18 @@ function writeStreamEvent(res: Response, event: StreamEvent) {
 function endSse(res: Response) {
   writeStreamEvent(res, { type: 'finish' });
   res.end();
+}
+
+export function normalizeApiRequestUrl(url: string) {
+  if (url.startsWith('/.netlify/functions/api/')) {
+    return url.replace('/.netlify/functions/api', '/api');
+  }
+
+  if (url.startsWith('/v1/')) {
+    return `/api${url}`;
+  }
+
+  return url;
 }
 
 function sleep(ms: number) {
@@ -454,12 +481,7 @@ export function createApp(): Express {
     },
   }));
   app.use((req, _res, next) => {
-    if (req.url.startsWith('/.netlify/functions/api/')) {
-      req.url = req.url.replace('/.netlify/functions/api', '/api');
-    } else if (req.url.startsWith('/v1/')) {
-      req.url = `/api${req.url}`;
-    }
-
+    req.url = normalizeApiRequestUrl(req.url);
     next();
   });
 

@@ -27,6 +27,12 @@ jobs:
       NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
       SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
       SILICONFLOW_QWEN_MODEL: ${{ secrets.SILICONFLOW_MODEL }}
+      VIDEO_CONFIG_ADMIN_USER: ${{ secrets.VIDEO_CONFIG_ADMIN_USER || 'yuzili' }}
+      VIDEO_CONFIG_ADMIN_PASSWORD: ${{ secrets.VIDEO_CONFIG_ADMIN_PASSWORD || 'yuzili333' }}
+      VIDEO_CONFIG_TOKEN_SECRET: ${{ secrets.VIDEO_CONFIG_TOKEN_SECRET || secrets.NETLIFY_AUTH_TOKEN }}
+      MONGODB_URI: ${{ secrets.MONGODB_URI }}
+      MONGODB_DB_NAME: ${{ vars.MONGODB_DB_NAME || 'murphy_cookbook' }}
+      RECIPE_VIDEO_MONGODB_COLLECTION: ${{ vars.RECIPE_VIDEO_MONGODB_COLLECTION || 'recipe_videos' }}
 
     steps:
       - name: Checkout
@@ -52,6 +58,10 @@ jobs:
           test -n "$NETLIFY_AUTH_TOKEN" || (echo "Missing NETLIFY_AUTH_TOKEN" && exit 1)
           test -n "$NETLIFY_SITE_ID" || (echo "Missing NETLIFY_SITE_ID" && exit 1)
           test -n "$SILICONFLOW_API_KEY" || (echo "Missing SILICONFLOW_API_KEY" && exit 1)
+          test -n "$VIDEO_CONFIG_ADMIN_USER" || (echo "Missing VIDEO_CONFIG_ADMIN_USER" && exit 1)
+          test -n "$VIDEO_CONFIG_ADMIN_PASSWORD" || (echo "Missing VIDEO_CONFIG_ADMIN_PASSWORD" && exit 1)
+          test -n "$VIDEO_CONFIG_TOKEN_SECRET" || (echo "Missing VIDEO_CONFIG_TOKEN_SECRET" && exit 1)
+          test -n "$MONGODB_URI" || (echo "Missing MONGODB_URI" && exit 1)
 
       - name: Verify
         run: |
@@ -59,16 +69,22 @@ jobs:
           pnpm build:netlify
 
       - name: Verify server function entry
-        run: test -f apps/server/netlify/functions/api.ts
+        run: test -f apps/server/dist/netlify/functions/api.js
 
       - name: Sync Netlify runtime env
         run: |
           pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_API_KEY "$SILICONFLOW_API_KEY" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --secret --force --auth "$NETLIFY_AUTH_TOKEN"
           pnpm --package netlify-cli dlx netlify env:set SILICONFLOW_QWEN_MODEL "$SILICONFLOW_QWEN_MODEL" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --force --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set VIDEO_CONFIG_ADMIN_USER "$VIDEO_CONFIG_ADMIN_USER" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --force --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set VIDEO_CONFIG_ADMIN_PASSWORD "$VIDEO_CONFIG_ADMIN_PASSWORD" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --secret --force --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set VIDEO_CONFIG_TOKEN_SECRET "$VIDEO_CONFIG_TOKEN_SECRET" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --secret --force --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set MONGODB_URI "$MONGODB_URI" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --secret --force --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set MONGODB_DB_NAME "$MONGODB_DB_NAME" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --force --auth "$NETLIFY_AUTH_TOKEN"
+          pnpm --package netlify-cli dlx netlify env:set RECIPE_VIDEO_MONGODB_COLLECTION "$RECIPE_VIDEO_MONGODB_COLLECTION" --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --force --auth "$NETLIFY_AUTH_TOKEN"
 
       - name: Verify Netlify runtime env metadata
         run: |
           pnpm --package netlify-cli dlx netlify env:list --filter @murphy-cookbook/frontend --site "$NETLIFY_SITE_ID" --context production --auth "$NETLIFY_AUTH_TOKEN"
 
       - name: Deploy
-        run: pnpm --package netlify-cli dlx netlify deploy --prod --filter @murphy-cookbook/frontend --dir apps/frontend/dist --functions apps/server/netlify/functions --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"
+        run: pnpm --package netlify-cli dlx netlify deploy --prod --filter @murphy-cookbook/frontend --dir apps/frontend/dist --functions apps/server/dist/netlify/functions --site "$NETLIFY_SITE_ID" --auth "$NETLIFY_AUTH_TOKEN"

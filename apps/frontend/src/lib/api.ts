@@ -14,10 +14,6 @@ import type {
 import { parseSseChunk } from './streamAst';
 
 function resolveDefaultApiBase() {
-  if (typeof window !== 'undefined' && window.location.hostname.endsWith('netlify.app')) {
-    return '/.netlify/functions/api/v1';
-  }
-
   return '/api/v1';
 }
 
@@ -87,6 +83,11 @@ function localizeApiErrorMessage(message: string) {
     '食材识别失败，请稍后再试。': 'Ingredient recognition failed. Please try again later.',
     '语音文本解析失败。': 'Voice text parsing failed.',
     '语音文本理解失败。': 'Failed to understand the voice input.',
+    '管理员账号或密码错误。': 'The admin username or password is incorrect.',
+    '视频配置读取失败。': 'Failed to load recipe video configuration.',
+    '视频配置提交失败。': 'Failed to save recipe video configuration.',
+    '视频配置更新失败。': 'Failed to update recipe video configuration.',
+    '视频配置删除失败。': 'Failed to delete recipe video configuration.',
   };
   const normalized = message.replace(/\s+/g, '').replace(/JSON/g, 'JSON');
   if (exactTranslations[message]) {
