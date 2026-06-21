@@ -605,7 +605,8 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
     parseTextToIngredients('鸡蛋 番茄'),
   );
 
-  assert.equal(result.recipes[0].name, '番茄鸡蛋面');
+  assert.equal(result.recipes[0].name, '番茄炒蛋');
+  assert.equal(result.recipes[1].name, '番茄鸡蛋面');
   assert.equal(result.recipeDetails.length, 0);
   assert.equal(result.filteredAllergens[0], '花生');
   const requestBody = requestBodies[0] ?? {};
@@ -687,7 +688,8 @@ test('generateRecipePlan uses fast model for simple recommendations without slow
     '推荐简单菜谱',
   );
 
-  assert.equal(result.recipes[0].name, '番茄鸡蛋');
+  assert.equal(result.recipes[0].name, '番茄炒蛋');
+  assert.equal(result.recipes[1].name, '番茄鸡蛋');
   assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B']);
   assert.deepEqual(requestedMaxTokens, [660]);
 
@@ -699,7 +701,7 @@ test('generateRecipePlan uses fast model for simple recommendations without slow
   }
 });
 
-test('generateRecipePlan enforces configured cold shredded chicken recipe for chicken input', async () => {
+test('generateRecipePlan prepends configured cold shredded chicken recipe only for exact chicken input', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
@@ -772,8 +774,178 @@ test('generateRecipePlan enforces configured cold shredded chicken recipe for ch
 
   assert.match(userPromptContent, /凉拌手撕鸡/);
   assert.equal(result.recipes.length, 3);
-  assert.ok(result.recipes.some((recipe) => recipe.name === '凉拌手撕鸡'));
-  assert.equal(result.recipes.find((recipe) => recipe.name === '凉拌手撕鸡')?.canCookWithCurrentIngredients, true);
+  assert.equal(result.recipes[0].name, '凉拌手撕鸡');
+  assert.equal(result.recipes[0].canCookWithCurrentIngredients, true);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateRecipePlan does not prepend configured chicken recipe when extra ingredients exist', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  let userPromptContent = '';
+
+  global.fetch = (async (_input, init) => {
+    const requestBody = JSON.parse(String(init?.body ?? '{}')) as {
+      messages?: Array<{ role: string; content: string }>;
+    };
+    userPromptContent = String(requestBody.messages?.find((message) => message.role === 'user')?.content ?? '');
+
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [
+              {
+                name: '鸡肉土豆汤',
+                englishName: 'Chicken Potato Soup',
+                ageRange: '7-12 岁',
+                difficulty: 'easy',
+                estimatedTimeMinutes: 20,
+                riskAlerts: ['煮汤需家长陪同'],
+                nutritionSummary: '营养均衡。',
+                canCookWithCurrentIngredients: true,
+              },
+              {
+                name: '土豆鸡肉泥',
+                englishName: 'Chicken Potato Mash',
+                ageRange: '7-12 岁',
+                difficulty: 'easy',
+                estimatedTimeMinutes: 18,
+                riskAlerts: [],
+                nutritionSummary: '口感柔软。',
+                canCookWithCurrentIngredients: true,
+              },
+              {
+                name: '鸡肉土豆饼',
+                englishName: 'Chicken Potato Cakes',
+                ageRange: '7-12 岁',
+                difficulty: 'medium',
+                estimatedTimeMinutes: 25,
+                riskAlerts: ['热锅需家长陪同'],
+                nutritionSummary: '蛋白质充足。',
+                canCookWithCurrentIngredients: true,
+              },
+            ],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await generateRecipePlan(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_chicken', name: '鸡肉', normalizedName: '鸡肉', quantity: '100克', source: 'manual' },
+      { id: 'ing_potato', name: '土豆', normalizedName: '土豆', quantity: '1个', source: 'manual' },
+    ],
+  );
+
+  assert.doesNotMatch(userPromptContent, /凉拌手撕鸡/);
+  assert.equal(result.recipes.length, 3);
+  assert.equal(result.recipes.some((recipe) => recipe.name === '凉拌手撕鸡'), false);
+  assert.equal(result.recipes[0].name, '鸡肉土豆汤');
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateRecipePlan prepends configured tomato egg recipe only for exact tomato and egg input', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  let userPromptContent = '';
+
+  global.fetch = (async (_input, init) => {
+    const requestBody = JSON.parse(String(init?.body ?? '{}')) as {
+      messages?: Array<{ role: string; content: string }>;
+    };
+    userPromptContent = String(requestBody.messages?.find((message) => message.role === 'user')?.content ?? '');
+
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [
+              {
+                name: '番茄鸡蛋汤',
+                englishName: 'Tomato Egg Soup',
+                ageRange: '7-12 岁',
+                difficulty: 'easy',
+                estimatedTimeMinutes: 12,
+                riskAlerts: ['煮汤需家长陪同'],
+                nutritionSummary: '营养均衡。',
+                canCookWithCurrentIngredients: true,
+              },
+              {
+                name: '番茄蛋花羹',
+                englishName: 'Tomato Egg Custard',
+                ageRange: '7-12 岁',
+                difficulty: 'easy',
+                estimatedTimeMinutes: 15,
+                riskAlerts: ['蒸煮需家长陪同'],
+                nutritionSummary: '口感柔软。',
+                canCookWithCurrentIngredients: true,
+              },
+              {
+                name: '番茄鸡蛋面',
+                englishName: 'Tomato Egg Noodles',
+                ageRange: '7-12 岁',
+                difficulty: 'easy',
+                estimatedTimeMinutes: 18,
+                riskAlerts: ['煮面需家长陪同'],
+                nutritionSummary: '主食搭配均衡。',
+                canCookWithCurrentIngredients: false,
+              },
+            ],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await generateRecipePlan(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_tomato', name: '番茄', normalizedName: '番茄', quantity: '1个', source: 'manual' },
+      { id: 'ing_egg', name: '鸡蛋', normalizedName: '鸡蛋', quantity: '2个', source: 'manual' },
+    ],
+  );
+
+  assert.match(userPromptContent, /番茄炒蛋/);
+  assert.equal(result.recipes.length, 3);
+  assert.equal(result.recipes[0].name, '番茄炒蛋');
+  assert.equal(result.recipes[0].canCookWithCurrentIngredients, true);
 
   global.fetch = originalFetch;
   if (originalKey) {

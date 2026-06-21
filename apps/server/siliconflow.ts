@@ -656,45 +656,64 @@ interface GenerationLocaleOptions {
 }
 
 const configuredChickenVideoRecipeName = '凉拌手撕鸡';
+const configuredTomatoEggVideoRecipeName = '番茄炒蛋';
 
-function isChickenIngredientName(value?: string | null) {
-  if (!value) {
-    return false;
+function getStrictIngredientNameSet(ingredients: IngredientItem[]) {
+  const names = new Set<string>();
+
+  ingredients.forEach((item) => {
+    [item.name, item.normalizedName].forEach((value) => {
+      String(value ?? '')
+        .split(/[，,、\s]+/)
+        .map((name) => normalizeIngredientName(name))
+        .filter(Boolean)
+        .forEach((name) => names.add(name));
+    });
+  });
+
+  return names;
+}
+
+function hasExactIngredientSet(ingredients: IngredientItem[], expectedNames: string[]) {
+  const actualNames = getStrictIngredientNameSet(ingredients);
+  return actualNames.size === expectedNames.length && expectedNames.every((name) => actualNames.has(name));
+}
+
+function getConfiguredVideoRecipeNameForIngredients(ingredients: IngredientItem[]) {
+  if (hasExactIngredientSet(ingredients, ['鸡肉'])) {
+    return configuredChickenVideoRecipeName;
   }
 
-  const rawName = String(value).trim().toLowerCase();
-  const normalizedName = normalizeIngredientName(rawName).toLowerCase();
+  if (hasExactIngredientSet(ingredients, ['番茄', '鸡蛋'])) {
+    return configuredTomatoEggVideoRecipeName;
+  }
 
-  return (
-    rawName.includes('鸡肉') ||
-    rawName.includes('鸡胸') ||
-    rawName.includes('鸡腿') ||
-    rawName.includes('chicken') ||
-    normalizedName.includes('鸡肉') ||
-    normalizedName.includes('chicken')
-  );
+  return '';
 }
 
-function hasChickenIngredient(ingredients: IngredientItem[]) {
-  return ingredients.some((item) =>
-    isChickenIngredientName(item.name) || isChickenIngredientName(item.normalizedName),
-  );
-}
-
-function buildConfiguredChickenVideoRecipeRecommendation(
+function buildConfiguredVideoRecipeRecommendation(
+  recipeName: string,
   profile: ChildProfile,
   options: GenerationLocaleOptions = {},
 ): RecipeRecommendation {
   const isEnglish = options.locale === 'en';
-  const namePinyin = options.pinyinMode === false ? '' : 'liáng bàn shǒu sī jī';
-
-  return {
-    id: `recipe_gen_summary_${slugifyRecipeName(configuredChickenVideoRecipeName)}_configured_video`,
-    name: configuredChickenVideoRecipeName,
-    namePinyin,
-    englishName: 'Cold Shredded Chicken Salad',
-    nameLearning: options.pinyinMode === false
-      ? { characters: [] }
+  const isTomatoEgg = recipeName === configuredTomatoEggVideoRecipeName;
+  const namePinyin = options.pinyinMode === false
+    ? ''
+    : isTomatoEgg
+      ? 'fān qié chǎo dàn'
+      : 'liáng bàn shǒu sī jī';
+  const nameLearning = options.pinyinMode === false
+    ? { characters: [] }
+    : isTomatoEgg
+      ? {
+          characters: [
+            { character: '番', pinyin: 'fān', strokes: 12, structure: '上下结构', hint: '上面像采，下面是田。' },
+            { character: '茄', pinyin: 'qié', strokes: 8, structure: '上下结构', hint: '草字头说明它和植物有关。' },
+            { character: '炒', pinyin: 'chǎo', strokes: 8, structure: '左右结构', hint: '火字旁提示用热锅加热。' },
+            { character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '下面的虫是古字部件，要整体记。' },
+          ],
+        }
       : {
           characters: [
             { character: '凉', pinyin: 'liáng', strokes: 10, structure: '左右结构', hint: '两点水表示和温度有关。' },
@@ -703,40 +722,51 @@ function buildConfiguredChickenVideoRecipeRecommendation(
             { character: '撕', pinyin: 'sī', strokes: 15, structure: '左右结构', hint: '提手旁提示动作和手有关。' },
             { character: '鸡', pinyin: 'jī', strokes: 7, structure: '左右结构', hint: '右边的鸟提示它和家禽有关。' },
           ],
-        },
+        };
+
+  return {
+    id: `recipe_gen_summary_${slugifyRecipeName(recipeName)}_configured_video`,
+    name: recipeName,
+    namePinyin,
+    englishName: isTomatoEgg ? 'Tomato Scrambled Eggs' : 'Cold Shredded Chicken Salad',
+    nameLearning,
     ageRange: isEnglish ? `${Math.max(3, profile.age - 1)}-${profile.age + 3} years` : `${Math.max(3, profile.age - 1)}-${profile.age + 3} 岁`,
     difficulty: 'easy',
-    estimatedTimeMinutes: 18,
+    estimatedTimeMinutes: isTomatoEgg ? 12 : 18,
     fitReasons: [],
     riskAlerts: isEnglish
-      ? ['A parent must confirm the chicken is fully cooked before shredding.']
-      : ['鸡肉必须由家长确认完全煮熟后再撕拌'],
+      ? [isTomatoEgg ? 'A parent should handle the hot pan and stove.' : 'A parent must confirm the chicken is fully cooked before shredding.']
+      : [isTomatoEgg ? '热锅和明火步骤需要家长操作' : '鸡肉必须由家长确认完全煮熟后再撕拌'],
     nutritionSummary: isEnglish
-      ? 'Chicken provides lean protein, and the chilled shredded style keeps the dish light and kid-friendly.'
-      : '鸡肉提供优质蛋白，凉拌做法清爽，适合作为儿童轻食或正餐配菜。',
+      ? isTomatoEgg
+        ? 'Tomato adds vitamins and eggs provide protein, making a simple balanced home dish.'
+        : 'Chicken provides lean protein, and the chilled shredded style keeps the dish light and kid-friendly.'
+      : isTomatoEgg
+        ? '番茄提供维生素和酸甜口感，鸡蛋提供优质蛋白，是常见均衡家常菜。'
+        : '鸡肉提供优质蛋白，凉拌做法清爽，适合作为儿童轻食或正餐配菜。',
     extraIngredients: [],
     canCookWithCurrentIngredients: true,
   };
 }
 
-function ensureConfiguredChickenVideoRecipe(
+function ensureConfiguredVideoRecipe(
   payload: GeneratedRecommendationPayload,
   profile: ChildProfile,
   ingredients: IngredientItem[],
   options: GenerationLocaleOptions = {},
 ) {
-  if (!hasChickenIngredient(ingredients)) {
+  const configuredRecipeName = getConfiguredVideoRecipeNameForIngredients(ingredients);
+  if (!configuredRecipeName) {
     return payload;
   }
 
-  if (payload.recipes.some((recipe) => normalizeRecipeIdentity(recipe.name) === normalizeRecipeIdentity(configuredChickenVideoRecipeName))) {
-    return payload;
-  }
-
-  const configuredRecipe = buildConfiguredChickenVideoRecipeRecommendation(profile, options);
-  const recipes = payload.recipes.length >= 3
-    ? [...payload.recipes.slice(0, 2), configuredRecipe]
-    : [...payload.recipes, configuredRecipe];
+  const configuredRecipe = buildConfiguredVideoRecipeRecommendation(configuredRecipeName, profile, options);
+  const recipes = [
+    configuredRecipe,
+    ...payload.recipes.filter((recipe) =>
+      normalizeRecipeIdentity(recipe.name) !== normalizeRecipeIdentity(configuredRecipeName),
+    ),
+  ];
 
   return {
     ...payload,
@@ -1093,23 +1123,22 @@ function buildRecipePlanUserPrompt(
     : options.pinyinMode === false
       ? '读音辅助关闭:namePinyin输出空字符串；nameLearning.characters输出空数组。'
       : '读音辅助开启:namePinyin输出中文菜名带声调拼音；nameLearning按中文单字拆分，提供拼音、笔画、结构和识字提示。';
-  const chickenVideoRecipeRule = hasChickenIngredient(ingredients)
+  const configuredVideoRecipeName = getConfiguredVideoRecipeNameForIngredients(ingredients);
+  const configuredVideoRecipeRule = configuredVideoRecipeName
     ? isEnglish
-      ? `Configured video recipe rule: because the ingredients include chicken, exactly one of the 3 recipe cards must use name "${configuredChickenVideoRecipeName}" and englishName "Cold Shredded Chicken Salad"; this configured Chinese name is the only exception to English-only names because it matches the uploaded cooking video.`
-      : `视频菜谱规则:检测到食材包含鸡肉/鸡胸肉/鸡腿肉，3道推荐中必须指定其中1道菜名为“${configuredChickenVideoRecipeName}”，englishName为“Cold Shredded Chicken Salad”，canCookWithCurrentIngredients设为true。`
+      ? `Configured video recipe post-processing: the server will prepend "${configuredVideoRecipeName}" as one fixed recipe card because the ingredient set exactly matches its uploaded cooking video. Return other useful recipe ideas and do not repeat "${configuredVideoRecipeName}".`
+      : `视频菜谱后处理规则:当前食材集合严格匹配已上传视频菜谱，服务端会固定插入“${configuredVideoRecipeName}”作为1道推荐。请返回其它有价值的菜谱思路，不要重复“${configuredVideoRecipeName}”。`
     : '';
 
   if (isEnglish) {
     return [
       `Generate 3 recipe cards for elementary-school children. Return only a JSON object. Output language: ${outputLanguage}.`,
-      chickenVideoRecipeRule
-        ? 'English mode: name must be an English recipe name except the configured chicken video recipe named "凉拌手撕鸡"; englishName must match name or be a natural English title; do not put Chinese text in other output fields.'
-        : 'English mode: name must be an English recipe name; englishName must match name or be a natural English title; do not put Chinese text in any output field.',
+      'English mode: name must be an English recipe name; englishName must match name or be a natural English title; do not put Chinese text in any output field.',
       pronunciationRule,
       `Child age: ${profile.age}; preferences: ${tastePreferences}; allergens: ${allergens}.`,
       compactUserPrompt ? `User note: ${compactUserPrompt}` : '',
       `Ingredients:\n${ingredientLines}`,
-      chickenVideoRecipeRule,
+      configuredVideoRecipeRule,
       'Rules: return exactly 3 recipes; keep them simple, low-oil, mild, and nutritionally balanced; prioritize the provided ingredients; do not generate cooking steps or ingredient details.',
       'Safety: only include riskAlerts for open flame, high heat, hot oil, stir-frying, pressure cooking, steaming, boiling, oven use, or severe allergen risk.',
       'Allowed fields only: name,namePinyin,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients.',
@@ -1124,7 +1153,7 @@ function buildRecipePlanUserPrompt(
     `儿童:${profile.age}岁；偏好:${tastePreferences}；过敏:${allergens}`,
     compactUserPrompt ? `用户:${compactUserPrompt}` : '',
     `食材:${ingredientLines}`,
-    chickenVideoRecipeRule,
+    configuredVideoRecipeRule,
     '规则:必须返回3道；简单、低油轻口味、营养均衡；优先用现有食材；不要生成烹饪步骤或配料明细。',
     '安全:仅明火/高温/热油/爆炒/高压/蒸煮/烤箱等高风险操作写riskAlerts；高危过敏原才写高危提醒。',
     '只允许字段:name,namePinyin,englishName,nameLearning,ageRange,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients。',
@@ -1304,7 +1333,7 @@ export async function generateRecipePlan(
     },
   });
 
-  return ensureConfiguredChickenVideoRecipe(
+  return ensureConfiguredVideoRecipe(
     normalizeGeneratedRecipeSummaries(
       parseRecipePlanPayload(content, options),
       profile,
