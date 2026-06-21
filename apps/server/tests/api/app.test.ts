@@ -6,6 +6,7 @@ import {
   resolveIngredientTextInput,
   resolveRecommendationRequestPayload,
   resolveRecipeDetailRequestPayload,
+  resolveVideoConfigAuthInput,
   resolveVideoConfigAdminCredentials,
   stripRecipeDetailImageFields,
 } from '../../app.js';
@@ -42,6 +43,29 @@ test('resolveVideoConfigAdminCredentials falls back to default admin credentials
     username: 'admin',
     password: 'password',
     tokenSecret: 'secret',
+  });
+});
+
+test('resolveVideoConfigAuthInput accepts direct, stringified, and nested deployed body shapes', () => {
+  assert.deepEqual(resolveVideoConfigAuthInput({ username: ' yuzili ', password: 'yuzili333' }), {
+    username: 'yuzili',
+    password: 'yuzili333',
+  });
+  assert.deepEqual(resolveVideoConfigAuthInput('{"username":"yuzili","password":"yuzili333"}'), {
+    username: 'yuzili',
+    password: 'yuzili333',
+  });
+  assert.deepEqual(resolveVideoConfigAuthInput({ body: '{"username":"yuzili","password":"yuzili333"}' }), {
+    username: 'yuzili',
+    password: 'yuzili333',
+  });
+  assert.deepEqual(resolveVideoConfigAuthInput({ payload: { username: 'yuzili', password: 'yuzili333' } }), {
+    username: 'yuzili',
+    password: 'yuzili333',
+  });
+  assert.deepEqual(resolveVideoConfigAuthInput({}, { username: 'yuzili', password: 'yuzili333' }), {
+    username: 'yuzili',
+    password: 'yuzili333',
   });
 });
 

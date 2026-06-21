@@ -60,6 +60,11 @@ interface IngredientKnowledgeRequestPayload {
   generationOptions: GenerationLocaleOptions;
 }
 
+interface VideoConfigAuthInput {
+  username: string;
+  password: string;
+}
+
 function resolveEnvValue(value: string | undefined, fallback: string) {
   const normalized = value?.trim();
   return normalized ? normalized : fallback;
@@ -343,6 +348,16 @@ function resolveNestedRequestRecord(value: unknown, expectedKeys: string[]) {
   }
 
   return record;
+}
+
+export function resolveVideoConfigAuthInput(body: unknown, query: unknown = {}): VideoConfigAuthInput {
+  const payload = resolveNestedRequestRecord(body, ['username', 'password']);
+  const queryPayload = resolveNestedRequestRecord(query, ['username', 'password']);
+
+  return {
+    username: String(payload.username ?? queryPayload.username ?? '').trim(),
+    password: String(payload.password ?? queryPayload.password ?? ''),
+  };
 }
 
 function resolveIngredientItems(value: unknown): IngredientItem[] {
@@ -1177,17 +1192,31 @@ export function createApp(): Express {
         modelBalanced: process.env.MODEL_BALANCED ?? 'Qwen/Qwen3.5-27B',
         modelFallback: process.env.MODEL_FALLBACK ?? 'Pro/zai-org/GLM-5',
         apiKeyLength: (process.env.SILICONFLOW_API_KEY ?? '').trim().length,
+        videoConfigAuth: {
+          adminUserConfigured: Boolean(process.env.VIDEO_CONFIG_ADMIN_USER?.trim()),
+          adminPasswordConfigured: Boolean(process.env.VIDEO_CONFIG_ADMIN_PASSWORD?.trim()),
+          adminUsernameLength: videoConfigAdminUser.length,
+          adminPasswordLength: videoConfigAdminPassword.length,
+        },
       },
     });
   });
 
   app.post('/api/v1/video-config/auth', (req, res) => {
-    const username = String(req.body?.username ?? '').trim();
-    const password = String(req.body?.password ?? '');
+    const { username, password } = resolveVideoConfigAuthInput(req.body, req.query);
 
     if (username !== videoConfigAdminUser || password !== videoConfigAdminPassword) {
       res.status(401).json({
-        error: { code: 'VIDEO_CONFIG_AUTH_FAILED', message: '管理员账号或密码错误。' },
+        error: {
+          code: 'VIDEO_CONFIG_AUTH_FAILED',
+          message: '管理员账号或密码错误。',
+          details: {
+            receivedUsernameLength: username.length,
+            receivedPasswordLength: password.length,
+            configuredUsernameLength: videoConfigAdminUser.length,
+            configuredPasswordLength: videoConfigAdminPassword.length,
+          },
+        },
       });
       return;
     }
