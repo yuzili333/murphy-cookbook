@@ -1459,8 +1459,8 @@ export default function App() {
     const trackStyles = window.getComputedStyle(trackElement);
     const viewportStyles = window.getComputedStyle(viewportElement);
     const nextMetrics: RecipeCarouselMetrics = {
-      viewportWidth: Math.round(viewportElement.getBoundingClientRect().width),
-      cardWidth: Math.round(firstCard.getBoundingClientRect().width),
+      viewportWidth: Math.round(viewportElement.clientWidth),
+      cardWidth: Math.round(firstCard.offsetWidth),
       gap: Math.round(Number.parseFloat(trackStyles.columnGap || trackStyles.gap || '0')) || 0,
       paddingLeft: Math.round(Number.parseFloat(viewportStyles.paddingLeft || '0')) || 0,
     };

@@ -10,6 +10,7 @@ import {
   resolveVideoConfigAdminCredentials,
   stripRecipeDetailImageFields,
 } from '../../app.js';
+import { resolveLlmMetricsMongoRuntimeConfig } from '../../llmMetrics.js';
 
 test('normalizeApiRequestUrl maps Netlify function and bare v1 paths to api routes', () => {
   assert.equal(
@@ -43,6 +44,22 @@ test('resolveVideoConfigAdminCredentials falls back to default admin credentials
     username: 'admin',
     password: 'password',
     tokenSecret: 'secret',
+  });
+});
+
+test('resolveLlmMetricsMongoRuntimeConfig uses MongoDB Atlas defaults', () => {
+  assert.deepEqual(resolveLlmMetricsMongoRuntimeConfig({
+    MONGODB_URI: 'mongodb+srv://user:pass@example.mongodb.net/',
+    MONGODB_DB_NAME: 'murphy_cookbook',
+  } as NodeJS.ProcessEnv), {
+    configured: true,
+    scheme: 'mongodb+srv',
+    atlasHost: true,
+    database: 'murphy_cookbook',
+    collection: 'llm_call_metrics',
+    serverSelectionTimeoutMs: 3000,
+    tls: true,
+    family: 4,
   });
 });
 

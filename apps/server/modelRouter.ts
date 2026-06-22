@@ -40,42 +40,6 @@ function getModelFromEnv(name: string, fallback: string) {
   return process.env[name]?.trim() || fallback;
 }
 
-function hasComplexDietContext(context: ModelRouteContext) {
-  if ((context.profile?.allergens.length ?? 0) > 0) {
-    return true;
-  }
-
-  const profileText = [
-    ...(context.profile?.allergens ?? []),
-    ...(context.profile?.tastePreferences ?? []),
-    ...(context.profile?.dietaryHabits ?? []),
-    context.userPrompt ?? '',
-  ].join(' ');
-
-  const riskWords = [
-    '过敏',
-    '急性',
-    '呼吸困难',
-    '喉头水肿',
-    '休克',
-    '禁忌',
-    '不能吃',
-    '严格',
-    '特殊',
-    '疾病',
-  ];
-
-  return riskWords.some((word) => profileText.includes(word));
-}
-
-function hasLargeIngredientSet(context: ModelRouteContext) {
-  return (context.ingredients?.length ?? 0) >= 7;
-}
-
-function shouldUseBalancedRecommendationModel(context: ModelRouteContext) {
-  return hasLargeIngredientSet(context) || hasComplexDietContext(context);
-}
-
 export class ModelRouter {
   private readonly fastModel = getModelFromEnv('MODEL_FAST', defaultFastModel);
   private readonly balancedModel = getModelFromEnv('MODEL_BALANCED', defaultBalancedModel);
@@ -116,12 +80,11 @@ export class ModelRouter {
     }
 
     if (task === 'recipe_recommendation') {
-      const useBalanced = shouldUseBalancedRecommendationModel(context);
       return {
         task,
-        model: useBalanced ? this.balancedModel : this.fastModel,
+        model: this.fastModel,
         fallbackModels: [],
-        maxTokens: useBalanced ? 760 : 660,
+        maxTokens: 520,
         temperature: 0.2,
         enableThinking: false,
         stream: false,
@@ -131,9 +94,9 @@ export class ModelRouter {
     if (task === 'recipe_steps') {
       return {
         task,
-        model: this.balancedModel,
+        model: this.fastModel,
         fallbackModels: [],
-        maxTokens: 1200,
+        maxTokens: 850,
         temperature: 0.2,
         enableThinking: false,
         stream: false,

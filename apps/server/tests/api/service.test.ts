@@ -76,7 +76,7 @@ test('recommendRecipes includes configured cold shredded chicken recipe for chic
   }
 
   assert.ok(result.data.recipes.some((recipe) => recipe.name === '凉拌手撕鸡'));
-  assert.ok(result.data.recipeDetails.some((recipe) => recipe.name === '凉拌手撕鸡'));
+  assert.equal(result.data.recipeDetails.some((recipe) => recipe.name === '凉拌手撕鸡'), false);
 
   if (originalKey) {
     process.env.SILICONFLOW_API_KEY = originalKey;
@@ -610,10 +610,10 @@ test('generateRecipePlan returns normalized recipe summaries from model output',
   assert.equal(result.recipeDetails.length, 0);
   assert.equal(result.filteredAllergens[0], '花生');
   const requestBody = requestBodies[0] ?? {};
-  assert.equal(requestBody?.model, 'Qwen/Qwen3.5-27B');
+  assert.equal(requestBody?.model, 'Qwen/Qwen3.5-9B');
   assert.equal(requestBody?.enable_thinking, false);
   assert.equal(requestBody?.stream, false);
-  assert.equal(requestBody?.max_tokens, 760);
+  assert.equal(requestBody?.max_tokens, 520);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -691,7 +691,130 @@ test('generateRecipePlan uses fast model for simple recommendations without slow
   assert.equal(result.recipes[0].name, '番茄炒蛋');
   assert.equal(result.recipes[1].name, '番茄鸡蛋');
   assert.deepEqual(requestedModels, ['Qwen/Qwen3.5-9B']);
-  assert.deepEqual(requestedMaxTokens, [660]);
+  assert.deepEqual(requestedMaxTokens, [520]);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateRecipePlan supports benchmark model override', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
+
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              id: 'recipe_override_001',
+              name: '番茄鸡蛋',
+              englishName: 'Tomato Egg',
+              nameLearning: {
+                characters: [{ character: '蛋', pinyin: 'dàn', strokes: 11, structure: '上下结构', hint: '鸡蛋的蛋。' }],
+              },
+              ageRange: '7-12 岁',
+              difficulty: 'easy',
+              estimatedTimeMinutes: 12,
+              riskAlerts: [],
+              nutritionSummary: '营养均衡。',
+              canCookWithCurrentIngredients: true,
+            }],
+          }),
+        },
+      }],
+      usage: { total_tokens: 200 },
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  await generateRecipePlan(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_tomato', name: '番茄', normalizedName: '番茄', quantity: '1个', source: 'manual' },
+      { id: 'ing_egg', name: '鸡蛋', normalizedName: '鸡蛋', quantity: '1个', source: 'manual' },
+    ],
+    '推荐简单菜谱',
+    { modelOverride: 'Qwen/Qwen3.5-27B' },
+  );
+
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-27B');
+  assert.equal(requestBodies[0]?.max_tokens, 520);
+  assert.equal(requestBodies[0]?.enable_thinking, false);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateRecipePlan fills stable card fields from compact model output', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
+
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            recipes: [{
+              name: '土豆胡萝卜泥',
+              difficulty: 'easy',
+              estimatedTimeMinutes: 15,
+              riskAlerts: [],
+              nutritionSummary: '软糯清淡，适合儿童。',
+              canCookWithCurrentIngredients: true,
+            }],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await generateRecipePlan(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_potato', name: '土豆', normalizedName: '土豆', quantity: '1个', source: 'manual' },
+      { id: 'ing_carrot', name: '胡萝卜', normalizedName: '胡萝卜', quantity: '半根', source: 'manual' },
+    ],
+    '推荐软一点的菜',
+  );
+
+  assert.equal(result.recipes[0].name, '土豆胡萝卜泥');
+  assert.equal(result.recipes[0].englishName, 'Kids Recipe');
+  assert.ok(result.recipes[0].nameLearning.characters.length > 0);
+  assert.equal(requestBodies[0]?.max_tokens, 520);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -1092,6 +1215,73 @@ test('getRecipeDetailForRecommendation returns embedded detail without calling m
   assert.equal(result.data.steps[0].title, '准备食材');
 });
 
+test('getRecipeDetailForRecommendation generates cold shredded chicken detail with model instead of local preset', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
+
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            steps: [
+              { title: '准备鸡肉', description: '本步骤食材：鸡肉；操作：先把鸡肉放入锅中。再加入清水没过鸡肉。看到锅放稳就完成。', requiresParentAssist: true },
+              { title: '煮熟鸡肉', description: '本步骤食材：鸡肉；操作：家长开火煮到鸡肉全白。再捞出放温。看到中间没有粉色就完成。', requiresParentAssist: true },
+              { title: '撕成鸡丝', description: '本步骤食材：鸡肉；操作：顺着纹理撕成细丝。再放入大碗。看到粗细接近就完成。', requiresParentAssist: false },
+              { title: '处理黄瓜', description: '本步骤食材：黄瓜；操作：先洗净黄瓜。再请家长切成细丝。看到黄瓜丝整齐就完成。', requiresParentAssist: true },
+              { title: '拌匀装盘', description: '本步骤食材：鸡肉、黄瓜；操作：先把鸡丝和黄瓜丝放一起。再轻轻拌匀装盘。看到分布均匀就完成。', requiresParentAssist: false },
+            ],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await getRecipeDetailForRecommendation({
+    profileId: 'cp_001',
+    ingredients: [
+      { id: 'ing_chicken', name: '鸡肉', normalizedName: '鸡肉', quantity: '100克', source: 'manual' },
+      { id: 'ing_cucumber', name: '黄瓜', normalizedName: '黄瓜', quantity: '半根', source: 'manual' },
+    ],
+    recipe: {
+      id: 'recipe_003',
+      name: '凉拌手撕鸡',
+      englishName: 'Cold Shredded Chicken Salad',
+      ageRange: '7-12 岁',
+      difficulty: 'easy',
+      estimatedTimeMinutes: 18,
+      fitReasons: [],
+      riskAlerts: ['鸡肉必须煮熟'],
+      nutritionSummary: '鸡肉提供优质蛋白。',
+      extraIngredients: [],
+      canCookWithCurrentIngredients: true,
+    },
+  });
+
+  if ('error' in result) {
+    assert.fail(`expected generated detail data, got ${result.error.code}`);
+  }
+
+  assert.equal(requestBodies.length, 1);
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
+  assert.equal(result.data.name, '凉拌手撕鸡');
+  assert.equal(result.data.steps.length, 5);
+  assert.equal(result.data.steps[0].title, '准备鸡肉');
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
 test('getRecipeDetailForRecommendation generates model detail for summary-only generated card', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
@@ -1181,9 +1371,86 @@ test('getRecipeDetailForRecommendation generates model detail for summary-only g
 
   assert.equal(result.data.name, '番茄鸡蛋软面');
   assert.equal(result.data.steps[0].title, '番茄鸡蛋');
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
   assert.equal(requestBodies[0]?.enable_thinking, false);
   assert.equal(requestBodies[0]?.stream, false);
-  assert.equal(requestBodies[0]?.max_tokens, 1200);
+  assert.equal(requestBodies[0]?.max_tokens, 850);
+
+  global.fetch = originalFetch;
+  if (originalKey) {
+    process.env.SILICONFLOW_API_KEY = originalKey;
+  } else {
+    delete process.env.SILICONFLOW_API_KEY;
+  }
+});
+
+test('generateRecipeDetail fills step fields from guided model output', async () => {
+  const originalKey = process.env.SILICONFLOW_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.SILICONFLOW_API_KEY = 'test-key';
+  const requestBodies: Array<Record<string, unknown>> = [];
+
+  global.fetch = (async (_input, init) => {
+    requestBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            steps: [
+              { title: '准备工具', description: '本步骤食材：土豆、胡萝卜；操作：把碗和工具放好。', requiresParentAssist: false },
+              { title: '清洗食材', description: '本步骤食材：土豆、胡萝卜；操作：把食材洗净并放好。', requiresParentAssist: false },
+              { title: '切小块', description: '本步骤食材：土豆、胡萝卜；操作：家长切成小块。', requiresParentAssist: true },
+              { title: '蒸软', description: '本步骤食材：土豆、胡萝卜；操作：家长蒸到软糯。', requiresParentAssist: true },
+              { title: '压成泥', description: '本步骤食材：土豆、胡萝卜；操作：稍凉后压成细泥。', requiresParentAssist: false },
+            ],
+          }),
+        },
+      }],
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const result = await generateRecipeDetail(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_potato', name: '土豆', normalizedName: '土豆', quantity: '1个', source: 'manual' },
+      { id: 'ing_carrot', name: '胡萝卜', normalizedName: '胡萝卜', quantity: '半根', source: 'manual' },
+    ],
+    {
+      id: `recipe_minimal_steps_${Date.now()}`,
+      name: '土豆胡萝卜泥',
+      englishName: 'Potato Carrot Mash',
+      ageRange: '7-12 岁',
+      difficulty: 'easy',
+      estimatedTimeMinutes: 15,
+      riskAlerts: ['蒸煮需要家长协助'],
+      nutritionSummary: '软糯清淡。',
+      canCookWithCurrentIngredients: true,
+    },
+  );
+
+  assert.equal(result.name, '土豆胡萝卜泥');
+  assert.equal(result.steps.length, 5);
+  assert.ok(result.steps.every((step) => step.tip && step.childAction && step.expectedResult));
+  assert.ok(result.steps.every((step) => Object.prototype.hasOwnProperty.call(step, 'parentAction')));
+  assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
+  assert.equal(requestBodies[0]?.max_tokens, 850);
+  const messages = requestBodies[0]?.messages as Array<{ role: string; content: string }> | undefined;
+  const promptText = messages?.map((message) => message.content).join('\n') ?? '';
+  assert.match(promptText, /promptVersion=guided-v1|promptVersion=guided-v1。/);
+  assert.match(promptText, /固定5步|Exactly 5 steps/);
+  assert.match(promptText, /火候\/时间|heat\/time/);
+  assert.match(promptText, /能看到的状态|visible done cue/);
+  assert.equal(promptText.includes('tip、childAction、parentAction、expectedResult、riskLevel各写一句短句'), false);
 
   global.fetch = originalFetch;
   if (originalKey) {

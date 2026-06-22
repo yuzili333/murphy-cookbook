@@ -16,6 +16,7 @@
     "build:frontend": "pnpm --filter @murphy-cookbook/frontend build",
     "build:server": "pnpm --filter @murphy-cookbook/server build",
     "test:api": "pnpm --filter @murphy-cookbook/server test:api",
-    "test:e2e": "pnpm --filter @murphy-cookbook/frontend test:e2e"
+    "test:e2e": "pnpm --filter @murphy-cookbook/frontend test:e2e",
+    "benchmark:llm-latency": "pnpm --filter @murphy-cookbook/server benchmark:llm-latency"
   }
 }

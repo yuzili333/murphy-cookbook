@@ -8062,14 +8062,14 @@ body {
 
   .recipe-carousel {
     container-type: inline-size;
-    padding-inline: 7.5%;
+    padding-inline: 10%;
   }
 
   .carousel-recipe-card,
   .carousel-recipe-card.coverflow-card {
-    flex: 0 0 85cqw;
-    width: 85cqw;
-    max-width: 85cqw;
+    flex: 0 0 78cqw;
+    width: 78cqw;
+    max-width: 78cqw;
   }
 }
 

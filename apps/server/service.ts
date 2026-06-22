@@ -68,6 +68,10 @@ function isRecipeDetailPayload(recipe: RecipeRecommendation | RecipeDetailRecipe
   );
 }
 
+function shouldGenerateRecipeDetailWithModel(recipe: RecipeRecommendation | RecipeDetailRecipeInput | RecipeDetail) {
+  return hasSameRecipeIdentity(recipe.name, '凉拌手撕鸡');
+}
+
 function hasSameRecipeIdentity(actualName: string, targetName: string) {
   return normalizeIngredientName(actualName).replace(/\s+/g, '').toLowerCase() ===
     normalizeIngredientName(targetName).replace(/\s+/g, '').toLowerCase();
@@ -267,6 +271,7 @@ export function getMockRecipeRecommendations(profile: ChildProfile, ingredients:
       recipes,
       recipeDetails: recipes
         .map((recipe) => recipeCatalog.find((item) => item.id === recipe.id))
+        .filter((item) => !item || !shouldGenerateRecipeDetailWithModel(item))
         .filter((item): item is NonNullable<typeof item> => Boolean(item)),
       filteredAllergens: profile.allergens,
       sortBy: 'balanced',
@@ -348,14 +353,14 @@ export async function getRecipeDetailForRecommendation(input: {
     return { error: validation.error };
   }
 
-  if (isRecipeDetailPayload(input.recipe)) {
+  if (isRecipeDetailPayload(input.recipe) && !shouldGenerateRecipeDetailWithModel(input.recipe)) {
     return { data: input.recipe };
   }
 
   const catalogRecipe = recipeCatalog.find((item) =>
     item.id === input.recipe.id && hasSameRecipeIdentity(item.name, input.recipe.name),
   );
-  if (catalogRecipe) {
+  if (catalogRecipe && !shouldGenerateRecipeDetailWithModel(catalogRecipe)) {
     return { data: catalogRecipe };
   }
 
@@ -382,7 +387,7 @@ export async function getRecipeDetailForRecommendation(input: {
       ),
     };
   } catch (error) {
-    const localDetail = isTimeoutError(error)
+    const localDetail = isTimeoutError(error) && !shouldGenerateRecipeDetailWithModel(input.recipe)
       ? findLocalRecipeDetailFallback(input.recipe, detailIngredients)
       : undefined;
     if (localDetail) {

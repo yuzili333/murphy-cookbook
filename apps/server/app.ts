@@ -12,6 +12,7 @@ import {
   type RecipeDetailRecipeInput,
 } from './data.js';
 import { getLocalLlmLogFilePath, readLocalLlmLogs, shouldUseLocalDebugLog } from './logger.js';
+import { getLlmMetricSummary, resolveLlmMetricsMongoRuntimeConfig } from './llmMetrics.js';
 import {
   getRecipeDetailForRecommendation,
   getRecipeDetailsForRecommendations,
@@ -1202,6 +1203,7 @@ export function createApp(): Express {
           adminPasswordLength: videoConfigAdminPassword.length,
         },
         recipeVideoMongo: resolveRecipeVideoMongoRuntimeConfig(),
+        llmMetricsMongo: resolveLlmMetricsMongoRuntimeConfig(),
       },
     });
   });
@@ -1360,6 +1362,44 @@ export function createApp(): Express {
         logFile: getLocalLlmLogFilePath(),
       },
     });
+  });
+
+  app.get('/api/v1/debug/llm-metrics', async (req, res) => {
+    if (!requireVideoConfigPermission(req, res)) {
+      return;
+    }
+
+    const hours = typeof req.query.hours === 'string' ? Number(req.query.hours) : 24;
+    const task = typeof req.query.task === 'string' ? req.query.task : '';
+    const model = typeof req.query.model === 'string' ? req.query.model : '';
+    const promptVersion = typeof req.query.promptVersion === 'string' ? req.query.promptVersion : '';
+
+    try {
+      res.json({
+        data: {
+          items: await getLlmMetricSummary({
+            hours,
+            task: task as never,
+            model,
+            promptVersion,
+          }),
+          filters: {
+            hours: Number.isFinite(hours) && hours > 0 ? hours : 24,
+            task,
+            model,
+            promptVersion,
+          },
+          runtime: resolveLlmMetricsMongoRuntimeConfig(),
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        error: {
+          code: 'LLM_METRICS_QUERY_FAILED',
+          message: error instanceof Error ? error.message : '大模型调用指标查询失败。',
+        },
+      });
+    }
   });
 
   return app;
