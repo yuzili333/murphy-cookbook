@@ -4030,6 +4030,42 @@ button {
   white-space: normal;
 }
 
+.recipe-step-generate-block {
+  justify-items: center;
+  padding: 12px 10px;
+  border-color: rgba(247, 25, 114, 0.18);
+  background: rgba(255, 244, 248, 0.92);
+  text-align: center;
+}
+
+.recipe-step-generate-block p {
+  color: #8a8a8a;
+  font-size: 0.78rem;
+}
+
+.detail-error-block .primary-step-generate-button {
+  min-height: 42px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: #f71972;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 900;
+  box-shadow: 0 10px 22px rgba(247, 25, 114, 0.24);
+}
+
+.detail-error-block .primary-step-generate-button:hover:not(:disabled) {
+  background: #f71972;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(247, 25, 114, 0.3);
+}
+
+.detail-error-block .primary-step-generate-button:disabled {
+  opacity: 0.68;
+}
+
 .inline-ingredient-list,
 .ingredient-table {
   display: grid;

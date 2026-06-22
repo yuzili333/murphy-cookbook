@@ -2074,15 +2074,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    for (const message of chatMessages) {
-      for (const recipe of message.recipes ?? []) {
-        void loadRecipeVideoForCard(recipe);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatMessages]);
-
   const handleIngredientKnowledgeClick = async (ingredient: IngredientItem) => {
     const knowledgeKey = buildIngredientKnowledgeKey(ingredient.normalizedName || ingredient.name, locale);
     if (!knowledgeKey) {
@@ -3534,17 +3525,16 @@ export default function App() {
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="detail-error-block">
-                                    <strong>{isEnglish ? 'Cooking steps are ready to generate' : '烹饪步骤待获取'}</strong>
-                                    <p>{isEnglish ? 'Tap the button when you want the detailed comic-style cooking steps.' : '需要查看详细图解步骤时，请点击按钮手动获取。'}</p>
+                                  <div className="detail-error-block recipe-step-generate-block">
                                     <button
                                       type="button"
-                                      className="secondary-button"
+                                      className="secondary-button primary-step-generate-button"
                                       onClick={() => void loadRecipeDetailForCard(recipe, message.ingredients ?? ingredients, selectedProfile, message.id, true)}
                                       disabled={recipeDetailLoadingById[recipe.id]}
                                     >
-                                      {isEnglish ? 'Get Cooking Steps' : '获取烹饪步骤'}
+                                      {isEnglish ? 'Generate Cooking Steps' : '生成烹饪步骤'}
                                     </button>
+                                    <p>{isEnglish ? 'Tap the button when you want the detailed comic-style cooking steps.' : '需要查看详细图解步骤时，请点击按钮手动获取'}</p>
                                   </div>
                                 )}
                               </div>
