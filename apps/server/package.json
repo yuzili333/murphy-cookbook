@@ -7,7 +7,7 @@
     "dev": "tsx watch index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
-    "test:api": "node --import tsx --test $(find tests/api -name '*.test.ts' -type f)",
+    "test:api": "NODE_ENV=test LLM_METRICS_DISABLED=1 node --import tsx --test --test-concurrency=1 $(find tests/api -name '*.test.ts' -type f)",
     "benchmark:llm-latency": "tsx scripts/benchmarkLlmLatency.ts"
   },
   "dependencies": {

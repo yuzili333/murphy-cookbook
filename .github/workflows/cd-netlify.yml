@@ -65,10 +65,21 @@ jobs:
           test -n "$VIDEO_CONFIG_TOKEN_SECRET" || (echo "Missing VIDEO_CONFIG_TOKEN_SECRET" && exit 1)
           test -n "$MONGODB_URI" || (echo "Missing MONGODB_URI" && exit 1)
 
-      - name: Verify
-        run: |
-          pnpm test:api
-          pnpm build:netlify
+      - name: Run API tests
+        env:
+          NODE_ENV: test
+          LLM_METRICS_DISABLED: 1
+          SILICONFLOW_API_KEY: ''
+          MONGODB_URI: ''
+          RECIPE_VIDEO_MONGODB_URI: ''
+          LLM_METRICS_MONGODB_URI: ''
+          NETLIFY: ''
+          AWS_LAMBDA_FUNCTION_NAME: ''
+          LAMBDA_TASK_ROOT: ''
+        run: pnpm test:api
+
+      - name: Build Netlify artifacts
+        run: pnpm build:netlify
 
       - name: Verify server function entry
         run: test -f apps/server/dist/netlify/functions/api.js

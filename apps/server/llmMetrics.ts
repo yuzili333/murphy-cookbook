@@ -42,7 +42,15 @@ function parseOptionalBoolean(value: string | undefined) {
   return null;
 }
 
+function isLlmMetricsDisabled() {
+  return parseOptionalBoolean(process.env.LLM_METRICS_DISABLED) === true || process.env.NODE_ENV === 'test';
+}
+
 function getMongoUri() {
+  if (isLlmMetricsDisabled()) {
+    return '';
+  }
+
   return (process.env.LLM_METRICS_MONGODB_URI || process.env.MONGODB_URI || '').trim();
 }
 
@@ -166,6 +174,10 @@ export function resolveLlmMetricsMongoRuntimeConfig(env: NodeJS.ProcessEnv = pro
 }
 
 export async function recordLlmCallMetric(input: LlmCallMetricInput) {
+  if (isLlmMetricsDisabled()) {
+    return;
+  }
+
   try {
     const collection = await getMetricCollection();
     if (!collection) {
