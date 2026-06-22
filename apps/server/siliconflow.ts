@@ -15,7 +15,7 @@ import { modelRouter, type ModelRouteContext, type ModelTask } from './modelRout
 
 const SILICONFLOW_API_URL = 'https://api.siliconflow.cn/v1/chat/completions';
 const recipeRecommendationPromptVersion = 'compact-v1';
-const recipeStepsPromptVersion = 'guided-v1';
+const recipeStepsPromptVersion = 'guided-v3';
 
 interface SiliconFlowMessage {
   role: 'system' | 'user' | 'assistant';
@@ -737,6 +737,53 @@ function inferRiskLevelFromStep(step: Partial<RecipeDetail['steps'][number]>, lo
   return 'low';
 }
 
+function getStepTextForInference(step: Partial<RecipeDetail['steps'][number]>) {
+  return [
+    step.title,
+    step.description,
+    step.tip,
+    (step as { parentAction?: string }).parentAction,
+  ].map((value) => String(value ?? '').toLowerCase()).join(' ');
+}
+
+function inferStepTipFromStep(step: Partial<RecipeDetail['steps'][number]>, isEnglish: boolean) {
+  const text = getStepTextForInference(step);
+
+  if (isEnglish) {
+    if (/knife|cut|slice|chop/.test(text)) return 'Keep fingers away from the knife edge and cut slowly with adult supervision.';
+    if (/boil|steam|hot water/.test(text)) return 'Stand back from steam and wait until the food is no longer too hot.';
+    if (/pan|stove|flame|hot oil|heat/.test(text)) return 'Keep the pan stable and watch the color, smell, and texture change.';
+    if (/mix|stir|toss/.test(text)) return 'Mix from the bottom upward so the ingredients are evenly coated.';
+    return 'Check the visible result before moving to the next step.';
+  }
+
+  if (/刀|切|片|丝|丁|剁/.test(text)) return '刀具操作要慢，手指离刀刃远一点。';
+  if (/蒸|煮|开水|沸水|热水|焯/.test(text)) return '注意蒸汽和热水，等食材不烫后再靠近。';
+  if (/锅|火|热油|加热|翻炒|煎|炒/.test(text)) return '保持锅具放稳，观察颜色、香味和软硬变化。';
+  if (/拌|搅|混合|翻匀/.test(text)) return '从碗底往上轻轻翻拌，食材会更均匀。';
+  return '进入下一步前，先确认食材状态和操作台面是否安全。';
+}
+
+function inferParentActionFromStep(step: Partial<RecipeDetail['steps'][number]>, isEnglish: boolean) {
+  const text = getStepTextForInference(step);
+
+  if (!step.requiresParentAssist) {
+    return '';
+  }
+
+  if (isEnglish) {
+    if (/knife|cut|slice|chop/.test(text)) return 'An adult handles the knife work or guides the child hand-over-hand.';
+    if (/boil|steam|hot water/.test(text)) return 'An adult handles boiling, steaming, draining, and temperature checks.';
+    if (/pan|stove|flame|hot oil|heat/.test(text)) return 'An adult controls the stove, pan, heat level, and hot cookware.';
+    return 'An adult completes the risky part and confirms the food is safe to touch or taste.';
+  }
+
+  if (/刀|切|片|丝|丁|剁/.test(text)) return '家长负责刀具切配，或手把手指导安全动作。';
+  if (/蒸|煮|开水|沸水|热水|焯/.test(text)) return '家长负责蒸煮、捞出、沥水和温度确认。';
+  if (/锅|火|热油|加热|翻炒|煎|炒/.test(text)) return '家长负责开火、控温、翻炒和移动热锅。';
+  return '家长完成这一步里的高风险动作，并确认食材可以安全触碰或品尝。';
+}
+
 export interface GeneratedRecommendationPayload {
   recipes: RecipeRecommendation[];
   recipeDetails: RecipeDetail[];
@@ -1120,7 +1167,7 @@ function normalizeGeneratedCookingSteps(
       title: removeDisallowedIngredientMentions(String(step.title), disallowedIngredientNames),
       description: removeDisallowedIngredientMentions(String(step.description), disallowedIngredientNames),
       tip: removeDisallowedIngredientMentions(
-        String(step.tip ?? (isEnglish ? 'Go slowly and check safety before starting.' : '慢慢来，先确认安全再动手。')),
+        String(step.tip ?? inferStepTipFromStep(step, isEnglish)),
         disallowedIngredientNames,
       ),
       childAction: removeDisallowedIngredientMentions(
@@ -1130,11 +1177,7 @@ function normalizeGeneratedCookingSteps(
       parentAction: removeDisallowedIngredientMentions(
         String(
           (step as { parentAction?: string }).parentAction ??
-            (step.requiresParentAssist
-              ? isEnglish
-                ? 'A parent should stay nearby and complete this part together.'
-                : '这一小步建议家长在旁边陪着一起完成。'
-              : ''),
+            inferParentActionFromStep(step, isEnglish),
         ),
         disallowedIngredientNames,
       ),
@@ -1295,12 +1338,14 @@ function buildRecipeDetailUserPrompt(
       `Recipe:\n${recipeLines}`,
       'Rules:',
       `1. Make "${recipe.name}" only; use allowed ingredients plus water/cookware as tools.`,
-      '2. Use this fixed flow: prepare tools, wash/cut, cook or mix, check doneness, plate.',
-      '3. Each step outputs title, description, requiresParentAssist; the server fills child tips and risk fields.',
+      '2. Return exactly 5 steps, but choose each step title and order from the real cooking method for this recipe; do not reuse a fixed step template across recipes.',
+      '3. Each step outputs title,description,tip,parentAction,requiresParentAssist; the server fills only childAction, expectedResult, and riskLevel.',
       '4. description must let the user follow the step without guessing: include ingredients, exact action order, heat/time when relevant, and a visible done cue.',
-      '5. description format: "Step ingredients: A, B; Action: 2-3 short sentences covering do this, then this, until you see this result." Keep each description under 55 English words.',
-      '6. requiresParentAssist=true for knives, flame, high heat, hot oil, steaming, boiling, oven, or heavy cookware; otherwise false.',
-      '7. Do not output recipe card fields, ingredient tables, Markdown, or explanations.',
+      '5. tip must be generated from the real operation in this step, such as cut size, heat level, stirring frequency, softness/color cue, anti-slip, or anti-burn point. Do not reuse the same generic tip.',
+      '6. parentAction must match this exact step. For risky steps, name what the adult does; for safe steps, use an empty string. Do not write a fixed generic supervision sentence.',
+      '7. description format: "Step ingredients: A, B; Action: 2-3 short sentences covering do this, then this, until you see this result." Keep each description under 65 English words.',
+      '8. requiresParentAssist=true for knives, flame, high heat, hot oil, steaming, boiling, oven, or heavy cookware; otherwise false.',
+      '9. Do not output recipe card fields, ingredient tables, Markdown, or explanations.',
     ].join('\n');
   }
 
@@ -1311,12 +1356,14 @@ function buildRecipeDetailUserPrompt(
     `菜谱:${recipeLines}`,
     '规则:',
     `1.只制作“${recipe.name}”；只用允许食材，水和厨具算工具。`,
-    '2.固定5步流程:准备工具、清洗切配、加热或拌匀、判断成熟、装盘。',
-    '3.每步输出:title,description,requiresParentAssist；服务端会补齐儿童提示和风险字段。',
+    '2.只固定输出5步，步骤标题和先后顺序由模型根据该菜谱真实做法生成；不要套用所有菜都相同的固定步骤模板。',
+    '3.每步输出:title,description,tip,parentAction,requiresParentAssist；服务端仅补齐childAction、expectedResult、riskLevel。',
     '4.description要能让用户不猜步骤即可操作:包含本步食材、先后动作、需要的火候/时间、完成时能看到的状态。',
-    '5.description固定为“本步骤食材：A、B；操作：2-3句短句，说明先做什么、再做什么、做到什么状态。”每步不超过90个汉字。',
-    '6.requiresParentAssist在刀具/明火/高温/热油/蒸煮/烤箱/重厨具时为true，其余为false。',
-    '7.不要输出菜谱卡字段、配料表、Markdown或解释文字。',
+    '5.tip必须根据本步骤真实操作生成，如大小厚薄、火候、搅拌频率、软硬/颜色变化、防滑或防烫要点；不要每步复用同一句通用要点。',
+    '6.parentAction必须贴合本步骤:高风险步骤写家长具体完成什么；低风险步骤输出空字符串。不要写固定的泛泛陪同句。',
+    '7.description固定为“本步骤食材：A、B；操作：2-3句短句，说明先做什么、再做什么、做到什么状态。”每步不超过110个汉字。',
+    '8.requiresParentAssist在刀具/明火/高温/热油/蒸煮/烤箱/重厨具时为true，其余为false。',
+    '9.不要输出菜谱卡字段、配料表、Markdown或解释文字。',
   ].join('\n');
 }
 
@@ -1325,7 +1372,13 @@ export async function understandIngredientsFromText(userText: string, source: 'm
     {
       role: 'system',
       content:
-        '你是儿童烹饪应用的食材理解助手。请从用户文本中提取食材名称，输出严格 JSON：{"ingredients":[{"name":"食材名","quantity":"数量或1份"}] }。不要输出额外说明。',
+        [
+          '你是儿童烹饪应用的食材理解助手。请从用户文本中提取食材名称，输出严格 JSON：{"ingredients":[{"name":"食材名","quantity":"数量或1份"}]}。不要输出额外说明。',
+          '支持小朋友用拼音输入食材，包括无声调拼音、带声调拼音、空格分隔拼音和中英文混合输入，如 ji dan、jīdàn、fan qie。',
+          '拼音输入只识别蔬菜、肉禽类、水果类食材；不要把鸡蛋、鱼虾水产、米面主食、豆制品、调味料作为拼音候选输出。',
+          '如果一个拼音可能对应多个同音食材，只输出与拼音和儿童常见食材最匹配的1个名称，例如 hong luo bo 输出红萝卜，不要同时输出胡萝卜；无法可靠匹配时忽略该拼音。',
+          '只输出常见可食用食材名称；数量不明确时 quantity 使用 "1份"。',
+        ].join('\n'),
     },
     {
       role: 'user',

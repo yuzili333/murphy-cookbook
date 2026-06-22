@@ -44,6 +44,76 @@ const defaultRecommendationProfile: ChildProfile = {
   dietaryHabits: ['低油脂', '轻口味', '膳食均衡', '维生素丰富', '搭配均衡'],
 };
 
+const pinyinIngredientCandidates: Record<string, string> = {
+  xihongshi: '西红柿',
+  fanqie: '番茄',
+  huanggua: '黄瓜',
+  qinggua: '青瓜',
+  tudou: '土豆',
+  malingshu: '马铃薯',
+  huluobo: '胡萝卜',
+  bailuobo: '白萝卜',
+  hongluobo: '红萝卜',
+  nangua: '南瓜',
+  donggua: '冬瓜',
+  sigua: '丝瓜',
+  yumi: '玉米',
+  qiezi: '茄子',
+  qingcai: '青菜',
+  baicai: '白菜',
+  shengcai: '生菜',
+  bocai: '菠菜',
+  xilan: '西兰花',
+  xilanhua: '西兰花',
+  pingguo: '苹果',
+  xiangjiao: '香蕉',
+  caomei: '草莓',
+  putao: '葡萄',
+  chengzi: '橙子',
+  juzi: '橘子',
+  xigua: '西瓜',
+  taozi: '桃子',
+  limeng: '柠檬',
+  jirou: '鸡肉',
+  yarou: '鸭肉',
+  erou: '鹅肉',
+  zhurou: '猪肉',
+  niurou: '牛肉',
+  yangrou: '羊肉',
+};
+
+function normalizePinyinInput(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
+}
+
+function expandPinyinIngredientCandidates(value: string) {
+  const normalized = normalizePinyinInput(value);
+  if (!normalized) {
+    return [];
+  }
+
+  const keys = Object.keys(pinyinIngredientCandidates).sort((left, right) => right.length - left.length);
+  const results: string[] = [];
+  let cursor = 0;
+
+  while (cursor < normalized.length) {
+    const matchedKey = keys.find((key) => normalized.startsWith(key, cursor));
+    if (!matchedKey) {
+      cursor += 1;
+      continue;
+    }
+
+    results.push(pinyinIngredientCandidates[matchedKey]);
+    cursor += matchedKey.length;
+  }
+
+  return [...new Set(results)];
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     return promise;
@@ -128,10 +198,35 @@ export function parseTextToIngredients(text: string) {
     .split(/[，,、\s]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+  const ingredients: IngredientItem[] = [];
+  let pinyinBuffer = '';
 
-  return parts.map((part) =>
-    createIngredient(part.replace(/^(两个|一个|半根|半个|一根|一份)/, ''), 'manual'),
-  );
+  const flushPinyinBuffer = () => {
+    if (!pinyinBuffer) {
+      return;
+    }
+
+    const candidates = expandPinyinIngredientCandidates(pinyinBuffer);
+    if (candidates.length > 0) {
+      ingredients.push(...candidates.map((name) => createIngredient(name, 'manual')));
+    }
+    pinyinBuffer = '';
+  };
+
+  parts.forEach((part) => {
+    const cleanedPart = part.replace(/^(两个|一个|半根|半个|一根|一份)/, '');
+
+    if (/^[a-zA-ZāáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜüÜ]+$/.test(cleanedPart)) {
+      pinyinBuffer += cleanedPart;
+      return;
+    }
+
+    flushPinyinBuffer();
+    ingredients.push(createIngredient(cleanedPart, 'manual'));
+  });
+
+  flushPinyinBuffer();
+  return ingredients;
 }
 
 export function resolveProfile(profileId: string, profileInput?: Partial<ChildProfile> | null) {

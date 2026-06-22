@@ -52,7 +52,7 @@ const defaultModels = ['Qwen/Qwen3.5-9B'];
 const defaultAttempts = 1;
 const promptVersions: Record<BenchmarkTask, string> = {
   recommendation: 'compact-v1',
-  steps: 'guided-v1',
+  steps: 'guided-v3',
 };
 const defaultProfile: ChildProfile = {
   id: 'benchmark_profile',

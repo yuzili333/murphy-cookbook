@@ -31,6 +31,13 @@ test('parseTextToIngredients extracts ingredient tokens from chinese text', () =
   assert.equal(ingredients[2].name, '黄瓜');
 });
 
+test('parseTextToIngredients maps pinyin input to one best vegetable meat or fruit candidate', () => {
+  const ingredients = parseTextToIngredients('ji dan fan qie yu hong luo bo ping guo ji rou');
+  const names = ingredients.map((item) => item.name);
+
+  assert.deepEqual(names, ['番茄', '红萝卜', '苹果', '鸡肉']);
+});
+
 test('extractIngredientsFromFilename reads ingredient hints from uploaded image filename', () => {
   const ingredients = extractIngredientsFromFilename('今天晚餐-番茄-鸡蛋.jpg');
 
@@ -476,6 +483,12 @@ test('understandIngredientsFromText posts chat completions request and returns m
   assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
   assert.equal(requestBodies[0]?.enable_thinking, false);
   assert.equal(requestBodies[0]?.max_tokens, 260);
+  const messages = requestBodies[0]?.messages as Array<{ role: string; content: string }> | undefined;
+  const systemPrompt = messages?.find((message) => message.role === 'system')?.content ?? '';
+  assert.match(systemPrompt, /拼音输入食材/);
+  assert.match(systemPrompt, /只识别蔬菜、肉禽类、水果类食材/);
+  assert.match(systemPrompt, /只输出与拼音和儿童常见食材最匹配的1个名称/);
+  assert.match(systemPrompt, /不要把鸡蛋、鱼虾水产、米面主食、豆制品、调味料作为拼音候选输出/);
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -1397,11 +1410,11 @@ test('generateRecipeDetail fills step fields from guided model output', async ()
         message: {
           content: JSON.stringify({
             steps: [
-              { title: '准备工具', description: '本步骤食材：土豆、胡萝卜；操作：把碗和工具放好。', requiresParentAssist: false },
-              { title: '清洗食材', description: '本步骤食材：土豆、胡萝卜；操作：把食材洗净并放好。', requiresParentAssist: false },
-              { title: '切小块', description: '本步骤食材：土豆、胡萝卜；操作：家长切成小块。', requiresParentAssist: true },
-              { title: '蒸软', description: '本步骤食材：土豆、胡萝卜；操作：家长蒸到软糯。', requiresParentAssist: true },
-              { title: '压成泥', description: '本步骤食材：土豆、胡萝卜；操作：稍凉后压成细泥。', requiresParentAssist: false },
+              { title: '洗净削皮', description: '本步骤食材：土豆、胡萝卜；操作：先把表面泥土洗掉。再削去外皮。看到表面干净就完成。', tip: '削皮前擦干食材，拿起来更稳。', parentAction: '家长负责削皮器操作。', requiresParentAssist: true },
+              { title: '切成小块', description: '本步骤食材：土豆、胡萝卜；操作：先切成厚片。再改成小块。看到大小接近就完成。', tip: '小块越接近，蒸软时间越一致。', parentAction: '家长负责刀具切配。', requiresParentAssist: true },
+              { title: '上锅蒸软', description: '本步骤食材：土豆、胡萝卜；操作：把小块放进蒸碗。中火蒸到筷子能轻松插入。看到边缘变软就完成。', tip: '蒸汽很烫，开盖时先等几秒。', parentAction: '家长负责开火、开盖和取出蒸碗。', requiresParentAssist: true },
+              { title: '压成细泥', description: '本步骤食材：土豆、胡萝卜；操作：放到温热后用勺背压碎。再反复碾压。看到没有明显硬块就完成。', tip: '趁温热压更省力，太烫时不要碰。', parentAction: '', requiresParentAssist: false },
+              { title: '整理装盘', description: '本步骤食材：土豆、胡萝卜；操作：把泥整理成小圆堆。再抹平表面。看到形状稳定就完成。', tip: '勺子蘸一点温水，表面更容易抹平。', parentAction: '', requiresParentAssist: false },
             ],
           }),
         },
@@ -1442,15 +1455,23 @@ test('generateRecipeDetail fills step fields from guided model output', async ()
   assert.equal(result.steps.length, 5);
   assert.ok(result.steps.every((step) => step.tip && step.childAction && step.expectedResult));
   assert.ok(result.steps.every((step) => Object.prototype.hasOwnProperty.call(step, 'parentAction')));
+  assert.equal(result.steps[1].tip, '小块越接近，蒸软时间越一致。');
+  assert.equal(result.steps[2].parentAction, '家长负责开火、开盖和取出蒸碗。');
+  assert.equal(result.steps[4].parentAction, '');
   assert.equal(requestBodies[0]?.model, 'Qwen/Qwen3.5-9B');
   assert.equal(requestBodies[0]?.max_tokens, 850);
   const messages = requestBodies[0]?.messages as Array<{ role: string; content: string }> | undefined;
   const promptText = messages?.map((message) => message.content).join('\n') ?? '';
-  assert.match(promptText, /promptVersion=guided-v1|promptVersion=guided-v1。/);
+  assert.match(promptText, /promptVersion=guided-v3|promptVersion=guided-v3。/);
   assert.match(promptText, /固定5步|Exactly 5 steps/);
+  assert.match(promptText, /不要套用所有菜都相同的固定步骤模板|do not reuse a fixed step template/);
+  assert.match(promptText, /每步输出:title,description,tip,parentAction,requiresParentAssist|Each step outputs title,description,tip,parentAction,requiresParentAssist/);
+  assert.match(promptText, /不要每步复用同一句通用要点|Do not reuse the same generic tip/);
+  assert.match(promptText, /不要写固定的泛泛陪同句|Do not write a fixed generic supervision sentence/);
+  assert.equal(promptText.includes('准备工具、清洗切配、加热或拌匀、判断成熟、装盘'), false);
+  assert.equal(promptText.includes('prepare tools, wash/cut, cook or mix, check doneness, plate'), false);
   assert.match(promptText, /火候\/时间|heat\/time/);
   assert.match(promptText, /能看到的状态|visible done cue/);
-  assert.equal(promptText.includes('tip、childAction、parentAction、expectedResult、riskLevel各写一句短句'), false);
 
   global.fetch = originalFetch;
   if (originalKey) {
