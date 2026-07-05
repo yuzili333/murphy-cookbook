@@ -839,6 +839,22 @@ function getConfiguredVideoRecipeNameForIngredients(ingredients: IngredientItem[
   return '';
 }
 
+function recipeNameUsesTomatoOrEgg(recipeName: string) {
+  const normalizedName = normalizeRecipeIdentity(recipeName);
+  return /番茄|西红柿|鸡蛋|蛋|tomato|egg/i.test(normalizedName);
+}
+
+function isRecipeRelevantToIngredientList(recipeName: string, ingredients: IngredientItem[]) {
+  const actualNames = getStrictIngredientNameSet(ingredients);
+  const hasTomatoOrEgg = actualNames.has('番茄') || actualNames.has('鸡蛋');
+
+  if (!hasTomatoOrEgg && recipeNameUsesTomatoOrEgg(recipeName)) {
+    return false;
+  }
+
+  return true;
+}
+
 function buildConfiguredVideoRecipeRecommendation(
   recipeName: string,
   profile: ChildProfile,
@@ -916,7 +932,8 @@ function ensureConfiguredVideoRecipe(
     configuredRecipe,
     ...payload.recipes.filter((recipe) =>
       normalizeRecipeIdentity(recipe.name) !== normalizeRecipeIdentity(configuredRecipeName) &&
-      !otherConfiguredRecipeNames.includes(normalizeRecipeIdentity(recipe.name)),
+      !otherConfiguredRecipeNames.includes(normalizeRecipeIdentity(recipe.name)) &&
+      isRecipeRelevantToIngredientList(recipe.name, ingredients),
     ),
   ];
 
@@ -1279,6 +1296,9 @@ function buildRecipePlanUserPrompt(
       ? `Configured video recipe post-processing: because the ingredient list contains a trigger ingredient for "${configuredVideoRecipeName}", the server will prepend it as one fixed recipe card. Return other useful recipe ideas and do not repeat "${configuredVideoRecipeName}" or other uploaded-video fixed recipes.`
       : `视频菜谱后处理规则:当前食材清单包含“${configuredVideoRecipeName}”的视频触发食材，服务端会固定插入“${configuredVideoRecipeName}”作为1道推荐。请返回其它有价值的菜谱思路，不要重复“${configuredVideoRecipeName}”，也不要返回其它已上传视频的固定菜。`
     : '';
+  const ingredientRelevanceRule = isEnglish
+    ? 'Ingredient relevance rule: every model-returned recipe must directly use at least one listed ingredient in the recipe name and idea. Do not invent core ingredients that are absent from the list. If tomato/egg are not listed, do not return tomato-egg dishes such as tomato egg soup.'
+    : '食材相关性规则:模型返回的每道菜都必须在菜名和思路中直接使用至少一个当前食材，不得自行加入食材清单没有的核心食材；如果当前食材不含番茄/鸡蛋，禁止返回番茄鸡蛋汤等番茄鸡蛋类菜。';
 
   if (isEnglish) {
     return [
@@ -1289,6 +1309,7 @@ function buildRecipePlanUserPrompt(
       compactUserPrompt ? `User note: ${compactUserPrompt}` : '',
       `Ingredients:\n${ingredientLines}`,
       configuredVideoRecipeRule,
+      ingredientRelevanceRule,
       'Required fields per recipe: name,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients.',
       'Optional short fields: englishName,namePinyin,nameLearning. Omit them if unsure; the server will fill defaults.',
       'Decision rules: canCookWithCurrentIngredients=true only when the dish can be made with current ingredients plus water/tools; riskAlerts max 2 and only for real safety risks.',
@@ -1304,6 +1325,7 @@ function buildRecipePlanUserPrompt(
     compactUserPrompt ? `用户:${compactUserPrompt}` : '',
     `食材:${ingredientLines}`,
     configuredVideoRecipeRule,
+    ingredientRelevanceRule,
     '每道必填:name,difficulty,estimatedTimeMinutes,riskAlerts,nutritionSummary,canCookWithCurrentIngredients。',
     '可选短字段:englishName,namePinyin,nameLearning；不确定可省略，服务端会补齐。',
     '判断规则:现有食材加水和厨具即可完成时canCookWithCurrentIngredients=true；riskAlerts最多2条，仅真实安全风险才填写。',

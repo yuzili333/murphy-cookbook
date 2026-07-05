@@ -865,13 +865,13 @@ test('generateRecipePlan prepends configured cold shredded chicken recipe when c
                 canCookWithCurrentIngredients: true,
               },
               {
-                name: '番茄炒蛋',
-                englishName: 'Tomato Scrambled Eggs',
+                name: '番茄鸡蛋汤',
+                englishName: 'Tomato Egg Soup',
                 ageRange: '7-12 岁',
                 difficulty: 'easy',
                 estimatedTimeMinutes: 12,
                 riskAlerts: [],
-                nutritionSummary: '番茄和鸡蛋搭配。',
+                nutritionSummary: '番茄和鸡蛋搭配成汤。',
                 canCookWithCurrentIngredients: true,
               },
               {
@@ -909,10 +909,13 @@ test('generateRecipePlan prepends configured cold shredded chicken recipe when c
   );
 
   assert.match(userPromptContent, /凉拌手撕鸡/);
+  assert.match(userPromptContent, /食材相关性规则/);
+  assert.match(userPromptContent, /番茄鸡蛋汤/);
   assert.doesNotMatch(userPromptContent, /番茄炒蛋/);
   assert.equal(result.recipes.length, 3);
   assert.equal(result.recipes[0].name, '凉拌手撕鸡');
   assert.equal(result.recipes.some((recipe) => recipe.name === '番茄炒蛋'), false);
+  assert.equal(result.recipes.some((recipe) => recipe.name === '番茄鸡蛋汤'), false);
   assert.equal(result.recipes[0].canCookWithCurrentIngredients, true);
 
   global.fetch = originalFetch;
