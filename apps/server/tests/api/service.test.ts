@@ -837,7 +837,7 @@ test('generateRecipePlan fills stable card fields from compact model output', as
   }
 });
 
-test('generateRecipePlan prepends configured cold shredded chicken recipe only for exact chicken input', async () => {
+test('generateRecipePlan prepends configured cold shredded chicken recipe when chicken exists', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
@@ -865,13 +865,13 @@ test('generateRecipePlan prepends configured cold shredded chicken recipe only f
                 canCookWithCurrentIngredients: true,
               },
               {
-                name: '鸡肉土豆泥',
-                englishName: 'Chicken Potato Mash',
+                name: '番茄炒蛋',
+                englishName: 'Tomato Scrambled Eggs',
                 ageRange: '7-12 岁',
                 difficulty: 'easy',
-                estimatedTimeMinutes: 18,
+                estimatedTimeMinutes: 12,
                 riskAlerts: [],
-                nutritionSummary: '口感柔软。',
+                nutritionSummary: '番茄和鸡蛋搭配。',
                 canCookWithCurrentIngredients: true,
               },
               {
@@ -909,8 +909,10 @@ test('generateRecipePlan prepends configured cold shredded chicken recipe only f
   );
 
   assert.match(userPromptContent, /凉拌手撕鸡/);
+  assert.doesNotMatch(userPromptContent, /番茄炒蛋/);
   assert.equal(result.recipes.length, 3);
   assert.equal(result.recipes[0].name, '凉拌手撕鸡');
+  assert.equal(result.recipes.some((recipe) => recipe.name === '番茄炒蛋'), false);
   assert.equal(result.recipes[0].canCookWithCurrentIngredients, true);
 
   global.fetch = originalFetch;
@@ -921,7 +923,7 @@ test('generateRecipePlan prepends configured cold shredded chicken recipe only f
   }
 });
 
-test('generateRecipePlan does not prepend configured chicken recipe when extra ingredients exist', async () => {
+test('generateRecipePlan prepends configured chicken recipe when chicken has extra ingredients', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
@@ -990,13 +992,15 @@ test('generateRecipePlan does not prepend configured chicken recipe when extra i
     [
       { id: 'ing_chicken', name: '鸡肉', normalizedName: '鸡肉', quantity: '100克', source: 'manual' },
       { id: 'ing_potato', name: '土豆', normalizedName: '土豆', quantity: '1个', source: 'manual' },
+      { id: 'ing_tomato', name: '番茄', normalizedName: '番茄', quantity: '1个', source: 'manual' },
     ],
   );
 
-  assert.doesNotMatch(userPromptContent, /凉拌手撕鸡/);
+  assert.match(userPromptContent, /凉拌手撕鸡/);
+  assert.doesNotMatch(userPromptContent, /番茄炒蛋/);
   assert.equal(result.recipes.length, 3);
-  assert.equal(result.recipes.some((recipe) => recipe.name === '凉拌手撕鸡'), false);
-  assert.equal(result.recipes[0].name, '鸡肉土豆汤');
+  assert.equal(result.recipes[0].name, '凉拌手撕鸡');
+  assert.equal(result.recipes[1].name, '鸡肉土豆汤');
 
   global.fetch = originalFetch;
   if (originalKey) {
@@ -1006,7 +1010,7 @@ test('generateRecipePlan does not prepend configured chicken recipe when extra i
   }
 });
 
-test('generateRecipePlan prepends configured tomato egg recipe only for exact tomato and egg input', async () => {
+test('generateRecipePlan prepends configured tomato egg recipe when tomato or egg exists', async () => {
   const originalKey = process.env.SILICONFLOW_API_KEY;
   const originalFetch = global.fetch;
   process.env.SILICONFLOW_API_KEY = 'test-key';
@@ -1082,6 +1086,23 @@ test('generateRecipePlan prepends configured tomato egg recipe only for exact to
   assert.equal(result.recipes.length, 3);
   assert.equal(result.recipes[0].name, '番茄炒蛋');
   assert.equal(result.recipes[0].canCookWithCurrentIngredients, true);
+
+  const eggOnlyResult = await generateRecipePlan(
+    {
+      id: 'cp_001',
+      nickname: 'Murphy',
+      age: 8,
+      tastePreferences: ['清淡'],
+      allergens: [],
+      dietaryHabits: ['低油'],
+    },
+    [
+      { id: 'ing_egg', name: '鸡蛋', normalizedName: '鸡蛋', quantity: '2个', source: 'manual' },
+    ],
+  );
+
+  assert.match(userPromptContent, /番茄炒蛋/);
+  assert.equal(eggOnlyResult.recipes[0].name, '番茄炒蛋');
 
   global.fetch = originalFetch;
   if (originalKey) {

@@ -801,6 +801,10 @@ export interface GenerationLocaleOptions {
 
 const configuredChickenVideoRecipeName = '凉拌手撕鸡';
 const configuredTomatoEggVideoRecipeName = '番茄炒蛋';
+const configuredVideoRecipeNames = [
+  configuredChickenVideoRecipeName,
+  configuredTomatoEggVideoRecipeName,
+];
 
 function getStrictIngredientNameSet(ingredients: IngredientItem[]) {
   const names = new Set<string>();
@@ -818,17 +822,17 @@ function getStrictIngredientNameSet(ingredients: IngredientItem[]) {
   return names;
 }
 
-function hasExactIngredientSet(ingredients: IngredientItem[], expectedNames: string[]) {
+function hasAnyIngredientName(ingredients: IngredientItem[], expectedNames: string[]) {
   const actualNames = getStrictIngredientNameSet(ingredients);
-  return actualNames.size === expectedNames.length && expectedNames.every((name) => actualNames.has(name));
+  return expectedNames.some((name) => actualNames.has(name));
 }
 
 function getConfiguredVideoRecipeNameForIngredients(ingredients: IngredientItem[]) {
-  if (hasExactIngredientSet(ingredients, ['鸡肉'])) {
+  if (hasAnyIngredientName(ingredients, ['鸡肉'])) {
     return configuredChickenVideoRecipeName;
   }
 
-  if (hasExactIngredientSet(ingredients, ['番茄', '鸡蛋'])) {
+  if (hasAnyIngredientName(ingredients, ['番茄', '鸡蛋'])) {
     return configuredTomatoEggVideoRecipeName;
   }
 
@@ -905,10 +909,14 @@ function ensureConfiguredVideoRecipe(
   }
 
   const configuredRecipe = buildConfiguredVideoRecipeRecommendation(configuredRecipeName, profile, options);
+  const otherConfiguredRecipeNames = configuredVideoRecipeNames
+    .filter((recipeName) => normalizeRecipeIdentity(recipeName) !== normalizeRecipeIdentity(configuredRecipeName))
+    .map((recipeName) => normalizeRecipeIdentity(recipeName));
   const recipes = [
     configuredRecipe,
     ...payload.recipes.filter((recipe) =>
-      normalizeRecipeIdentity(recipe.name) !== normalizeRecipeIdentity(configuredRecipeName),
+      normalizeRecipeIdentity(recipe.name) !== normalizeRecipeIdentity(configuredRecipeName) &&
+      !otherConfiguredRecipeNames.includes(normalizeRecipeIdentity(recipe.name)),
     ),
   ];
 
@@ -1268,8 +1276,8 @@ function buildRecipePlanUserPrompt(
   const configuredVideoRecipeName = getConfiguredVideoRecipeNameForIngredients(ingredients);
   const configuredVideoRecipeRule = configuredVideoRecipeName
     ? isEnglish
-      ? `Configured video recipe post-processing: the server will prepend "${configuredVideoRecipeName}" as one fixed recipe card because the ingredient set exactly matches its uploaded cooking video. Return other useful recipe ideas and do not repeat "${configuredVideoRecipeName}".`
-      : `视频菜谱后处理规则:当前食材集合严格匹配已上传视频菜谱，服务端会固定插入“${configuredVideoRecipeName}”作为1道推荐。请返回其它有价值的菜谱思路，不要重复“${configuredVideoRecipeName}”。`
+      ? `Configured video recipe post-processing: because the ingredient list contains a trigger ingredient for "${configuredVideoRecipeName}", the server will prepend it as one fixed recipe card. Return other useful recipe ideas and do not repeat "${configuredVideoRecipeName}" or other uploaded-video fixed recipes.`
+      : `视频菜谱后处理规则:当前食材清单包含“${configuredVideoRecipeName}”的视频触发食材，服务端会固定插入“${configuredVideoRecipeName}”作为1道推荐。请返回其它有价值的菜谱思路，不要重复“${configuredVideoRecipeName}”，也不要返回其它已上传视频的固定菜。`
     : '';
 
   if (isEnglish) {
